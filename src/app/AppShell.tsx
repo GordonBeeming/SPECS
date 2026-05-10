@@ -6,6 +6,7 @@ import {
   Moon,
   Network,
   Sun,
+  TrainTrack,
 } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
@@ -14,14 +15,16 @@ import { HealthBadge } from "@/features/health/components/HealthBadge";
 import { LibraryView } from "@/features/library/components/LibraryView";
 import { FactoryListView } from "@/features/factory/components/FactoryListView";
 import { LogisticsListView } from "@/features/logistics/components/LogisticsListView";
+import { TrainRoutesView } from "@/features/trains/components/TrainRoutesView";
 import { PlaythroughSwitcher } from "@/features/playthrough/components/PlaythroughSwitcher";
 
-type Route = "home" | "factories" | "logistics" | "library";
+type Route = "home" | "factories" | "logistics" | "trains" | "library";
 
 const NAV: ReadonlyArray<{ id: Route; label: string; Icon: typeof BookOpen }> = [
   { id: "home", label: "Home", Icon: LayoutDashboard },
   { id: "factories", label: "Factories", Icon: FactoryIcon },
   { id: "logistics", label: "Logistics", Icon: Network },
+  { id: "trains", label: "Trains", Icon: TrainTrack },
   { id: "library", label: "Library", Icon: BookOpen },
 ];
 
@@ -76,6 +79,7 @@ export function AppShell() {
           {route === "home" && <HomePanel />}
           {route === "factories" && <FactoryListView />}
           {route === "logistics" && <LogisticsListView />}
+          {route === "trains" && <TrainRoutesView />}
           {route === "library" && <LibraryView />}
         </main>
       </div>

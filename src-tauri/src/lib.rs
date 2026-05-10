@@ -94,6 +94,13 @@ pub fn run() {
             features::logistics::commands::update_logistics_link,
             features::logistics::commands::delete_logistics_link,
             features::logistics::commands::plan_logistics,
+            features::trains::commands::list_train_routes,
+            features::trains::commands::get_train_route,
+            features::trains::commands::create_train_route,
+            features::trains::commands::update_train_route,
+            features::trains::commands::delete_train_route,
+            features::trains::commands::attach_link_to_route,
+            features::trains::commands::detach_link_from_route,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
