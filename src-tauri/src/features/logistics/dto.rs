@@ -9,7 +9,10 @@ pub struct LogisticsLink {
     pub from_factory_id: String,
     pub to_factory_id: String,
     pub item_id: String,
-    /// items per minute the player wants to move A → B
+    /// Items per minute the player wants to move A → B. Stored on disk as
+    /// 100ths of an ipm (`items_per_minute_x100` in the SQL schema) to dodge
+    /// f32 drift; the repo layer divides on read and multiplies on write —
+    /// same trick as `FactoryMachine.clock_pct`.
     pub items_per_minute: f32,
     /// 'belt' | 'pipe' | 'truck' | 'tractor' | 'train' | 'drone'
     pub transport_kind: String,
