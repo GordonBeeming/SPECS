@@ -5,6 +5,7 @@ import { Card } from "@/shared/ui/Card";
 import { useThemeMode } from "@/shared/theme/useThemeMode";
 import { HealthBadge } from "@/features/health/components/HealthBadge";
 import { LibraryView } from "@/features/library/components/LibraryView";
+import { PlaythroughSwitcher } from "@/features/playthrough/components/PlaythroughSwitcher";
 
 type Route = "home" | "library";
 
@@ -27,6 +28,7 @@ export function AppShell() {
           S.P.E.C.S
         </div>
         <div className="flex items-center gap-3">
+          <PlaythroughSwitcher />
           <HealthBadge />
           <Button variant="ghost" onClick={toggle} aria-label="Toggle theme">
             {mode === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}

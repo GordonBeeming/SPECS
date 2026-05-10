@@ -1,9 +1,10 @@
 import { useMilestones } from "../hooks/useLibrary";
 import type { Milestone } from "../types";
 import { LibraryTable, type Column } from "./LibraryTable";
+import { TierBadge } from "./TierBadge";
 
 const columns: Column<Milestone>[] = [
-  { header: "Tier", cell: (m) => m.tier, align: "right", width: "5rem" },
+  { header: "Tier", cell: (m) => <TierBadge unlockTier={m.tier} />, align: "right", width: "10rem" },
   { header: "Name", cell: (m) => m.name },
   {
     header: "Unlocks",

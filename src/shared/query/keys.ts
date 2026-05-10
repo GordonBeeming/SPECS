@@ -15,4 +15,8 @@ export const queryKeys = {
     beltTiers: ["library", "belt-tiers"] as const,
     pipeTiers: ["library", "pipe-tiers"] as const,
   },
+  playthrough: {
+    list: ["playthrough", "list"] as const,
+    current: ["playthrough", "current"] as const,
+  },
 };
