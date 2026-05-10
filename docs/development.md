@@ -13,7 +13,7 @@
 
 ```sh
 bun install
-bun run tauri dev
+bun run tauri:dev
 ```
 
 The Tauri shell launches with the Vite dev server. First boot takes a few
@@ -24,25 +24,28 @@ core version and host triple. That confirms IPC is working.
 
 ## Scripts
 
-| Command                                              | What it does                                         |
-| ---------------------------------------------------- | ---------------------------------------------------- |
-| `bun run tauri dev`                                  | Tauri shell + Vite dev server (the daily driver)     |
-| `bun run dev`                                        | Vite only — browser, no Rust core                    |
-| `bun run build`                                      | Vite production build                                |
-| `bun run tauri build -- --no-default-features`       | Full bundle (.dmg / .msi / .AppImage), MCP bridge OFF |
-| `bun run typecheck`                                  | `tsc --noEmit`                                       |
-| `bun run test`                                       | Vitest watch mode                                    |
-| `bun run test:run`                                   | Vitest single run (CI)                               |
-| `cd src-tauri && cargo check`                        | Rust type-check                                      |
-| `cd src-tauri && cargo test`                         | Rust unit + integration tests                        |
+| Command                              | What it does                                                  |
+| ------------------------------------ | ------------------------------------------------------------- |
+| `bun run tauri:dev`                  | Tauri shell + Vite with the dev config overlay (the daily driver) |
+| `bun run dev`                        | Vite only — browser, no Rust core                             |
+| `bun run build`                      | Vite production build                                         |
+| `bun run tauri build`                | Full bundle (.dmg / .msi / .AppImage), MCP bridge OFF, restrictive CSP |
+| `bun run typecheck`                  | `tsc --noEmit`                                                |
+| `bun run test`                       | Vitest watch mode                                             |
+| `bun run test:run`                   | Vitest single run (CI)                                        |
+| `cd src-tauri && cargo check`        | Rust type-check                                               |
+| `cd src-tauri && cargo test`         | Rust unit + integration tests                                 |
 
-> **Production builds must pass `--no-default-features`** so the MCP bridge
-> plugin is not compiled in. CI does this automatically; manual
-> `bun run tauri build` on its own would ship a debugging hole.
+The `tauri:dev` script bundles three dev-only choices in one place: the Cargo
+feature flag (`--features dev-mcp`) that compiles in the MCP bridge, and the
+config overlay (`tauri.conf.dev.json`) that loosens the CSP and enables
+`withGlobalTauri` so the MCP bridge can drive the webview. `tauri build`
+ignores both, so production bundles are always shipped without the bridge and
+with the strict CSP.
 
 ## Tauri MCP server (development)
 
-The `dev-mcp` Cargo feature (default-on) registers
+The `dev-mcp` Cargo feature (off by default) registers
 [`tauri-plugin-mcp-bridge`](https://crates.io/crates/tauri-plugin-mcp-bridge)
 so the [`@hypothesi/tauri-mcp-server`](https://github.com/hypothesi/mcp-server-tauri)
 MCP can screenshot the running Tauri window, capture IPC traffic, and drive
@@ -51,9 +54,6 @@ the UI from an AI coding client.
 The MCP is registered in this repo's local Claude Code config — no per-session
 setup needed. Other clients can install it via
 `npx -y install-mcp @hypothesi/tauri-mcp-server --client <client>`.
-
-The bridge is **never** compiled into release builds because production builds
-pass `--no-default-features`.
 
 ## Troubleshooting
 
@@ -70,4 +70,3 @@ pass `--no-default-features`.
 
 - Architecture rules: [`vsa/README.md`](./vsa/README.md)
 - Visual standards: [`../DESIGN.md`](../DESIGN.md)
-- Implementation plan: `~/.claude/plans/i-m-building-a-satisfactpory-snoopy-pebble.md`

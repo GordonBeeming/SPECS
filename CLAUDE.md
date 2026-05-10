@@ -25,7 +25,8 @@ visual change with a check of the reference screenshots committed alongside.
 
 Full reference in [`docs/development.md`](./docs/development.md). Quick:
 
-- `bun run tauri dev` — Tauri shell + Vite (the daily driver)
+- `bun run tauri:dev` — Tauri shell + Vite with the dev config overlay (relaxed CSP, MCP bridge enabled)
+- `bun run tauri build` — production bundle (MCP bridge stripped, restrictive CSP)
 - `bun run typecheck` — TS type-check
 - `bun run test` — Vitest watch mode
 - From `src-tauri/`: `cargo check`, `cargo test`

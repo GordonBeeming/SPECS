@@ -14,11 +14,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [features]
-# `dev-mcp` enables the Tauri MCP bridge so `npx @hypothesi/tauri-mcp-server`
-# can screenshot the running window, capture IPC, and drive the UI during
-# development. Default-on for `cargo build` and `tauri dev`. Production builds
-# must opt out: `tauri build -- --no-default-features` (CI does this).
-default = ["dev-mcp"]
+# `dev-mcp` is OFF by default so `cargo build --release` / `tauri build` never
+# accidentally ships the MCP bridge. Local dev opts in via the `tauri:dev`
+# script in package.json (`--features dev-mcp`).
+default = []
 dev-mcp = ["dep:tauri-plugin-mcp-bridge"]
 
 [dependencies]

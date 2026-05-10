@@ -6,8 +6,12 @@ const STORAGE_KEY = "specs.theme-mode";
 
 const detectInitial = (): Mode => {
   if (typeof window === "undefined") return "light";
-  const stored = window.localStorage.getItem(STORAGE_KEY);
+  // jsdom (Vitest default), older WebViews, and some embedded environments
+  // don't implement matchMedia. Without this guard the store throws at import
+  // time and the test suite fails before a single render.
+  const stored = window.localStorage?.getItem(STORAGE_KEY);
   if (stored === "light" || stored === "dark") return stored;
+  if (typeof window.matchMedia !== "function") return "light";
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 };
 

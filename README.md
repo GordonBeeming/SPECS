@@ -11,8 +11,10 @@ SQLite file you can share with friends.
 ## Status
 
 Phase 1 — scaffolding. Tauri shell, Vertical Slice Architecture, brand theme,
-canonical `health` slice end-to-end. See the plan at
-`~/.claude/plans/i-m-building-a-satisfactpory-snoopy-pebble.md` for the rest.
+canonical `health` slice end-to-end. See [`docs/vsa/`](./docs/vsa/) for the
+architecture and [`DESIGN.md`](./DESIGN.md) for visual standards. Next phases
+add the playthrough store, game-data library, factories, logistics, and the
+network view.
 
 ## Architecture
 
@@ -26,5 +28,5 @@ scripts, and troubleshooting.
 
 ```sh
 bun install
-bun run tauri dev
+bun run tauri:dev
 ```

@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "tauri:dev": "tauri dev --config src-tauri/tauri.conf.dev.json --features dev-mcp",
     "test": "vitest",
     "test:run": "vitest run",
     "typecheck": "tsc --noEmit"

@@ -31,8 +31,10 @@ it exposes, what UI it renders, what it owns in the database.
    slices in version order.
 
 4. **Cross-slice references go through stable IDs**, not joins across slice
-   boundaries. The shared `ItemId`, `RecipeId`, `FactoryId` types in
-   `src-tauri/src/shared/types.rs` exist for exactly this.
+   boundaries. The shared ID newtypes in `src-tauri/src/shared/types.rs`
+   (today: `ItemId`, `RecipeId`, `BuildingId`) exist for exactly this. New
+   IDs land here as the slices that need them are built (`FactoryId` in
+   Phase 4, `LogisticsLinkId` in Phase 5, etc.).
 
 5. **The frontend half mirrors the backend half by name.** No frontend slice
    exists without a backend slice (or a stated "no Rust needed" note in its
