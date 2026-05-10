@@ -132,8 +132,32 @@ pub fn stops_for_route(conn: &Connection, route_id: &str) -> Result<Vec<TrainRou
 
 // ---- Link attachment ----
 
+/// Cleanup pass: deletes any `train_route` whose stop count fell below
+/// 2 (the slice invariant). Called by the factory-delete command after
+/// it cascades stops, so a deleted factory can't strand a 1-stop route.
+/// Implemented as an explicit pass rather than a trigger so it doesn't
+/// fire mid-`stops_replace` (which DELETEs all stops then INSERTs new
+/// ones — a trigger would tear the route down between those steps).
+pub fn routes_drop_below_two_stops(conn: &Connection) -> Result<usize> {
+    let affected = conn.execute(
+        "DELETE FROM train_route
+         WHERE id IN (
+             SELECT r.id FROM train_route r
+             LEFT JOIN train_route_stop s ON s.route_id = r.id
+             GROUP BY r.id
+             HAVING COUNT(s.route_id) < 2
+         )",
+        [],
+    )?;
+    Ok(affected)
+}
+
 pub fn link_attach(conn: &Connection, link_id: &str, route_id: &str) -> Result<()> {
-    // INSERT OR REPLACE keeps the at-most-one-route invariant on link_id.
+    // ON CONFLICT(link_id) DO UPDATE keeps the at-most-one-route
+    // invariant on link_id. Deliberately not `INSERT OR REPLACE` —
+    // that variant deletes the conflicting row first, which would fire
+    // any DELETE triggers / FK cascades on `train_route_link`. Upsert
+    // via DO UPDATE is in-place and safer for future trigger work.
     conn.execute(
         "INSERT INTO train_route_link (link_id, route_id)
          VALUES (?, ?)
@@ -276,6 +300,43 @@ mod tests {
             link_attach(c, "l1", "r2").unwrap();
             assert!(link_ids_for_route(c, "r1").unwrap().is_empty());
             assert_eq!(link_ids_for_route(c, "r2").unwrap(), vec!["l1"]);
+        });
+    }
+
+    #[test]
+    fn routes_drop_below_two_stops_kills_underfilled_routes() {
+        // Codex P1 scenario: factory delete cascades a stop, leaving a
+        // 1-stop route. The cleanup pass is called explicitly by
+        // `delete_factory` (see factory/commands.rs) and removes the
+        // stranded route.
+        let pt = db();
+        pt.with(|c| {
+            seed(c);
+            route_insert(c, "r1", "X", 2, 0, None, None, None, "n").unwrap();
+            stops_replace(c, "r1", &["a".into(), "b".into()]).unwrap();
+            route_insert(c, "r2", "Y", 2, 0, None, None, None, "n").unwrap();
+            stops_replace(c, "r2", &["a".into(), "b".into(), "c".into()]).unwrap();
+
+            // Drop factory `b` — cascades remove one stop from each route.
+            c.execute("DELETE FROM factory WHERE id = 'b'", []).unwrap();
+            let dropped = routes_drop_below_two_stops(c).unwrap();
+            assert_eq!(dropped, 1, "only the 1-stop r1 should have been deleted");
+            assert!(route_get(c, "r1").unwrap().is_none());
+            // r2 still has 2 stops left (a + c) — survives.
+            assert!(route_get(c, "r2").unwrap().is_some());
+        });
+    }
+
+    #[test]
+    fn routes_drop_below_two_stops_is_a_no_op_when_everything_is_healthy() {
+        let pt = db();
+        pt.with(|c| {
+            seed(c);
+            route_insert(c, "r1", "X", 2, 0, None, None, None, "n").unwrap();
+            stops_replace(c, "r1", &["a".into(), "b".into()]).unwrap();
+            let dropped = routes_drop_below_two_stops(c).unwrap();
+            assert_eq!(dropped, 0);
+            assert!(route_get(c, "r1").unwrap().is_some());
         });
     }
 

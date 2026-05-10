@@ -115,7 +115,19 @@ pub fn rename_factory(
 #[tauri::command]
 pub fn delete_factory(active: State<ActivePlaythrough>, id: String) -> AppResult<()> {
     let db = require_active(&active)?;
-    db.with(|c| repo::factory_delete(c, &id).map_err(AppError::from))
+    // Wrap in a transaction so the factory delete + the train-route
+    // cleanup land atomically. Without the cleanup, deleting a factory
+    // that's a stop on a 2-stop route would cascade-delete its stop
+    // and leave the parent route stranded with 1 stop — violating the
+    // trains slice's ≥2-stops invariant.
+    db.with(|c| {
+        let tx = c.transaction().map_err(|e| AppError::from(anyhow::Error::from(e)))?;
+        repo::factory_delete(&tx, &id).map_err(AppError::from)?;
+        crate::features::trains::repo::routes_drop_below_two_stops(&tx)
+            .map_err(AppError::from)?;
+        tx.commit().map_err(|e| AppError::from(anyhow::Error::from(e)))?;
+        Ok::<(), AppError>(())
+    })
 }
 
 #[tauri::command]

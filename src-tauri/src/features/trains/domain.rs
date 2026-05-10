@@ -48,8 +48,10 @@ pub fn estimate_cycle_seconds_default(
 }
 
 /// How many trips per minute a single train completes on this route.
-/// Returns `None` when `cycle_seconds <= 0`. Used by the planner to
-/// translate "train carries N items per trip" into ipm.
+/// Returns `None` when `cycle_seconds <= 0`. Reserved for the train
+/// branch of the logistics planner (Phase 8 follow-up — kept here so
+/// the ipm conversion lives next to the cycle-time math it depends on).
+#[allow(dead_code)]
 pub fn trips_per_minute(cycle_seconds: f64) -> Option<f64> {
     if cycle_seconds <= 0.0 {
         return None;

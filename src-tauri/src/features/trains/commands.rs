@@ -142,9 +142,14 @@ pub fn create_train_route(
         .total_distance_m
         .and_then(|d| estimate_cycle_seconds_default(d, input.stops.len()));
 
+    // Insert + stops replace must be atomic — if `stops_replace` blows
+    // up (FK violation, disk error), the route row would otherwise stay
+    // committed with zero stops, violating the slice's ≥2-stops invariant.
+    // SQLite's implicit transaction handles the rollback on Err.
     db.with(|c| {
+        let tx = c.transaction().map_err(|e| AppError::from(anyhow::Error::from(e)))?;
         repo::route_insert(
-            c,
+            &tx,
             &id,
             &trimmed_name,
             input.freight_cars,
@@ -154,9 +159,11 @@ pub fn create_train_route(
             trimmed_notes.as_deref(),
             &now,
         )
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+        repo::stops_replace(&tx, &id, &input.stops).map_err(AppError::from)?;
+        tx.commit().map_err(|e| AppError::from(anyhow::Error::from(e)))?;
+        Ok::<(), AppError>(())
     })?;
-    db.with(|c| repo::stops_replace(c, &id, &input.stops).map_err(AppError::from))?;
 
     get_train_route(active, id)
 }
@@ -179,9 +186,13 @@ pub fn update_train_route(
         .total_distance_m
         .and_then(|d| estimate_cycle_seconds_default(d, input.stops.len()));
 
+    // Same atomicity story as `create_train_route` — wrap the route
+    // update + stops replacement so a partial failure can't strand
+    // the route in an invalid state.
     let affected = db.with(|c| {
-        repo::route_update(
-            c,
+        let tx = c.transaction().map_err(|e| AppError::from(anyhow::Error::from(e)))?;
+        let n = repo::route_update(
+            &tx,
             &input.id,
             &trimmed_name,
             input.freight_cars,
@@ -191,7 +202,15 @@ pub fn update_train_route(
             trimmed_notes.as_deref(),
             &now,
         )
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+        if n == 0 {
+            // Don't bother running `stops_replace` if the route doesn't exist;
+            // the rollback closes out the transaction cleanly.
+            return Ok::<usize, AppError>(0);
+        }
+        repo::stops_replace(&tx, &input.id, &input.stops).map_err(AppError::from)?;
+        tx.commit().map_err(|e| AppError::from(anyhow::Error::from(e)))?;
+        Ok(n)
     })?;
     if affected == 0 {
         return Err(AppError::NotFound(format!(
@@ -199,7 +218,6 @@ pub fn update_train_route(
             input.id
         )));
     }
-    db.with(|c| repo::stops_replace(c, &input.id, &input.stops).map_err(AppError::from))?;
 
     get_train_route(active, input.id)
 }
