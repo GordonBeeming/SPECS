@@ -104,7 +104,10 @@ pub fn link_list(conn: &Connection) -> Result<Vec<LogisticsLink>> {
                 items_per_minute_x100, transport_kind, transport_plan_json,
                 distance_m, notes, created_at, updated_at
          FROM logistics_link
-         ORDER BY created_at DESC",
+         -- Tie-break on `id` so two links inserted in the same second
+         -- (or with identical `created_at`) keep a stable order across
+         -- runs — the UI is otherwise free to flicker between them.
+         ORDER BY created_at DESC, id DESC",
     )?;
     let rows = stmt.query_map([], row_to_link)?;
     let mut out = Vec::new();

@@ -52,13 +52,17 @@ export interface UpdateLogisticsLinkInput {
   notes?: string;
 }
 
+/**
+ * Two pieces of context the React side might be tempted to send —
+ * `isFluid` and `unlockedTier` — are deliberately *not* on this struct.
+ * The Rust planner derives them from the bundled game data (`item.is_fluid`)
+ * and the active playthrough's `progress.current_tier`. Trusting client-
+ * supplied values would let a stale UI request belts for a fluid or see
+ * high-tier plans as unlocked at tier 0.
+ */
 export interface PlanInput {
   itemId: string;
   itemsPerMinute: number;
-  /** Pipes for fluids, belts for everything else. */
-  isFluid: boolean;
-  /** Highest milestone tier the playthrough has unlocked. */
-  unlockedTier: number;
   /** Optional distance hint for vehicle/train/drone plans (Phase 5b). */
   distanceM?: number;
 }

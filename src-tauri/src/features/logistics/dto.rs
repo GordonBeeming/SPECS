@@ -1,27 +1,25 @@
 use serde::{Deserialize, Serialize};
 
 /// Inputs to the planner: "I want to move N ipm of item X to a destination
-/// that is D metres away, and my playthrough is unlocked through tier T."
-/// The planner returns a ranked list of plans across every belt/pipe tier
-/// in the dataset — including ones the playthrough hasn't unlocked yet,
-/// flagged with `locked = true` so the UI can grey them out and explain
-/// the gate instead of hiding viable options.
-#[allow(dead_code)]
+/// that is D metres away." Note that two pieces of context the React side
+/// might be tempted to send — `is_fluid` and `unlocked_tier` — are
+/// deliberately *not* on this struct: `plan_logistics` derives them from
+/// the bundled game data row for `item_id` and the active playthrough's
+/// progress row respectively, so a stale or malformed client can't trick
+/// the planner into picking belts for a fluid or showing high-tier plans
+/// as unlocked.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanInput {
     pub item_id: String,
     pub items_per_minute: f32,
-    /// Pipes for fluids, belts for everything else. Saved redundantly here
-    /// so the planner doesn't need to look the item up itself — the command
-    /// layer already has the `Item` row in hand.
-    pub is_fluid: bool,
-    /// Highest milestone tier the playthrough has unlocked.
-    pub unlocked_tier: u8,
     /// Optional distance hint for vehicle / train / drone plans (Phase 5b).
-    /// Ignored for belt and pipe plans.
+    /// Ignored for belt and pipe plans. `i64` to match the other CRUD
+    /// inputs — keeps the "negative distance gives a friendly Invalid"
+    /// path consistent across the slice instead of failing deserialization
+    /// silently when an unsigned type is used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub distance_m: Option<u32>,
+    pub distance_m: Option<i64>,
 }
 
 /// Categorises a `TransportPlan`. Mirrors the `transport_kind` CHECK on
