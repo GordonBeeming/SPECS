@@ -55,15 +55,20 @@ export function LogisticsLinkEditor({ link, onClose, onSaved }: LogisticsLinkEdi
 
   const ipm = Number(ipmText);
   const distanceM = distanceText.trim() === "" ? null : Number(distanceText);
+  // The Rust side stores distance as `i64` and rejects negatives, so a
+  // half-typed "12.5" or "-3" should not even reach the planner — strip
+  // those before they hit the IPC.
+  const distanceForPlanner =
+    distanceM != null && Number.isInteger(distanceM) && distanceM >= 0 ? distanceM : undefined;
 
   const planInput = useMemo<PlanInput | null>(() => {
     if (!itemId || !Number.isFinite(ipm) || ipm <= 0) return null;
     return {
       itemId,
       itemsPerMinute: ipm,
-      distanceM: distanceM != null && Number.isFinite(distanceM) ? distanceM : undefined,
+      distanceM: distanceForPlanner,
     };
-  }, [itemId, ipm, distanceM]);
+  }, [itemId, ipm, distanceForPlanner]);
 
   const planQuery = usePlanLogistics(planInput);
   const plans = planQuery.data ?? [];
@@ -273,7 +278,10 @@ export function LogisticsLinkEditor({ link, onClose, onSaved }: LogisticsLinkEdi
             {planError && (
               <p role="alert" className="text-sm text-danger">{planError}</p>
             )}
-            {planInput && plans.length > 0 && (
+            {planInput && !planQuery.isPending && !planError && (
+              // Always render the picker once the planner has had a chance
+              // to respond — `<TransportPlanPicker />` owns its own
+              // empty-state hint, which is more helpful than a blank gap.
               <TransportPlanPicker
                 plans={plans}
                 selectedJson={selectedJson}

@@ -33,6 +33,12 @@ export function LogisticsListView() {
     return (id: string) => map.get(id) ?? id;
   }, [items.data]);
 
+  const itemIsFluid = useMemo(() => {
+    const map = new Map<string, boolean>();
+    (items.data ?? []).forEach((i) => map.set(i.id, i.isFluid));
+    return (id: string) => map.get(id) ?? false;
+  }, [items.data]);
+
   if (!playthrough.data) {
     return (
       <Card className="mx-auto max-w-2xl">
@@ -92,6 +98,7 @@ export function LogisticsListView() {
                 fromName={factoryName(link.fromFactoryId)}
                 toName={factoryName(link.toFactoryId)}
                 itemLabel={itemName(link.itemId)}
+                isFluid={itemIsFluid(link.itemId)}
                 onEdit={() => setEditing(link)}
                 onDelete={() => {
                   if (
@@ -130,11 +137,15 @@ interface LinkRowProps {
   fromName: string;
   toName: string;
   itemLabel: string;
+  isFluid: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }
 
-function LinkRow({ link, fromName, toName, itemLabel, onEdit, onDelete }: LinkRowProps) {
+function LinkRow({ link, fromName, toName, itemLabel, isFluid, onEdit, onDelete }: LinkRowProps) {
+  // Fluids ride pipes and the planner reports m³/min for them — match that
+  // unit in the row so the editor / picker / list all speak the same units.
+  const unit = isFluid ? "m³/min" : "ipm";
   return (
     <li className="flex items-center gap-3 py-3">
       <div className="flex-1">
@@ -144,7 +155,7 @@ function LinkRow({ link, fromName, toName, itemLabel, onEdit, onDelete }: LinkRo
           <span className="truncate">{toName}</span>
         </div>
         <div className="mt-0.5 text-xs text-fg-muted tabular-nums">
-          {link.itemsPerMinute.toFixed(2)} ipm · {itemLabel} · {link.transportKind}
+          {link.itemsPerMinute.toFixed(2)} {unit} · {itemLabel} · {link.transportKind}
           {link.distanceM != null ? ` · ${link.distanceM} m` : ""}
         </div>
       </div>

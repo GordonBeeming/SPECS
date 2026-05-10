@@ -38,10 +38,11 @@ export function useLogisticsLink(id: string | null | undefined) {
 
 /**
  * Live planner result for the editor. Re-runs whenever ipm or distance
- * changes; the cache key folds those in so the user gets instant
- * feedback without flooding the IPC channel during dragging or fast
- * keystrokes (TanStack Query dedupes in-flight requests with the same
- * key).
+ * changes; the cache key folds those in so TanStack Query dedupes any
+ * in-flight requests at the same throughput. Each keystroke does still
+ * mint a new key, so we set a short `gcTime` to garbage-collect stale
+ * keys aggressively rather than letting the cache grow unbounded as the
+ * user drags a slider or types through a number.
  */
 export function usePlanLogistics(input: PlanInput | null) {
   const playthrough = useCurrentPlaythrough();
@@ -56,6 +57,10 @@ export function usePlanLogistics(input: PlanInput | null) {
     ] as const,
     queryFn: () => logisticsApi.plan(input!),
     enabled: !!input && !!playthrough.data && input.itemsPerMinute > 0,
+    // 30s is enough to survive the user briefly looking away from a
+    // half-finished form without growing the cache by hundreds of dead
+    // keystroke entries during a single editor session.
+    gcTime: 30_000,
   });
 }
 
