@@ -45,10 +45,6 @@ rusqlite = { version = "0.38", features = ["bundled"] }
 refinery = { version = "0.9", features = ["rusqlite"] }
 parking_lot = "0.12"
 
-# Tauri's typed app handle (for resolving the per-OS app data dir for App DB / playthrough files).
-[dependencies.tauri-plugin-fs]
-version = "2"
-
 [dev-dependencies]
 pretty_assertions = "1"
 

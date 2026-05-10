@@ -7,7 +7,7 @@ function formatIo(io: { itemId: string; perMinute: number }, itemName: (id: stri
 }
 
 export function RecipesTable() {
-  const { data: recipes, isPending } = useRecipes();
+  const { data: recipes, isPending, isError, error } = useRecipes();
   const { data: items } = useItems();
   const { data: buildings } = useBuildings();
 
@@ -44,6 +44,13 @@ export function RecipesTable() {
   ];
 
   return (
-    <LibraryTable rows={recipes} isPending={isPending} columns={columns} rowKey={(r) => r.id} />
+    <LibraryTable
+      rows={recipes}
+      isPending={isPending}
+      isError={isError}
+      error={error}
+      columns={columns}
+      rowKey={(r) => r.id}
+    />
   );
 }

@@ -17,8 +17,15 @@ const columns: Column<Milestone>[] = [
 ];
 
 export function MilestonesTable() {
-  const { data, isPending } = useMilestones();
+  const { data, isPending, isError, error } = useMilestones();
   return (
-    <LibraryTable rows={data} isPending={isPending} columns={columns} rowKey={(r) => r.id} />
+    <LibraryTable
+      rows={data}
+      isPending={isPending}
+      isError={isError}
+      error={error}
+      columns={columns}
+      rowKey={(r) => r.id}
+    />
   );
 }

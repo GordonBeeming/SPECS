@@ -11,8 +11,15 @@ const columns: Column<Building>[] = [
 ];
 
 export function BuildingsTable() {
-  const { data, isPending } = useBuildings();
+  const { data, isPending, isError, error } = useBuildings();
   return (
-    <LibraryTable rows={data} isPending={isPending} columns={columns} rowKey={(r) => r.id} />
+    <LibraryTable
+      rows={data}
+      isPending={isPending}
+      isError={isError}
+      error={error}
+      columns={columns}
+      rowKey={(r) => r.id}
+    />
   );
 }

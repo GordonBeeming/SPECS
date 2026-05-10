@@ -46,9 +46,9 @@ pub fn run() {
 
             // App DB — open at the OS-specific app data dir, run migrations.
             let handle = app.handle();
-            let db_path = app_db_path(&handle.clone())
+            let db_path = app_db_path(handle)
                 .map_err(|e| format!("resolving app db path: {e:#}"))?;
-            let pt_dir = playthroughs_dir(&handle.clone())
+            let pt_dir = playthroughs_dir(handle)
                 .map_err(|e| format!("resolving playthroughs dir: {e:#}"))?;
             ensure_dir(&pt_dir).map_err(|e| format!("creating playthroughs dir: {e:#}"))?;
             let app_db =

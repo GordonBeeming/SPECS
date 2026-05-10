@@ -5,9 +5,9 @@
 //! (`com.gordonbeeming.specs.dev`) get fully isolated storage and can run
 //! side by side without stepping on each other.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use tauri::{AppHandle, Manager};
 
 /// Root data directory for the running app.
@@ -33,6 +33,8 @@ pub fn playthroughs_dir(handle: &AppHandle) -> Result<PathBuf> {
 }
 
 /// Ensure a directory exists. Idempotent.
-pub fn ensure_dir(path: &PathBuf) -> Result<()> {
-    std::fs::create_dir_all(path).map_err(|e| anyhow!("creating {}: {}", path.display(), e))
+pub fn ensure_dir(path: impl AsRef<Path>) -> Result<()> {
+    let path = path.as_ref();
+    std::fs::create_dir_all(path)
+        .with_context(|| format!("creating directory {}", path.display()))
 }

@@ -135,4 +135,41 @@ describe("<LibraryView />", () => {
       expect(screen.getByText("300")).toBeInTheDocument(); // pipe mk1 m³/min
     });
   });
+
+  it("shows an error alert when the dataset summary fetch fails", async () => {
+    vi.spyOn(libraryApi, "summary").mockRejectedValueOnce(new Error("ipc dropped"));
+    renderWithProviders(<LibraryView />);
+    await waitFor(() => {
+      // role=alert ensures screen readers announce it; never silently treat the failure as loading.
+      const alert = screen.getByRole("alert");
+      expect(alert).toHaveTextContent(/Couldn't load dataset summary/i);
+      expect(alert).toHaveTextContent(/ipc dropped/);
+    });
+  });
+
+  it("surfaces table query errors via the LibraryTable alert path", async () => {
+    vi.spyOn(libraryApi, "items").mockRejectedValueOnce(new Error("backend exploded"));
+    renderWithProviders(<LibraryView />);
+    await waitFor(() => {
+      const alerts = screen.getAllByRole("alert");
+      const tableAlert = alerts.find((a) => a.textContent?.includes("Couldn't load this view"));
+      expect(tableAlert).toBeDefined();
+      expect(tableAlert).toHaveTextContent(/backend exploded/);
+    });
+    // Empty-state copy must NOT be rendered when the query failed —
+    // that was the original bug the reviewer flagged.
+    expect(screen.queryByText("No rows.")).toBeNull();
+  });
+
+  it("links each tab to its panel via aria-controls / aria-labelledby", async () => {
+    renderWithProviders(<LibraryView />);
+    await waitFor(() => {
+      const itemsTab = screen.getByRole("tab", { name: "Items" });
+      const panel = screen.getByRole("tabpanel");
+      const controlled = itemsTab.getAttribute("aria-controls");
+      expect(controlled).toBeTruthy();
+      expect(panel.id).toBe(controlled);
+      expect(panel.getAttribute("aria-labelledby")).toBe(itemsTab.id);
+    });
+  });
 });

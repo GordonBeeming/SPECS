@@ -11,9 +11,12 @@
 //! - **Playthrough DB** — one `.specsdb` file per playthrough. The unit of
 //!   sharing: send a friend the file and they import it. Wired in Phase 3.
 //!
-//! Each DB has its own migration set. Slices that own tables put their
-//! migrations in `features/<slice>/migrations/`; the runner here applies them
-//! in version order against the right DB.
+//! Each DB has its own migration set. Migration `.sql` files live at the
+//! crate root under `migrations/<db>/` and are embedded at compile time via
+//! `refinery::embed_migrations!` (see `migrations.rs`). The slice-namespace
+//! convention lives in the **filename**: `V<NNNN>__<slice>__<description>.sql`
+//! makes the owning slice obvious without forcing per-slice subfolders the
+//! refinery macro can't traverse.
 
 pub mod app_db;
 pub mod migrations;

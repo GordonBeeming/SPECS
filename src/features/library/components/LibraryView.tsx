@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { Card } from "@/shared/ui/Card";
 import { useLibrarySummary } from "../hooks/useLibrary";
 import { ItemsTable } from "./ItemsTable";
@@ -18,6 +18,9 @@ const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
   { id: "transport", label: "Belts & Pipes" },
 ];
 
+const tabId = (t: Tab) => `library-tab-${t}`;
+const panelId = (t: Tab) => `library-panel-${t}`;
+
 export function LibraryView() {
   const [tab, setTab] = useState<Tab>("items");
   const summary = useLibrarySummary();
@@ -33,7 +36,13 @@ export function LibraryView() {
               Milestone gating overlays land in Phase&nbsp;3.
             </p>
           </div>
-          {summary.data ? (
+          {summary.isError ? (
+            <div role="alert" className="flex items-center gap-2 text-xs text-danger">
+              <AlertTriangle className="h-3 w-3" />
+              Couldn't load dataset summary
+              {summary.error instanceof Error ? `: ${summary.error.message}` : null}
+            </div>
+          ) : summary.data ? (
             <div className="text-xs text-fg-muted tabular-nums">
               dataset <span className="font-mono">{summary.data.datasetVersion}</span> · game{" "}
               <span className="font-mono">{summary.data.gameVersion}</span> · {summary.data.itemCount} items ·{" "}
@@ -55,8 +64,11 @@ export function LibraryView() {
             return (
               <button
                 key={t.id}
+                id={tabId(t.id)}
                 role="tab"
                 aria-selected={active}
+                aria-controls={panelId(t.id)}
+                tabIndex={active ? 0 : -1}
                 onClick={() => setTab(t.id)}
                 className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                   active
@@ -70,7 +82,12 @@ export function LibraryView() {
           })}
         </nav>
 
-        <div className="flex-1 overflow-auto" role="tabpanel" aria-label={tab}>
+        <div
+          id={panelId(tab)}
+          role="tabpanel"
+          aria-labelledby={tabId(tab)}
+          className="flex-1 overflow-auto"
+        >
           {tab === "items" && <ItemsTable />}
           {tab === "buildings" && <BuildingsTable />}
           {tab === "recipes" && <RecipesTable />}
