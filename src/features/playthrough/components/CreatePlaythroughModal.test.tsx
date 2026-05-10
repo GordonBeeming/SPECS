@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { CreatePlaythroughModal } from "./CreatePlaythroughModal";
@@ -51,15 +52,19 @@ describe("<CreatePlaythroughModal />", () => {
   });
 
   it("creates and closes on a valid submit", async () => {
+    const user = userEvent.setup();
     const onClose = vi.fn();
     const onCreated = vi.fn();
     renderWithProviders(
       <CreatePlaythroughModal onClose={onClose} onCreated={onCreated} />,
     );
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: "Iron Run" } });
-    fireEvent.change(screen.getByLabelText(/starting tier/i), {
-      target: { value: "3" },
-    });
+    // Pick Tier 3 via the type-to-filter combobox.
+    const tierBox = screen.getByRole("combobox", { name: /starting tier/i });
+    await user.click(tierBox);
+    await user.keyboard("{ArrowDown}");
+    await waitFor(() => screen.getByRole("option", { name: "Tier 3" }));
+    await user.click(screen.getByRole("option", { name: "Tier 3" }));
     fireEvent.click(screen.getByRole("button", { name: /create/i }));
     await waitFor(() => {
       expect(playthroughApi.create).toHaveBeenCalledWith({

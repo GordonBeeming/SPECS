@@ -79,6 +79,15 @@ pub fn run() {
             features::playthrough::commands::current_playthrough,
             features::playthrough::commands::set_current_tier,
             features::playthrough::commands::delete_playthrough,
+            features::factory::commands::list_factories,
+            features::factory::commands::get_factory_detail,
+            features::factory::commands::create_factory,
+            features::factory::commands::rename_factory,
+            features::factory::commands::delete_factory,
+            features::factory::commands::add_factory_machine,
+            features::factory::commands::update_factory_machine,
+            features::factory::commands::remove_factory_machine,
+            features::factory::commands::factory_ledger,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

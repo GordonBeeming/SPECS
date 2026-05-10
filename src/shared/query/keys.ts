@@ -19,4 +19,9 @@ export const queryKeys = {
     list: ["playthrough", "list"] as const,
     current: ["playthrough", "current"] as const,
   },
+  factory: {
+    list: ["factory", "list"] as const,
+    detail: (id: string) => ["factory", "detail", id] as const,
+    ledger: (id: string) => ["factory", "ledger", id] as const,
+  },
 };

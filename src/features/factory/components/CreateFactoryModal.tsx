@@ -1,41 +1,39 @@
 import { useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
-import { FilterSelect } from "@/shared/ui/FilterSelect";
-import { useCreatePlaythrough } from "../hooks/usePlaythroughs";
+import { useCreateFactory } from "../hooks/useFactories";
 
-interface CreatePlaythroughModalProps {
+interface CreateFactoryModalProps {
   onClose: () => void;
-  onCreated?: () => void;
+  onCreated?: (id: string) => void;
 }
 
-export function CreatePlaythroughModal({ onClose, onCreated }: CreatePlaythroughModalProps) {
-  const [displayName, setDisplayName] = useState("");
-  const [startingTier, setStartingTier] = useState(0);
+export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalProps) {
+  const [name, setName] = useState("");
+  const [notes, setNotes] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
-  const create = useCreatePlaythrough();
+  const create = useCreateFactory();
 
-  const validate = (name: string, tier: number): string | null => {
-    const trimmed = name.trim();
-    if (trimmed.length === 0) return "Name is required.";
-    if (trimmed.length > 80) return "Name must be 80 characters or fewer.";
-    if (tier < 0 || tier > 9) return "Starting tier must be between 0 and 9.";
+  const validate = (n: string): string | null => {
+    const t = n.trim();
+    if (t.length === 0) return "Name is required.";
+    if (t.length > 80) return "Name must be 80 characters or fewer.";
     return null;
   };
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
-    const err = validate(displayName, startingTier);
+    const err = validate(name);
     if (err) {
       setValidationError(err);
       return;
     }
     setValidationError(null);
     create.mutate(
-      { displayName: displayName.trim(), startingTier },
+      { name: name.trim(), notes: notes.trim() || undefined },
       {
-        onSuccess: () => {
-          onCreated?.();
+        onSuccess: (factory) => {
+          onCreated?.(factory.id);
           onClose();
         },
       },
@@ -48,7 +46,7 @@ export function CreatePlaythroughModal({ onClose, onCreated }: CreatePlaythrough
     <div
       role="dialog"
       aria-modal="true"
-      aria-labelledby="create-playthrough-title"
+      aria-labelledby="create-factory-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-fg/30 backdrop-blur-sm"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -56,8 +54,8 @@ export function CreatePlaythroughModal({ onClose, onCreated }: CreatePlaythrough
     >
       <div className="w-full max-w-md rounded-lg border border-border bg-bg-raised p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 id="create-playthrough-title" className="text-lg font-semibold text-fg">
-            New playthrough
+          <h2 id="create-factory-title" className="text-lg font-semibold text-fg">
+            New factory
           </h2>
           <button
             type="button"
@@ -75,44 +73,30 @@ export function CreatePlaythroughModal({ onClose, onCreated }: CreatePlaythrough
             <input
               type="text"
               autoFocus
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Iron Run, Tier 9 push, …"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Iron Works, Mass Constructor 1, …"
               className="mt-1 h-10 w-full rounded-md border border-border bg-bg px-3 text-sm text-fg outline-none focus:border-primary"
               maxLength={80}
             />
           </label>
 
           <label className="block">
-            <span className="text-sm font-medium text-fg">Starting tier</span>
-            <div className="mt-1">
-              <FilterSelect
-                ariaLabel="Starting tier"
-                placeholder="Tier 0"
-                clearable={false}
-                value={String(startingTier)}
-                onChange={(next) => setStartingTier(next ? Number(next) : 0)}
-                options={Array.from({ length: 10 }, (_, i) => ({
-                  value: String(i),
-                  label: `Tier ${i}`,
-                }))}
-              />
-            </div>
-            <p className="mt-1 text-xs text-fg-muted">
-              Pick the tier you've reached in-game. Library entries above this
-              tier will be marked as locked.
-            </p>
+            <span className="text-sm font-medium text-fg">Notes (optional)</span>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-primary"
+              placeholder="What does this factory do? Where does it live in-game?"
+            />
           </label>
 
           {validationError && (
-            <p role="alert" className="text-sm text-danger">
-              {validationError}
-            </p>
+            <p role="alert" className="text-sm text-danger">{validationError}</p>
           )}
           {serverError && !validationError && (
-            <p role="alert" className="text-sm text-danger">
-              {serverError}
-            </p>
+            <p role="alert" className="text-sm text-danger">{serverError}</p>
           )}
 
           <div className="flex justify-end gap-2 pt-2">
