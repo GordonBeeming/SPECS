@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -44,8 +44,10 @@ describe("<TierBadge />", () => {
     renderWithProviders(<TierBadge unlockTier={6} />);
     await waitFor(() => {
       expect(screen.getByText("Tier 6")).toBeInTheDocument();
-      expect(screen.getByText(/locked/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/Locked — requires Tier 6/i)).toBeInTheDocument();
+      // The lock pill is role=img with the aria-label as its accessible name.
+      // Using getByRole catches the case where a span's aria-label is silently
+      // ignored by AT — bare-span aria-labels do not register as a role.
+      expect(screen.getByRole("img", { name: /Locked — requires Tier 6/i })).toBeInTheDocument();
     });
   });
 });

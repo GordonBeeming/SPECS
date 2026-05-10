@@ -56,20 +56,21 @@ describe("<PlaythroughSwitcher />", () => {
     });
   });
 
-  it("opens the menu and lists playthroughs with an active marker", async () => {
+  it("opens the popover and lists playthroughs with an active marker", async () => {
     renderWithProviders(<PlaythroughSwitcher />);
     fireEvent.click(await screen.findByRole("button", { name: /iron run/i }));
     await waitFor(() => {
-      expect(screen.getByRole("menu")).toBeInTheDocument();
-      expect(screen.getByRole("menuitem", { name: /iron run/i })).toHaveTextContent(/active/);
-      expect(screen.getByRole("menuitem", { name: /speedrun/i })).toBeInTheDocument();
+      // The popover is a plain interactive surface (not a WAI-ARIA menu),
+      // so target rows by their button label instead of role=menuitem.
+      expect(screen.getByRole("button", { name: /iron run.*active/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /speedrun/i })).toBeInTheDocument();
     });
   });
 
   it("opens a different playthrough on click", async () => {
     renderWithProviders(<PlaythroughSwitcher />);
     fireEvent.click(await screen.findByRole("button", { name: /iron run/i }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: /speedrun/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /speedrun/i }));
     await waitFor(() => {
       expect(playthroughApi.open).toHaveBeenCalledWith("def");
     });

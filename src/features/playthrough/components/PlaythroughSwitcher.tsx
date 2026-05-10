@@ -21,15 +21,24 @@ export function PlaythroughSwitcher() {
 
   return (
     <div className="relative">
-      <Button variant="ghost" onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open}>
+      <Button
+        variant="ghost"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="true"
+        aria-expanded={open}
+      >
         <FolderOpen className="h-4 w-4" />
         <span className="max-w-[16rem] truncate">{label}</span>
         <ChevronDown className="h-3 w-3 opacity-60" />
       </Button>
 
       {open && (
+        // Plain interactive popover — not a WAI-ARIA `menu` (which would
+        // commit us to roving focus / arrow-key nav). `<button>` children
+        // are still tab-focusable and announced with their own labels, which
+        // is the keyboard story we actually want here.
         <div
-          role="menu"
+          aria-label="Playthroughs"
           className="absolute right-0 z-40 mt-2 w-72 rounded-lg border border-border bg-bg-raised p-1 shadow-lg"
         >
           <div className="max-h-72 overflow-auto py-1">
@@ -51,7 +60,7 @@ export function PlaythroughSwitcher() {
               return (
                 <button
                   key={p.id}
-                  role="menuitem"
+                  type="button"
                   onClick={() => {
                     openMut.mutate(p.id, { onSuccess: () => setOpen(false) });
                   }}
@@ -67,7 +76,7 @@ export function PlaythroughSwitcher() {
           </div>
           <div className="border-t border-border pt-1">
             <button
-              role="menuitem"
+              type="button"
               onClick={() => {
                 setShowCreate(true);
                 setOpen(false);

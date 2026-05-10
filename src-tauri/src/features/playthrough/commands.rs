@@ -27,7 +27,9 @@ fn validate_name(name: &str) -> AppResult<()> {
     if trimmed.is_empty() {
         return Err(AppError::Invalid("playthrough name must not be empty".into()));
     }
-    if trimmed.len() > 80 {
+    // Count Unicode scalar values, not UTF-8 bytes — the user-visible limit
+    // matches characters, so 80 emoji or 80 CJK glyphs are accepted.
+    if trimmed.chars().count() > 80 {
         return Err(AppError::Invalid(
             "playthrough name must be 80 characters or fewer".into(),
         ));
@@ -37,9 +39,7 @@ fn validate_name(name: &str) -> AppResult<()> {
 
 fn validate_tier(tier: u8) -> AppResult<i64> {
     if tier > 9 {
-        return Err(AppError::Invalid(format!(
-            "starting tier must be 0–9 (got {tier})"
-        )));
+        return Err(AppError::Invalid(format!("tier must be 0–9 (got {tier})")));
     }
     Ok(tier as i64)
 }
@@ -142,15 +142,15 @@ pub fn current_playthrough(
     app_db: State<AppDb>,
     active: State<ActivePlaythrough>,
 ) -> AppResult<Option<PlaythroughDetail>> {
-    let Some(id) = active.id() else {
+    // Single snapshot — id + db come from the same lock acquisition so a
+    // concurrent open/close can't make us read DB B's progress under id A.
+    let Some((id, db)) = active.snapshot() else {
         return Ok(None);
     };
     let Some(summary) = app_db.with(|c| repo::registry_get(c, &id).map_err(AppError::from))? else {
         return Ok(None);
     };
-    let detail = active
-        .with_db(|db| db.with(|c| repo::detail_from(summary, c).map_err(AppError::from)))
-        .ok_or_else(|| AppError::Internal("active playthrough handle vanished".into()))??;
+    let detail = db.with(|c| repo::detail_from(summary, c).map_err(AppError::from))?;
     Ok(Some(detail))
 }
 
@@ -161,18 +161,14 @@ pub fn set_current_tier(
     tier: u8,
 ) -> AppResult<PlaythroughDetail> {
     let tier_i = validate_tier(tier)?;
-    let id = active
-        .id()
+    let (id, db) = active
+        .snapshot()
         .ok_or_else(|| AppError::Invalid("no active playthrough".into()))?;
-    active
-        .with_db(|db| db.with(|c| repo::progress_set_tier(c, tier_i).map_err(AppError::from)))
-        .ok_or_else(|| AppError::Internal("active playthrough handle vanished".into()))??;
+    db.with(|c| repo::progress_set_tier(c, tier_i).map_err(AppError::from))?;
     let summary = app_db
         .with(|c| repo::registry_get(c, &id).map_err(AppError::from))?
         .ok_or_else(|| AppError::NotFound(format!("playthrough {id} not in registry")))?;
-    let detail = active
-        .with_db(|db| db.with(|c| repo::detail_from(summary, c).map_err(AppError::from)))
-        .ok_or_else(|| AppError::Internal("active playthrough handle vanished".into()))??;
+    let detail = db.with(|c| repo::detail_from(summary, c).map_err(AppError::from))?;
     Ok(detail)
 }
 
@@ -210,10 +206,31 @@ mod tests {
     }
 
     #[test]
+    fn validate_name_counts_characters_not_bytes() {
+        // 80 emoji = 320 UTF-8 bytes — char-counting accepts, byte-counting rejects.
+        assert!(validate_name(&"🚂".repeat(80)).is_ok());
+        // 81 emoji is rejected.
+        assert!(validate_name(&"🚂".repeat(81)).is_err());
+        // 80 CJK characters likewise accepted.
+        assert!(validate_name(&"鉄".repeat(80)).is_ok());
+    }
+
+    #[test]
     fn validate_tier_caps_at_nine() {
         assert_eq!(validate_tier(0).unwrap(), 0);
         assert_eq!(validate_tier(9).unwrap(), 9);
         assert!(validate_tier(10).is_err());
         assert!(validate_tier(255).is_err());
+    }
+
+    #[test]
+    fn validate_tier_message_is_role_neutral() {
+        // The same validator is used for both create-time starting tier and
+        // post-create set_current_tier, so the error string must not lock
+        // either role into the wording.
+        let err = validate_tier(15).unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(msg.contains("tier must be 0"), "got: {msg}");
+        assert!(!msg.contains("starting"), "got: {msg}");
     }
 }

@@ -39,11 +39,37 @@ impl ActivePlaythrough {
         *self.inner.write() = None;
     }
 
-    /// Run a closure with the active playthrough DB if one is open.
-    pub fn with_db<F, R>(&self, f: F) -> Option<R>
-    where
-        F: FnOnce(&PlaythroughDb) -> R,
-    {
-        self.inner.read().as_ref().map(|i| f(&i.db))
+    /// Atomically snapshot the active playthrough's id + DB handle under a
+    /// single read lock. Use this in commands that need both pieces — calling
+    /// `id()` and `with_db()` separately races a concurrent `set` / `clear`
+    /// and risks attributing a DB read to a stale id (or vice versa).
+    /// `PlaythroughDb` is `Arc`-backed so the clone is cheap (one `Arc::clone`).
+    pub fn snapshot(&self) -> Option<(String, PlaythroughDb)> {
+        self.inner
+            .read()
+            .as_ref()
+            .map(|i| (i.id.clone(), i.db.clone()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snapshot_returns_consistent_pair_or_none() {
+        let active = ActivePlaythrough::empty();
+        assert!(active.snapshot().is_none());
+        let db = PlaythroughDb::open_in_memory().unwrap();
+        active.set("abc".into(), db);
+        let snap = active.snapshot().unwrap();
+        assert_eq!(snap.0, "abc");
+        // Cloned handle still works (Arc-backed).
+        snap.1.with(|c| {
+            c.execute("INSERT INTO meta(key, value) VALUES ('k', 'v')", []).unwrap();
+        });
+        active.clear();
+        assert!(active.snapshot().is_none());
+    }
+}
+

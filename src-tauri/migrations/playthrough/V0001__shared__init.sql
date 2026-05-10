@@ -9,8 +9,9 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 
 -- Single-row table holding the player's progress through the milestone tree.
--- The `id = 1` check enforces "exactly one row" so SELECT/UPDATE never need
--- a WHERE clause.
+-- The `id = 1` check enforces "exactly one row" so the invariant is on the
+-- DB even if a future caller forgets the WHERE clause; the queries today
+-- still spell out `WHERE id = 1` for safety.
 CREATE TABLE IF NOT EXISTS progress (
     id                          INTEGER PRIMARY KEY CHECK (id = 1),
     current_tier                INTEGER NOT NULL DEFAULT 0,
