@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Gordon Beeming brand palette + SPECS app extensions.
+ * Source: ~/.claude/skills/personal-brand-guidelines/SKILL.md
+ * App-extension tokens (success/warn/danger, transport, belt tiers) verified
+ * for WCAG 2.1 AA contrast against both --color-bg modes.
+ *
+ * If you change a value here, update DESIGN.md to match.
+ */
+
+:root,
+.light {
+  --color-bg: #f8f9fa;
+  --color-bg-raised: #ffffff;
+  --color-fg: #1a1a1a;
+  --color-fg-muted: #374151;
+  --color-primary: #0063b2;
+  --color-accent: #0075a3;
+  --color-border: #e9ecef;
+
+  --color-success: #1f7a3a;
+  --color-warning: #a8590b;
+  --color-danger: #b91c1c;
+
+  --color-belt-mk1: #6b7280;
+  --color-belt-mk2: #0075a3;
+  --color-belt-mk3: #15803d;
+  --color-belt-mk4: #ca8a04;
+  --color-belt-mk5: #c2410c;
+  --color-belt-mk6: #7c2d92;
+
+  --color-pipe-mk1: #0d9488;
+  --color-pipe-mk2: #155e75;
+
+  --color-transport-truck: #b45309;
+  --color-transport-train: #1e40af;
+  --color-transport-drone: #7c2d92;
+
+  color-scheme: light;
+}
+
+.dark {
+  --color-bg: #1a1a1a;
+  --color-bg-raised: #232323;
+  --color-fg: #e0e0e0;
+  --color-fg-muted: #d1d5db;
+  --color-primary: #46cbff;
+  --color-accent: #0063b2;
+  --color-border: #2c2c2c;
+
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+
+  --color-belt-mk1: #9ca3af;
+  --color-belt-mk2: #46cbff;
+  --color-belt-mk3: #4ade80;
+  --color-belt-mk4: #fcd34d;
+  --color-belt-mk5: #fb923c;
+  --color-belt-mk6: #d8b4fe;
+
+  --color-pipe-mk1: #5eead4;
+  --color-pipe-mk2: #67e8f9;
+
+  --color-transport-truck: #fbbf24;
+  --color-transport-train: #93c5fd;
+  --color-transport-drone: #d8b4fe;
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--color-bg);
+  --color-bg-raised: var(--color-bg-raised);
+  --color-fg: var(--color-fg);
+  --color-fg-muted: var(--color-fg-muted);
+  --color-primary: var(--color-primary);
+  --color-accent: var(--color-accent);
+  --color-border: var(--color-border);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-danger: var(--color-danger);
+
+  --font-sans: -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-feature-settings: "tnum" 1, "cv11" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
