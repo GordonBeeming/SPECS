@@ -28,7 +28,6 @@ pub struct PlanInput {
 /// `logistics_link` and the `TransportKind` literal union on the React side.
 /// Phase 5a populates Belt + Pipe; vehicles, trains, and drones land in
 /// Phase 5b once the dataset has them.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum TransportKind {
@@ -38,6 +37,22 @@ pub enum TransportKind {
     Tractor,
     Train,
     Drone,
+}
+
+impl TransportKind {
+    /// Wire/SQL representation. Matches the values the `transport_kind`
+    /// CHECK constraint accepts so command code can pass the result
+    /// straight to the repo.
+    pub fn as_db_str(self) -> &'static str {
+        match self {
+            TransportKind::Belt => "belt",
+            TransportKind::Pipe => "pipe",
+            TransportKind::Truck => "truck",
+            TransportKind::Tractor => "tractor",
+            TransportKind::Train => "train",
+            TransportKind::Drone => "drone",
+        }
+    }
 }
 
 /// One contiguous strip of identical infrastructure inside a plan.
@@ -78,6 +93,41 @@ pub struct TransportPlan {
     /// `true` if any segment's unlock tier is above the playthrough's
     /// current tier. The UI greys these out and explains the gate.
     pub locked: bool,
+}
+
+/// New link request from the React side. The user has already picked a
+/// plan from the planner output and is asking us to persist it.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateLogisticsLinkInput {
+    pub from_factory_id: String,
+    pub to_factory_id: String,
+    pub item_id: String,
+    pub items_per_minute: f32,
+    pub transport_kind: TransportKind,
+    /// JSON-serialised `TransportPlan` the user picked. Stored verbatim
+    /// — re-validation happens on the React side when the link is edited.
+    pub transport_plan_json: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub distance_m: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+}
+
+/// Edit request for an existing link — change throughput, swap the
+/// chosen plan, edit distance/notes. Factory endpoints + item are
+/// immutable on a link (delete + recreate if those need to change).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateLogisticsLinkInput {
+    pub id: String,
+    pub items_per_minute: f32,
+    pub transport_kind: TransportKind,
+    pub transport_plan_json: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub distance_m: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
 }
 
 /// Persisted link between two factories carrying a single item flow.

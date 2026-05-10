@@ -88,6 +88,12 @@ pub fn run() {
             features::factory::commands::update_factory_machine,
             features::factory::commands::remove_factory_machine,
             features::factory::commands::factory_ledger,
+            features::logistics::commands::list_logistics_links,
+            features::logistics::commands::get_logistics_link,
+            features::logistics::commands::create_logistics_link,
+            features::logistics::commands::update_logistics_link,
+            features::logistics::commands::delete_logistics_link,
+            features::logistics::commands::plan_logistics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
