@@ -6,4 +6,5 @@
 pub mod factory;
 pub mod health;
 pub mod library;
+pub mod logistics;
 pub mod playthrough;
