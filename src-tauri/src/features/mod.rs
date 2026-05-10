@@ -8,4 +8,5 @@ pub mod health;
 pub mod library;
 pub mod logistics;
 pub mod playthrough;
+pub mod power;
 pub mod trains;

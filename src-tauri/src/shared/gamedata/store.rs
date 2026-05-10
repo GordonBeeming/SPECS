@@ -101,6 +101,14 @@ impl GameData {
         &self.inner.file.pipe_tiers
     }
 
+    pub fn generators(&self) -> &[Generator] {
+        &self.inner.file.generators
+    }
+
+    pub fn generator(&self, id: &str) -> Option<&Generator> {
+        self.inner.file.generators.iter().find(|g| g.id == id)
+    }
+
     // Lookup helpers — wired up for use by Phase 4+ slices (factory editor,
     // logistics planner). Quiet the dead-code warning until those land.
 

@@ -19,6 +19,54 @@ pub struct GameDataFile {
     pub milestones: Vec<Milestone>,
     pub belt_tiers: Vec<BeltTier>,
     pub pipe_tiers: Vec<PipeTier>,
+    /// Power generators: Coal, Fuel, Nuclear, Biomass, Geothermal.
+    /// Optional so older dataset files keep deserialising while Phase
+    /// 9 lands.
+    #[serde(default)]
+    pub generators: Vec<Generator>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Generator {
+    pub id: String,
+    pub name: String,
+    pub category: GeneratorCategory,
+    /// Power output at 100% clock with the chosen fuel (MW).
+    pub power_mw: f32,
+    pub unlock_tier: u8,
+    /// Fuels this generator can burn. Each entry sets the fuel's
+    /// consumption rate; the supplemental water/coolant rate is
+    /// optional (only Coal, Fuel, and Nuclear use it).
+    pub fuels: Vec<GeneratorFuel>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum GeneratorCategory {
+    Burner,
+    Fluid,
+    Nuclear,
+    Geothermal,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratorFuel {
+    pub fuel_item_id: String,
+    /// Items per minute consumed at 100% clock.
+    pub fuel_per_minute: f32,
+    /// Optional supplemental fluid (e.g. water for Coal, water for
+    /// Nuclear). Items per minute at 100% clock.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supplemental_item_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supplemental_per_minute: Option<f32>,
+    /// Output if different from the generator's `power_mw` (used by
+    /// nuclear's higher-grade fuels). `None` means use the generator's
+    /// default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub power_mw_override: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

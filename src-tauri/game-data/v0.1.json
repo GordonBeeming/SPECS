@@ -115,5 +115,64 @@
   "pipeTiers": [
     { "mark": 1, "cubicMetersPerMinute": 300, "unlockTier": 3 },
     { "mark": 2, "cubicMetersPerMinute": 600, "unlockTier": 6 }
+  ],
+  "generators": [
+    {
+      "id": "Build_GeneratorBiomass_Automated_C",
+      "name": "Biomass Burner",
+      "category": "burner",
+      "powerMw": 30,
+      "unlockTier": 0,
+      "fuels": [
+        { "fuelItemId": "Desc_GenericBiomass_C", "fuelPerMinute": 90 }
+      ]
+    },
+    {
+      "id": "Build_GeneratorCoal_C",
+      "name": "Coal Generator",
+      "category": "burner",
+      "powerMw": 75,
+      "unlockTier": 3,
+      "fuels": [
+        {
+          "fuelItemId": "Desc_Coal_C",
+          "fuelPerMinute": 15,
+          "supplementalItemId": "Desc_Water_C",
+          "supplementalPerMinute": 45
+        }
+      ]
+    },
+    {
+      "id": "Build_GeneratorFuel_C",
+      "name": "Fuel Generator",
+      "category": "fluid",
+      "powerMw": 250,
+      "unlockTier": 6,
+      "fuels": [
+        { "fuelItemId": "Desc_LiquidFuel_C", "fuelPerMinute": 20 },
+        { "fuelItemId": "Desc_LiquidTurboFuel_C", "fuelPerMinute": 7.5 }
+      ]
+    },
+    {
+      "id": "Build_GeneratorNuclear_C",
+      "name": "Nuclear Power Plant",
+      "category": "nuclear",
+      "powerMw": 2500,
+      "unlockTier": 8,
+      "fuels": [
+        {
+          "fuelItemId": "Desc_NuclearFuelRod_C",
+          "fuelPerMinute": 0.2,
+          "supplementalItemId": "Desc_Water_C",
+          "supplementalPerMinute": 240
+        },
+        {
+          "fuelItemId": "Desc_PlutoniumFuelRod_C",
+          "fuelPerMinute": 0.1,
+          "supplementalItemId": "Desc_Water_C",
+          "supplementalPerMinute": 240
+        }
+      ]
+    }
   ]
 }
