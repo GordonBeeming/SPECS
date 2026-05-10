@@ -258,26 +258,60 @@ fn build_plan(
 ///    A 1×Mk6 plan (1 unit) ranks above a 1×Mk5 + 1×Mk1 plan (2 units).
 /// 2. Higher utilisation second (closer to 100% = less wasted infra)
 /// 3. Lower min_unlock_tier third (cheaper to unlock if otherwise tied)
+///
+/// After truncation to `MAX_PLANS_RETURNED`, guarantees at least one
+/// unlocked plan survives in the result whenever one exists in the
+/// pre-truncation list. Without that guarantee a low-tier player can hit
+/// a request (e.g. 271 ipm at tier 0) that produces 8+ locked plans
+/// out-ranking the only buildable option (5× Mk1) — the UI would show
+/// "here are some plans" with nothing the player can actually build.
 fn finalise_plans(mut plans: Vec<TransportPlan>) -> Vec<TransportPlan> {
-    plans.sort_by(|a, b| {
-        let total_a: u32 = a.segments.iter().map(|s| s.count).sum();
-        let total_b: u32 = b.segments.iter().map(|s| s.count).sum();
-        total_a
-            .cmp(&total_b)
-            .then_with(|| {
-                b.utilisation_pct
-                    .partial_cmp(&a.utilisation_pct)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .then_with(|| a.min_unlock_tier.cmp(&b.min_unlock_tier))
-    });
+    plans.sort_by(rank_plan);
 
     // Deduplicate plans with identical segment shape — single-tier and
     // mixed-tier paths can occasionally produce equivalent recommendations
     // (e.g. when the top-up count happens to match the primary jump).
     plans.dedup_by(|a, b| a.segments == b.segments && a.kind == b.kind);
-    plans.truncate(MAX_PLANS_RETURNED);
+
+    if plans.len() <= MAX_PLANS_RETURNED {
+        return plans;
+    }
+
+    let head_has_unlocked = plans.iter().take(MAX_PLANS_RETURNED).any(|p| !p.locked);
+    if head_has_unlocked {
+        plans.truncate(MAX_PLANS_RETURNED);
+        return plans;
+    }
+
+    // The cap dropped every unlocked plan. Rescue the best-ranked one
+    // (post-sort, the first unlocked entry is the best) and substitute it
+    // for the worst entry inside the cap so the result still includes a
+    // buildable option. If no unlocked plan exists at all, the player just
+    // doesn't have a viable transport at this tier — the UI shows the
+    // ranked locked options and explains the gate.
+    if let Some(best_idx) = plans.iter().position(|p| !p.locked) {
+        let best_unlocked = plans.remove(best_idx);
+        plans.truncate(MAX_PLANS_RETURNED - 1);
+        plans.push(best_unlocked);
+        plans.sort_by(rank_plan);
+    } else {
+        plans.truncate(MAX_PLANS_RETURNED);
+    }
+
     plans
+}
+
+fn rank_plan(a: &TransportPlan, b: &TransportPlan) -> std::cmp::Ordering {
+    let total_a: u32 = a.segments.iter().map(|s| s.count).sum();
+    let total_b: u32 = b.segments.iter().map(|s| s.count).sum();
+    total_a
+        .cmp(&total_b)
+        .then_with(|| {
+            b.utilisation_pct
+                .partial_cmp(&a.utilisation_pct)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .then_with(|| a.min_unlock_tier.cmp(&b.min_unlock_tier))
 }
 
 #[cfg(test)]
@@ -419,6 +453,40 @@ mod tests {
         // Plenty of viable mixed combinations in the full belt set;
         // confirm we never overflow the cap.
         let plans = plan_belts(2400.0, &all_belts(), 9);
+        assert!(plans.len() <= MAX_PLANS_RETURNED);
+    }
+
+    #[test]
+    fn truncation_preserves_at_least_one_unlocked_plan_when_one_exists() {
+        // Codex P1 reproducer: at unlocked_tier=0 with 271 ipm the only
+        // buildable plan is 5× Mk1 (300 cap, 90.3% util) but 8+ locked
+        // plans (Mk2-Mk6 single + mixed) outrank it. The cap must rescue
+        // the unlocked plan or the user gets a list with nothing to build.
+        let plans = plan_belts(271.0, &all_belts(), 0);
+        assert!(plans.len() <= MAX_PLANS_RETURNED);
+        assert!(
+            plans.iter().any(|p| !p.locked),
+            "expected at least one unlocked plan in the truncated result; got {:?}",
+            plans
+                .iter()
+                .map(|p| (p.locked, p.min_unlock_tier))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn truncation_returns_only_locked_plans_when_no_unlocked_exists() {
+        // Inverse of the above: at unlocked_tier=0 with 600 ipm there's no
+        // single-Mk1 plan that fits within the segment cap (would need 10
+        // belts) — so the rescue logic has nothing to swap in. Result is
+        // all locked, but bounded by the cap.
+        let belts_no_t0 = vec![
+            BeltTier { mark: 2, items_per_minute: 120, unlock_tier: 2 },
+            BeltTier { mark: 3, items_per_minute: 270, unlock_tier: 4 },
+            BeltTier { mark: 6, items_per_minute: 1200, unlock_tier: 9 },
+        ];
+        let plans = plan_belts(600.0, &belts_no_t0, 0);
+        assert!(plans.iter().all(|p| p.locked));
         assert!(plans.len() <= MAX_PLANS_RETURNED);
     }
 
