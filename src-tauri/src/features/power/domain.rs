@@ -29,9 +29,12 @@ pub fn generator_power_mw(
 }
 
 /// Fuel and supplemental items per minute consumed by `count` copies
-/// of the generator/fuel combo at the given clock. Returns the (fuel,
-/// supplemental) pair; either side is None when the rate is 0 or the
-/// fuel doesn't have a supplemental.
+/// of the generator/fuel combo at the given clock. The main fuel side
+/// is always returned (every fuel has a primary item id); rate is 0
+/// when `count` or `clock_pct` is non-positive. The supplemental side
+/// is `None` when the fuel doesn't declare one OR when the declared
+/// rate is 0; an explicit-but-zero supplemental is filtered to keep
+/// downstream code from showing "0 ipm of water" rows.
 pub fn generator_fuel_flows(
     fuel: &GeneratorFuel,
     count: i64,
@@ -44,7 +47,13 @@ pub fn generator_fuel_flows(
     };
     let fuel_pair = (fuel.fuel_item_id.clone(), fuel.fuel_per_minute * mult);
     let supplemental = match (&fuel.supplemental_item_id, fuel.supplemental_per_minute) {
-        (Some(id), Some(rate)) if rate > 0.0 => Some((id.clone(), rate * mult)),
+        // Drop zero-rate supplementals — happens both when the fuel
+        // declares 0 (rare) and when count/clock collapse `mult` to 0
+        // (so the UI doesn't render "0 ipm water" rows next to a
+        // disabled generator bank).
+        (Some(id), Some(rate)) if rate > 0.0 && mult > 0.0 => {
+            Some((id.clone(), rate * mult))
+        }
         _ => None,
     };
     (fuel_pair, supplemental)
@@ -131,9 +140,12 @@ mod tests {
     }
 
     #[test]
-    fn fuel_flows_zero_for_invalid_count_or_clock() {
+    fn fuel_flows_zero_main_and_no_supplemental_for_invalid_count_or_clock() {
+        // Main side is always returned (the function contract); rate
+        // collapses to 0. Supplemental drops to None so the UI doesn't
+        // render a "0 ipm water" row next to a disabled generator.
         let (main, supp) = generator_fuel_flows(&coal_fuel(), 0, 100.0);
         assert_eq!(main.1, 0.0);
-        assert_eq!(supp.unwrap().1, 0.0);
+        assert!(supp.is_none(), "supplemental should be None when mult is 0");
     }
 }

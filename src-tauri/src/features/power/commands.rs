@@ -125,14 +125,21 @@ pub fn update_power_gen(
     // Need the existing row to know which generator it's against (the
     // update form lets the user swap fuel but not generator type).
     let db = require_active(&active)?;
-    let gen_id_for_row = db.with(|c| {
-        c.query_row(
+    // Look the existing generator id up so the fuel-validation below can
+    // confirm the swap-target fuel is one the row's stored generator
+    // actually burns. Using `?` (not `.ok()`) so real DB errors surface
+    // as `AppError` instead of silently turning into NotFound later.
+    let gen_id_for_row: Option<String> = db.with(|c| {
+        match c.query_row(
             "SELECT generator_id FROM power_gen WHERE id = ?",
             [&input.id],
             |r| r.get::<_, String>(0),
-        )
-        .ok()
-    });
+        ) {
+            Ok(id) => Ok(Some(id)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(AppError::from(anyhow::Error::from(e))),
+        }
+    })?;
     if let Some(gen_id) = gen_id_for_row.as_deref() {
         lookup_generator_and_fuel(&game_data, gen_id, &input.fuel_item_id)?;
     }
@@ -178,15 +185,18 @@ pub fn factory_power_balance(
     let mut generated_mw = 0.0_f32;
     let mut fuel_totals: BTreeMap<String, f32> = BTreeMap::new();
     for g in &gens {
-        if let Ok((gen, fuel)) =
-            lookup_generator_and_fuel(&game_data, &g.generator_id, &g.fuel_item_id)
-        {
-            generated_mw += generator_power_mw(gen, fuel, g.count, g.clock_pct);
-            let (main, supp) = generator_fuel_flows(fuel, g.count, g.clock_pct);
-            *fuel_totals.entry(main.0).or_insert(0.0) += main.1;
-            if let Some((id, rate)) = supp {
-                *fuel_totals.entry(id).or_insert(0.0) += rate;
-            }
+        // Don't silently drop rows whose generator/fuel id doesn't
+        // resolve — that would mask data corruption (or a dataset
+        // downgrade) and produce a "looks fine" balance with the wrong
+        // numbers. The lookup error surfaces as `AppError::Invalid`
+        // and the caller sees which row is bad.
+        let (gen, fuel) =
+            lookup_generator_and_fuel(&game_data, &g.generator_id, &g.fuel_item_id)?;
+        generated_mw += generator_power_mw(gen, fuel, g.count, g.clock_pct);
+        let (main, supp) = generator_fuel_flows(fuel, g.count, g.clock_pct);
+        *fuel_totals.entry(main.0).or_insert(0.0) += main.1;
+        if let Some((id, rate)) = supp {
+            *fuel_totals.entry(id).or_insert(0.0) += rate;
         }
     }
 

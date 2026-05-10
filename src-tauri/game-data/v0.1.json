@@ -16,7 +16,12 @@
     { "id": "Desc_Cable_C", "name": "Cable", "category": "part", "stackSize": 200, "isFluid": false, "color": "#3d2a20" },
     { "id": "Desc_IronScrew_C", "name": "Screw", "category": "part", "stackSize": 500, "isFluid": false, "color": "#b1b1b1" },
     { "id": "Desc_IronPlateReinforced_C", "name": "Reinforced Iron Plate", "category": "component", "stackSize": 200, "isFluid": false, "color": "#7e8488" },
-    { "id": "Desc_Rotor_C", "name": "Rotor", "category": "component", "stackSize": 100, "isFluid": false, "color": "#9aa1a3" }
+    { "id": "Desc_Rotor_C", "name": "Rotor", "category": "component", "stackSize": 100, "isFluid": false, "color": "#9aa1a3" },
+    { "id": "Desc_GenericBiomass_C", "name": "Biomass", "category": "raw", "stackSize": 200, "isFluid": false, "color": "#7c5a3a" },
+    { "id": "Desc_LiquidFuel_C", "name": "Fuel", "category": "fluid", "stackSize": 1, "isFluid": true, "color": "#d99427" },
+    { "id": "Desc_LiquidTurboFuel_C", "name": "Turbofuel", "category": "fluid", "stackSize": 1, "isFluid": true, "color": "#7e2cdb" },
+    { "id": "Desc_NuclearFuelRod_C", "name": "Uranium Fuel Rod", "category": "ammo", "stackSize": 50, "isFluid": false, "color": "#3a8d4a" },
+    { "id": "Desc_PlutoniumFuelRod_C", "name": "Plutonium Fuel Rod", "category": "ammo", "stackSize": 50, "isFluid": false, "color": "#27a4d8" }
   ],
   "buildings": [
     { "id": "Build_MinerMk1_C", "name": "Miner Mk.1", "category": "extraction", "powerMw": 5.0, "unlockTier": 0 },
