@@ -1,11 +1,22 @@
-import { Moon, Sun } from "lucide-react";
-import { Card } from "@/shared/ui/Card";
+import { useState } from "react";
+import { BookOpen, LayoutDashboard, Moon, Sun } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
+import { Card } from "@/shared/ui/Card";
 import { useThemeMode } from "@/shared/theme/useThemeMode";
 import { HealthBadge } from "@/features/health/components/HealthBadge";
+import { LibraryView } from "@/features/library/components/LibraryView";
+
+type Route = "home" | "library";
+
+const NAV: ReadonlyArray<{ id: Route; label: string; Icon: typeof BookOpen }> = [
+  { id: "home", label: "Home", Icon: LayoutDashboard },
+  { id: "library", label: "Library", Icon: BookOpen },
+];
 
 export function AppShell() {
   const { mode, toggle } = useThemeMode();
+  const [route, setRoute] = useState<Route>("library");
+
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center justify-between border-b border-border px-6 py-3">
@@ -23,22 +34,54 @@ export function AppShell() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-auto p-6">
-        <Card className="mx-auto max-w-2xl">
-          <h1 className="text-xl font-semibold text-primary">
-            Phase 1 scaffolding
-          </h1>
-          <p className="mt-2 text-sm text-fg-muted">
-            Tauri + React + Vertical Slice Architecture is wired up. The status
-            badge in the header proves the Rust core is reachable. Next phase
-            adds the playthrough store and game-data library.
-          </p>
-          <ul className="mt-4 space-y-1 text-sm">
-            <li>• Architecture &amp; slice rules: <code>docs/vsa/</code></li>
-            <li>• Design system &amp; brand tokens: <code>DESIGN.md</code></li>
-          </ul>
-        </Card>
-      </main>
+      <div className="flex flex-1 overflow-hidden">
+        <nav
+          aria-label="Main"
+          className="flex w-48 shrink-0 flex-col gap-1 border-r border-border p-3"
+        >
+          {NAV.map(({ id, label, Icon }) => {
+            const active = route === id;
+            return (
+              <button
+                key={id}
+                onClick={() => setRoute(id)}
+                aria-current={active ? "page" : undefined}
+                className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  active
+                    ? "bg-primary text-white"
+                    : "text-fg-muted hover:bg-border hover:text-fg"
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            );
+          })}
+        </nav>
+
+        <main className="flex-1 overflow-auto p-6">
+          {route === "home" && <HomePanel />}
+          {route === "library" && <LibraryView />}
+        </main>
+      </div>
     </div>
+  );
+}
+
+function HomePanel() {
+  return (
+    <Card className="mx-auto max-w-2xl">
+      <h1 className="text-xl font-semibold text-primary">Welcome to S.P.E.C.S</h1>
+      <p className="mt-2 text-sm text-fg-muted">
+        Satisfactory Production Efficiency &amp; Control System. Plan whole
+        playthroughs: factories, cross-factory logistics, milestone-aware
+        unlocks. Pick <strong>Library</strong> on the left to browse the
+        bundled game data.
+      </p>
+      <ul className="mt-4 space-y-1 text-sm">
+        <li>• Architecture &amp; slice rules: <code>docs/vsa/</code></li>
+        <li>• Design system &amp; brand tokens: <code>DESIGN.md</code></li>
+      </ul>
+    </Card>
   );
 }

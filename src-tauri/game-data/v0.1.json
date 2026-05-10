@@ -1,0 +1,119 @@
+{
+  "version": "0.1.0-fixture",
+  "gameVersion": "1.1",
+  "items": [
+    { "id": "Desc_IronOre_C", "name": "Iron Ore", "category": "raw", "stackSize": 100, "isFluid": false, "color": "#7d8a8b" },
+    { "id": "Desc_CopperOre_C", "name": "Copper Ore", "category": "raw", "stackSize": 100, "isFluid": false, "color": "#c87533" },
+    { "id": "Desc_Stone_C", "name": "Limestone", "category": "raw", "stackSize": 100, "isFluid": false, "color": "#d6cfb4" },
+    { "id": "Desc_Coal_C", "name": "Coal", "category": "raw", "stackSize": 100, "isFluid": false, "color": "#1f1f1f" },
+    { "id": "Desc_Water_C", "name": "Water", "category": "fluid", "stackSize": 1, "isFluid": true, "color": "#4eb1de" },
+    { "id": "Desc_IronIngot_C", "name": "Iron Ingot", "category": "ingot", "stackSize": 100, "isFluid": false, "color": "#9aa1a3" },
+    { "id": "Desc_CopperIngot_C", "name": "Copper Ingot", "category": "ingot", "stackSize": 100, "isFluid": false, "color": "#d97a3c" },
+    { "id": "Desc_Cement_C", "name": "Concrete", "category": "part", "stackSize": 200, "isFluid": false, "color": "#9a9a8a" },
+    { "id": "Desc_IronPlate_C", "name": "Iron Plate", "category": "part", "stackSize": 200, "isFluid": false, "color": "#a6abad" },
+    { "id": "Desc_IronRod_C", "name": "Iron Rod", "category": "part", "stackSize": 200, "isFluid": false, "color": "#9aa1a3" },
+    { "id": "Desc_Wire_C", "name": "Wire", "category": "part", "stackSize": 500, "isFluid": false, "color": "#d97a3c" },
+    { "id": "Desc_Cable_C", "name": "Cable", "category": "part", "stackSize": 200, "isFluid": false, "color": "#3d2a20" },
+    { "id": "Desc_IronScrew_C", "name": "Screw", "category": "part", "stackSize": 500, "isFluid": false, "color": "#b1b1b1" },
+    { "id": "Desc_IronPlateReinforced_C", "name": "Reinforced Iron Plate", "category": "component", "stackSize": 200, "isFluid": false, "color": "#7e8488" },
+    { "id": "Desc_Rotor_C", "name": "Rotor", "category": "component", "stackSize": 100, "isFluid": false, "color": "#9aa1a3" }
+  ],
+  "buildings": [
+    { "id": "Build_MinerMk1_C", "name": "Miner Mk.1", "category": "extraction", "powerMw": 5.0, "unlockTier": 0 },
+    { "id": "Build_SmelterMk1_C", "name": "Smelter", "category": "smelting", "powerMw": 4.0, "unlockTier": 0 },
+    { "id": "Build_ConstructorMk1_C", "name": "Constructor", "category": "manufacturing", "powerMw": 4.0, "unlockTier": 0 },
+    { "id": "Build_AssemblerMk1_C", "name": "Assembler", "category": "manufacturing", "powerMw": 15.0, "unlockTier": 1 },
+    { "id": "Build_WaterPump_C", "name": "Water Extractor", "category": "extraction", "powerMw": 20.0, "unlockTier": 3 }
+  ],
+  "recipes": [
+    {
+      "id": "Recipe_IronIngot_C", "name": "Iron Ingot",
+      "buildingId": "Build_SmelterMk1_C", "isAlt": false, "unlockTier": 0, "cycleSeconds": 2.0,
+      "inputs": [{"itemId": "Desc_IronOre_C", "perMinute": 30}],
+      "outputs": [{"itemId": "Desc_IronIngot_C", "perMinute": 30}]
+    },
+    {
+      "id": "Recipe_CopperIngot_C", "name": "Copper Ingot",
+      "buildingId": "Build_SmelterMk1_C", "isAlt": false, "unlockTier": 0, "cycleSeconds": 2.0,
+      "inputs": [{"itemId": "Desc_CopperOre_C", "perMinute": 30}],
+      "outputs": [{"itemId": "Desc_CopperIngot_C", "perMinute": 30}]
+    },
+    {
+      "id": "Recipe_IronPlate_C", "name": "Iron Plate",
+      "buildingId": "Build_ConstructorMk1_C", "isAlt": false, "unlockTier": 0, "cycleSeconds": 6.0,
+      "inputs": [{"itemId": "Desc_IronIngot_C", "perMinute": 30}],
+      "outputs": [{"itemId": "Desc_IronPlate_C", "perMinute": 20}]
+    },
+    {
+      "id": "Recipe_IronRod_C", "name": "Iron Rod",
+      "buildingId": "Build_ConstructorMk1_C", "isAlt": false, "unlockTier": 0, "cycleSeconds": 4.0,
+      "inputs": [{"itemId": "Desc_IronIngot_C", "perMinute": 15}],
+      "outputs": [{"itemId": "Desc_IronRod_C", "perMinute": 15}]
+    },
+    {
+      "id": "Recipe_Wire_C", "name": "Wire",
+      "buildingId": "Build_ConstructorMk1_C", "isAlt": false, "unlockTier": 0, "cycleSeconds": 4.0,
+      "inputs": [{"itemId": "Desc_CopperIngot_C", "perMinute": 15}],
+      "outputs": [{"itemId": "Desc_Wire_C", "perMinute": 30}]
+    },
+    {
+      "id": "Recipe_Cable_C", "name": "Cable",
+      "buildingId": "Build_ConstructorMk1_C", "isAlt": false, "unlockTier": 0, "cycleSeconds": 2.0,
+      "inputs": [{"itemId": "Desc_Wire_C", "perMinute": 60}],
+      "outputs": [{"itemId": "Desc_Cable_C", "perMinute": 30}]
+    },
+    {
+      "id": "Recipe_Concrete_C", "name": "Concrete",
+      "buildingId": "Build_ConstructorMk1_C", "isAlt": false, "unlockTier": 0, "cycleSeconds": 4.0,
+      "inputs": [{"itemId": "Desc_Stone_C", "perMinute": 45}],
+      "outputs": [{"itemId": "Desc_Cement_C", "perMinute": 15}]
+    },
+    {
+      "id": "Recipe_Screw_C", "name": "Screw",
+      "buildingId": "Build_ConstructorMk1_C", "isAlt": false, "unlockTier": 1, "cycleSeconds": 6.0,
+      "inputs": [{"itemId": "Desc_IronRod_C", "perMinute": 10}],
+      "outputs": [{"itemId": "Desc_IronScrew_C", "perMinute": 40}]
+    },
+    {
+      "id": "Recipe_IronPlateReinforced_C", "name": "Reinforced Iron Plate",
+      "buildingId": "Build_AssemblerMk1_C", "isAlt": false, "unlockTier": 1, "cycleSeconds": 12.0,
+      "inputs": [
+        {"itemId": "Desc_IronPlate_C", "perMinute": 30},
+        {"itemId": "Desc_IronScrew_C", "perMinute": 60}
+      ],
+      "outputs": [{"itemId": "Desc_IronPlateReinforced_C", "perMinute": 5}]
+    },
+    {
+      "id": "Recipe_Rotor_C", "name": "Rotor",
+      "buildingId": "Build_AssemblerMk1_C", "isAlt": false, "unlockTier": 1, "cycleSeconds": 15.0,
+      "inputs": [
+        {"itemId": "Desc_IronRod_C", "perMinute": 20},
+        {"itemId": "Desc_IronScrew_C", "perMinute": 100}
+      ],
+      "outputs": [{"itemId": "Desc_Rotor_C", "perMinute": 4}]
+    }
+  ],
+  "milestones": [
+    { "id": "ms_t0_hub_upgrade_1", "tier": 0, "name": "HUB Upgrade 1", "unlocks": ["Build_SmelterMk1_C", "Build_ConstructorMk1_C", "Build_MinerMk1_C", "Recipe_IronIngot_C", "Recipe_CopperIngot_C", "Recipe_IronPlate_C", "Recipe_IronRod_C", "Recipe_Wire_C", "Recipe_Cable_C", "Recipe_Concrete_C", "belt_mk1"] },
+    { "id": "ms_t1_field_research", "tier": 1, "name": "Field Research", "unlocks": ["Build_AssemblerMk1_C", "Recipe_Screw_C", "Recipe_IronPlateReinforced_C", "Recipe_Rotor_C"] },
+    { "id": "ms_t2_logistics_mk2", "tier": 2, "name": "Logistics Mk.2", "unlocks": ["belt_mk2"] },
+    { "id": "ms_t3_basic_steel", "tier": 3, "name": "Basic Steel Production", "unlocks": ["Build_WaterPump_C", "pipe_mk1"] },
+    { "id": "ms_t4_advanced_steel", "tier": 4, "name": "Advanced Steel Production", "unlocks": ["belt_mk3"] },
+    { "id": "ms_t5_jump_jets", "tier": 5, "name": "Jump Jets", "unlocks": ["belt_mk4"] },
+    { "id": "ms_t6_logistics_mk3", "tier": 6, "name": "Pipeline Engineering Mk.2", "unlocks": ["pipe_mk2"] },
+    { "id": "ms_t7_aeronautical", "tier": 7, "name": "Aeronautical Engineering", "unlocks": ["belt_mk5"] },
+    { "id": "ms_t9_peak_efficiency", "tier": 9, "name": "Peak Efficiency", "unlocks": ["belt_mk6"] }
+  ],
+  "beltTiers": [
+    { "mark": 1, "itemsPerMinute": 60, "unlockTier": 0 },
+    { "mark": 2, "itemsPerMinute": 120, "unlockTier": 2 },
+    { "mark": 3, "itemsPerMinute": 270, "unlockTier": 4 },
+    { "mark": 4, "itemsPerMinute": 480, "unlockTier": 5 },
+    { "mark": 5, "itemsPerMinute": 780, "unlockTier": 7 },
+    { "mark": 6, "itemsPerMinute": 1200, "unlockTier": 9 }
+  ],
+  "pipeTiers": [
+    { "mark": 1, "cubicMetersPerMinute": 300, "unlockTier": 3 },
+    { "mark": 2, "cubicMetersPerMinute": 600, "unlockTier": 6 }
+  ]
+}

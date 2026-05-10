@@ -40,7 +40,14 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
 
-# Database (rusqlite + refinery) is added in Phase 2 when the first persistent slice lands.
+# Database — bundled SQLite + parking_lot for the connection pools, refinery for migrations.
+rusqlite = { version = "0.38", features = ["bundled"] }
+refinery = { version = "0.9", features = ["rusqlite"] }
+parking_lot = "0.12"
+
+# Tauri's typed app handle (for resolving the per-OS app data dir for App DB / playthrough files).
+[dependencies.tauri-plugin-fs]
+version = "2"
 
 [dev-dependencies]
 pretty_assertions = "1"

@@ -6,4 +6,13 @@
 
 export const queryKeys = {
   health: ["health"] as const,
+  library: {
+    summary: ["library", "summary"] as const,
+    items: ["library", "items"] as const,
+    buildings: ["library", "buildings"] as const,
+    recipes: ["library", "recipes"] as const,
+    milestones: ["library", "milestones"] as const,
+    beltTiers: ["library", "belt-tiers"] as const,
+    pipeTiers: ["library", "pipe-tiers"] as const,
+  },
 };
