@@ -1,0 +1,53 @@
+[package]
+name = "specs"
+version = "0.1.0"
+description = "SPECS — Satisfactory Production Efficiency and Control System"
+authors = ["Gordon Beeming"]
+edition = "2021"
+rust-version = "1.80"
+
+[lib]
+name = "specs_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[features]
+# `dev-mcp` is OFF by default so `cargo build --release` / `tauri build` never
+# accidentally ships the MCP bridge. Local dev opts in via the `tauri:dev`
+# script in package.json (`--features dev-mcp`).
+default = []
+dev-mcp = ["dep:tauri-plugin-mcp-bridge"]
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-mcp-bridge = { version = "0.11", optional = true }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Errors
+anyhow = "1"
+thiserror = "2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# IDs / time
+uuid = { version = "1", features = ["v4", "serde"] }
+time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
+
+# Database (rusqlite + refinery) is added in Phase 2 when the first persistent slice lands.
+
+[dev-dependencies]
+pretty_assertions = "1"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
