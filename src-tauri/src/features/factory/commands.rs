@@ -12,7 +12,7 @@ use super::dto::{
     AddMachineInput, CreateFactoryInput, Factory, FactoryDetail, FactoryLedger, FactoryMachine,
     ItemFlow, RenameFactoryInput, UpdateMachineInput,
 };
-use super::domain::{machine_power_mw, recipe_io_flows};
+use super::domain::{machine_power_mw_amp, recipe_io_flows_amp};
 use super::repo;
 use crate::features::playthrough::state::ActivePlaythrough;
 
@@ -50,6 +50,30 @@ fn validate_count(count: i64) -> AppResult<()> {
         return Err(AppError::Invalid(
             "machine count above 10,000 is almost certainly a typo".into(),
         ));
+    }
+    Ok(())
+}
+
+fn validate_amplification(
+    use_somersloop: bool,
+    somersloop_slots_filled: i64,
+    power_shard_count: i64,
+) -> AppResult<()> {
+    if !(0..=4).contains(&somersloop_slots_filled) {
+        return Err(AppError::Invalid(format!(
+            "somersloop_slots_filled must be 0..=4 (got {somersloop_slots_filled})"
+        )));
+    }
+    if !use_somersloop && somersloop_slots_filled > 0 {
+        return Err(AppError::Invalid(
+            "cannot specify somersloop_slots_filled > 0 when use_somersloop is false"
+                .into(),
+        ));
+    }
+    if !(0..=3).contains(&power_shard_count) {
+        return Err(AppError::Invalid(format!(
+            "power_shard_count must be 0..=3 (got {power_shard_count})"
+        )));
     }
     Ok(())
 }
@@ -138,6 +162,11 @@ pub fn add_factory_machine(
 ) -> AppResult<FactoryMachine> {
     validate_count(input.count)?;
     validate_clock(input.clock_pct)?;
+    validate_amplification(
+        input.use_somersloop,
+        input.somersloop_slots_filled,
+        input.power_shard_count,
+    )?;
     if game_data.building(&input.building_id).is_none() {
         return Err(AppError::Invalid(format!(
             "unknown building id: {}",
@@ -170,6 +199,9 @@ pub fn add_factory_machine(
             &input.recipe_id,
             input.count,
             input.clock_pct,
+            input.use_somersloop,
+            input.somersloop_slots_filled,
+            input.power_shard_count,
             &now,
         )
         .map_err(AppError::from)
@@ -188,11 +220,20 @@ pub fn update_factory_machine(
 ) -> AppResult<()> {
     validate_count(input.count)?;
     validate_clock(input.clock_pct)?;
+    validate_amplification(
+        input.use_somersloop,
+        input.somersloop_slots_filled,
+        input.power_shard_count,
+    )?;
     let db = require_active(&active)?;
     let now = now_iso();
     let affected = db.with(|c| {
-        repo::machine_update(c, &input.id, input.count, input.clock_pct, &now)
-            .map_err(AppError::from)
+        repo::machine_update(
+            c, &input.id, input.count, input.clock_pct,
+            input.use_somersloop, input.somersloop_slots_filled, input.power_shard_count,
+            &now,
+        )
+        .map_err(AppError::from)
     })?;
     if affected == 0 {
         return Err(AppError::NotFound(format!("machine {} not found", input.id)));
@@ -248,8 +289,27 @@ pub fn compose_ledger(
     let mut power_mw = 0.0_f32;
 
     for m in machines {
+        // Phase 8: amplification is opt-in. When `use_somersloop` is
+        // false the slot count is forced to 0 here (defence-in-depth —
+        // the command-layer validator already rejects the invalid combo)
+        // so the amp factor collapses to 1× and we get the unamplified
+        // result without a separate code path.
+        let amp_filled: u8 = if m.use_somersloop {
+            m.somersloop_slots_filled.clamp(0, 4) as u8
+        } else {
+            0
+        };
+        // The total slot count is a property of the building, not
+        // tracked in the dataset yet — Manufacturers have 4 slots, most
+        // others have 1. v1 hard-codes 4 as a safe upper bound; the
+        // formula clamps `amp_filled` to `total_slots` so over-fill
+        // can't push the ratio above 1.0. Phase 11 will source this
+        // from the building entry once the dataset has the column.
+        let amp_total: u8 = 4;
         if let Some(recipe) = game_data.recipe(&m.recipe_id) {
-            let (ins, outs) = recipe_io_flows(recipe, m.count, m.clock_pct);
+            let (ins, outs) = recipe_io_flows_amp(
+                recipe, m.count, m.clock_pct, amp_filled, amp_total,
+            );
             for (item, ipm) in ins {
                 *consumed.entry(item).or_insert(0.0) += ipm;
             }
@@ -258,7 +318,9 @@ pub fn compose_ledger(
             }
         }
         if let Some(building) = game_data.building(&m.building_id) {
-            power_mw += machine_power_mw(building.power_mw, m.count, m.clock_pct);
+            power_mw += machine_power_mw_amp(
+                building.power_mw, m.count, m.clock_pct, amp_filled, amp_total,
+            );
         }
     }
 
@@ -310,6 +372,9 @@ mod tests {
             recipe_id: recipe.into(),
             count,
             clock_pct: clock,
+            use_somersloop: false,
+            somersloop_slots_filled: 0,
+            power_shard_count: 0,
             created_at: "2026-05-10T00:00:00Z".into(),
             updated_at: "2026-05-10T00:00:00Z".into(),
         }
@@ -334,14 +399,23 @@ mod tests {
     }
 
     #[test]
-    fn ledger_power_sums_per_machine_at_clock() {
-        // Smelter is 4 MW. Two of them at 50% should sum to 4 MW total.
+    fn ledger_power_sums_per_machine_at_clock_with_overclock_curve() {
+        // Phase 8: power uses the wiki's `clock^1.321928` curve even
+        // without amplification. Smelter base = 4 MW; two of them at 50%
+        // each draws `4 × 1 × 1 × 0.5^1.321928 ≈ 4 × 0.4 ≈ 1.6 MW each`,
+        // total ≈ 3.2 MW (vs the old linear 4 MW). The change is
+        // intentional — the linear model in Phase 4 was a placeholder.
         let machines = vec![
             machine("m1", "Build_SmelterMk1_C", "Recipe_IronIngot_C", 1, 50.0),
             machine("m2", "Build_SmelterMk1_C", "Recipe_IronIngot_C", 1, 50.0),
         ];
         let ledger = compose_ledger("f1", &machines, &gd());
-        assert!((ledger.power_mw - 4.0).abs() < 0.001, "got {}", ledger.power_mw);
+        let expected = 2.0 * 4.0 * (0.5_f32).powf(1.321928);
+        assert!(
+            (ledger.power_mw - expected).abs() < 0.01,
+            "got {}, expected ~{expected}",
+            ledger.power_mw
+        );
     }
 
     #[test]
@@ -352,6 +426,8 @@ mod tests {
         let ledger = compose_ledger("f1", &machines, &gd());
         // Unknown recipes contribute no flows, but the machine's building
         // power still counts (the user can see something is consuming power).
+        // At 100% clock the overclock factor is 1.0 so the result matches
+        // the unamplified base of 4 MW.
         assert!(ledger.flows.is_empty());
         assert!((ledger.power_mw - 4.0).abs() < 0.001);
     }

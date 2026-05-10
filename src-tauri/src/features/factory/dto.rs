@@ -27,6 +27,14 @@ pub struct FactoryMachine {
     /// 1.0 – 250.0 percent. Stored as 100ths-of-percent on disk; the SQL
     /// CHECK constraint enforces the same range so 0% / >250% never persists.
     pub clock_pct: f32,
+    /// Phase 8 amplification — both off by default; the player explicitly
+    /// opts in per machine. `use_somersloop` gates whether the
+    /// `somersloop_slots_filled` count counts toward the amp ratio at all.
+    /// `power_shard_count` drives the overclock cap: 0 → 100% max,
+    /// 1 → 150%, 2 → 200%, 3 → 250%.
+    pub use_somersloop: bool,
+    pub somersloop_slots_filled: i64,
+    pub power_shard_count: i64,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -80,6 +88,15 @@ pub struct AddMachineInput {
     pub recipe_id: String,
     pub count: i64,
     pub clock_pct: f32,
+    /// Defaults to false (off) when the React side omits it — players
+    /// must opt into amplification explicitly. Adding via JSON without
+    /// these fields keeps existing client code working.
+    #[serde(default)]
+    pub use_somersloop: bool,
+    #[serde(default)]
+    pub somersloop_slots_filled: i64,
+    #[serde(default)]
+    pub power_shard_count: i64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -88,6 +105,12 @@ pub struct UpdateMachineInput {
     pub id: String,
     pub count: i64,
     pub clock_pct: f32,
+    #[serde(default)]
+    pub use_somersloop: bool,
+    #[serde(default)]
+    pub somersloop_slots_filled: i64,
+    #[serde(default)]
+    pub power_shard_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

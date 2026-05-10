@@ -95,6 +95,7 @@ pub fn factory_get(conn: &Connection, id: &str) -> Result<Option<Factory>> {
 
 // ---- Machine CRUD ----
 
+#[allow(clippy::too_many_arguments)]
 pub fn machine_insert(
     conn: &Connection,
     id: &str,
@@ -103,31 +104,54 @@ pub fn machine_insert(
     recipe_id: &str,
     count: i64,
     clock_pct: f32,
+    use_somersloop: bool,
+    somersloop_slots_filled: i64,
+    power_shard_count: i64,
     now: &str,
 ) -> Result<()> {
     let clock_x100 = clock_pct_to_x100(clock_pct);
     conn.execute(
         "INSERT INTO factory_machine
-            (id, factory_id, building_id, recipe_id, count, clock_pct_x100, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        params![id, factory_id, building_id, recipe_id, count, clock_x100, now, now],
+            (id, factory_id, building_id, recipe_id, count, clock_pct_x100,
+             use_somersloop, somersloop_slots_filled, power_shard_count,
+             created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        params![
+            id, factory_id, building_id, recipe_id, count, clock_x100,
+            if use_somersloop { 1 } else { 0 },
+            somersloop_slots_filled,
+            power_shard_count,
+            now, now,
+        ],
     )?;
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn machine_update(
     conn: &Connection,
     id: &str,
     count: i64,
     clock_pct: f32,
+    use_somersloop: bool,
+    somersloop_slots_filled: i64,
+    power_shard_count: i64,
     now: &str,
 ) -> Result<usize> {
     let clock_x100 = clock_pct_to_x100(clock_pct);
     let affected = conn.execute(
         "UPDATE factory_machine
-         SET count = ?, clock_pct_x100 = ?, updated_at = ?
+         SET count = ?, clock_pct_x100 = ?,
+             use_somersloop = ?, somersloop_slots_filled = ?,
+             power_shard_count = ?, updated_at = ?
          WHERE id = ?",
-        params![count, clock_x100, now, id],
+        params![
+            count, clock_x100,
+            if use_somersloop { 1 } else { 0 },
+            somersloop_slots_filled,
+            power_shard_count,
+            now, id,
+        ],
     )?;
     Ok(affected)
 }
@@ -140,6 +164,7 @@ pub fn machine_delete(conn: &Connection, id: &str) -> Result<()> {
 pub fn machines_for_factory(conn: &Connection, factory_id: &str) -> Result<Vec<FactoryMachine>> {
     let mut stmt = conn.prepare(
         "SELECT id, factory_id, building_id, recipe_id, count, clock_pct_x100,
+                use_somersloop, somersloop_slots_filled, power_shard_count,
                 created_at, updated_at
          FROM factory_machine
          WHERE factory_id = ?
@@ -147,6 +172,7 @@ pub fn machines_for_factory(conn: &Connection, factory_id: &str) -> Result<Vec<F
     )?;
     let rows = stmt.query_map([factory_id], |r| {
         let clock_x100: i64 = r.get(5)?;
+        let use_som: i64 = r.get(6)?;
         Ok(FactoryMachine {
             id: r.get(0)?,
             factory_id: r.get(1)?,
@@ -154,8 +180,11 @@ pub fn machines_for_factory(conn: &Connection, factory_id: &str) -> Result<Vec<F
             recipe_id: r.get(3)?,
             count: r.get(4)?,
             clock_pct: clock_pct_from_x100(clock_x100),
-            created_at: r.get(6)?,
-            updated_at: r.get(7)?,
+            use_somersloop: use_som != 0,
+            somersloop_slots_filled: r.get(7)?,
+            power_shard_count: r.get(8)?,
+            created_at: r.get(9)?,
+            updated_at: r.get(10)?,
         })
     })?;
     let mut out = Vec::new();
@@ -181,7 +210,7 @@ mod tests {
             factory_insert(c, "f1", "Iron Plant", None, None, "2026-05-10T00:00:00Z").unwrap();
             factory_insert(c, "f2", "Copper Plant", None, None, "2026-05-10T00:00:01Z").unwrap();
             machine_insert(c, "m1", "f1", "Build_SmelterMk1_C", "Recipe_IronIngot_C",
-                           4, 100.0, "2026-05-10T00:00:02Z").unwrap();
+                           4, 100.0, false, 0, 0, "2026-05-10T00:00:02Z").unwrap();
             let factories = factory_list(c).unwrap();
             assert_eq!(factories.len(), 2);
             // Sorted by lower(name): "Copper Plant" < "Iron Plant".
@@ -210,7 +239,7 @@ mod tests {
         pt.with(|c| {
             factory_insert(c, "f1", "X", None, None, "2026-05-10T00:00:00Z").unwrap();
             machine_insert(c, "m1", "f1", "Build_SmelterMk1_C", "Recipe_IronIngot_C",
-                           1, 100.0, "2026-05-10T00:00:00Z").unwrap();
+                           1, 100.0, false, 0, 0, "2026-05-10T00:00:00Z").unwrap();
             factory_delete(c, "f1").unwrap();
             let machines = machines_for_factory(c, "f1").unwrap();
             assert!(machines.is_empty(), "ON DELETE CASCADE should drop machines");
@@ -223,8 +252,8 @@ mod tests {
         pt.with(|c| {
             factory_insert(c, "f1", "X", None, None, "2026-05-10T00:00:00Z").unwrap();
             machine_insert(c, "m1", "f1", "Build_SmelterMk1_C", "Recipe_IronIngot_C",
-                           1, 100.0, "2026-05-10T00:00:00Z").unwrap();
-            machine_update(c, "m1", 3, 247.5, "2026-05-10T00:01:00Z").unwrap();
+                           1, 100.0, false, 0, 0, "2026-05-10T00:00:00Z").unwrap();
+            machine_update(c, "m1", 3, 247.5, false, 0, 0, "2026-05-10T00:01:00Z").unwrap();
             let machines = machines_for_factory(c, "f1").unwrap();
             assert_eq!(machines.len(), 1);
             assert_eq!(machines[0].count, 3);
@@ -239,10 +268,10 @@ mod tests {
         pt.with(|c| {
             factory_insert(c, "f1", "X", None, None, "2026-05-10T00:00:00Z").unwrap();
             // 0% is out of range (CHECK is BETWEEN 100 AND 25000 on x100).
-            let too_low = machine_insert(c, "m1", "f1", "B", "R", 1, 0.0, "n");
+            let too_low = machine_insert(c, "m1", "f1", "B", "R", 1, 0.0, false, 0, 0, "n");
             assert!(too_low.is_err(), "0% clock should be rejected by CHECK");
             // 251% likewise.
-            let too_high = machine_insert(c, "m2", "f1", "B", "R", 1, 251.0, "n");
+            let too_high = machine_insert(c, "m2", "f1", "B", "R", 1, 251.0, false, 0, 0, "n");
             assert!(too_high.is_err(), "251% clock should be rejected by CHECK");
         });
     }
