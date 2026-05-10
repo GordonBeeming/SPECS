@@ -24,4 +24,10 @@ export const queryKeys = {
     detail: (id: string) => ["factory", "detail", id] as const,
     ledger: (id: string) => ["factory", "ledger", id] as const,
   },
+  logistics: {
+    list: ["logistics", "list"] as const,
+    detail: (id: string) => ["logistics", "detail", id] as const,
+    plan: (itemId: string, ipm: number, distanceM: number | null) =>
+      ["logistics", "plan", itemId, ipm, distanceM] as const,
+  },
 };

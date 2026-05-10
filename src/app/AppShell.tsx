@@ -1,18 +1,27 @@
 import { useState } from "react";
-import { BookOpen, Factory as FactoryIcon, LayoutDashboard, Moon, Sun } from "lucide-react";
+import {
+  BookOpen,
+  Factory as FactoryIcon,
+  LayoutDashboard,
+  Moon,
+  Network,
+  Sun,
+} from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { useThemeMode } from "@/shared/theme/useThemeMode";
 import { HealthBadge } from "@/features/health/components/HealthBadge";
 import { LibraryView } from "@/features/library/components/LibraryView";
 import { FactoryListView } from "@/features/factory/components/FactoryListView";
+import { LogisticsListView } from "@/features/logistics/components/LogisticsListView";
 import { PlaythroughSwitcher } from "@/features/playthrough/components/PlaythroughSwitcher";
 
-type Route = "home" | "factories" | "library";
+type Route = "home" | "factories" | "logistics" | "library";
 
 const NAV: ReadonlyArray<{ id: Route; label: string; Icon: typeof BookOpen }> = [
   { id: "home", label: "Home", Icon: LayoutDashboard },
   { id: "factories", label: "Factories", Icon: FactoryIcon },
+  { id: "logistics", label: "Logistics", Icon: Network },
   { id: "library", label: "Library", Icon: BookOpen },
 ];
 
@@ -66,6 +75,7 @@ export function AppShell() {
         <main className="flex-1 overflow-auto p-6">
           {route === "home" && <HomePanel />}
           {route === "factories" && <FactoryListView />}
+          {route === "logistics" && <LogisticsListView />}
           {route === "library" && <LibraryView />}
         </main>
       </div>
