@@ -132,10 +132,18 @@ pub fn add_factory_machine(
             input.building_id
         )));
     }
-    if game_data.recipe(&input.recipe_id).is_none() {
+    let recipe = game_data
+        .recipe(&input.recipe_id)
+        .ok_or_else(|| AppError::Invalid(format!("unknown recipe id: {}", input.recipe_id)))?;
+    // The recipe must actually run in the building the user picked. Without
+    // this check a stale or malformed client could insert e.g. an Iron Plate
+    // recipe under a Smelter, then `compose_ledger` would happily compute
+    // recipe flows from one and power from the other — silently producing
+    // wrong planning data.
+    if recipe.building_id != input.building_id {
         return Err(AppError::Invalid(format!(
-            "unknown recipe id: {}",
-            input.recipe_id
+            "recipe {} runs in {}, not {}",
+            input.recipe_id, recipe.building_id, input.building_id
         )));
     }
     let db = require_active(&active)?;
@@ -170,10 +178,14 @@ pub fn update_factory_machine(
     validate_clock(input.clock_pct)?;
     let db = require_active(&active)?;
     let now = now_iso();
-    db.with(|c| {
+    let affected = db.with(|c| {
         repo::machine_update(c, &input.id, input.count, input.clock_pct, &now)
             .map_err(AppError::from)
-    })
+    })?;
+    if affected == 0 {
+        return Err(AppError::NotFound(format!("machine {} not found", input.id)));
+    }
+    Ok(())
 }
 
 #[tauri::command]

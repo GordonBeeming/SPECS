@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS factory_machine (
     recipe_id     TEXT NOT NULL,
     count         INTEGER NOT NULL DEFAULT 1 CHECK (count >= 1),
     -- Stored as 100ths of a percent so we can express 200% precisely as 20000
-    -- without floating-point drift. UI converts to/from 0.0–250.0%.
+    -- without floating-point drift. CHECK enforces 1.00%–250.00% so a stale
+    -- caller can't persist 0% or >250%; the UI talks the same range.
     clock_pct_x100 INTEGER NOT NULL DEFAULT 10000 CHECK (clock_pct_x100 BETWEEN 100 AND 25000),
     created_at    TEXT NOT NULL,
     updated_at    TEXT NOT NULL

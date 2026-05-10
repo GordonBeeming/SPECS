@@ -121,15 +121,15 @@ pub fn machine_update(
     count: i64,
     clock_pct: f32,
     now: &str,
-) -> Result<()> {
+) -> Result<usize> {
     let clock_x100 = clock_pct_to_x100(clock_pct);
-    conn.execute(
+    let affected = conn.execute(
         "UPDATE factory_machine
          SET count = ?, clock_pct_x100 = ?, updated_at = ?
          WHERE id = ?",
         params![count, clock_x100, now, id],
     )?;
-    Ok(())
+    Ok(affected)
 }
 
 pub fn machine_delete(conn: &Connection, id: &str) -> Result<()> {

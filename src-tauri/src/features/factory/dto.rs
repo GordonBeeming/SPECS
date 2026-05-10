@@ -24,7 +24,8 @@ pub struct FactoryMachine {
     pub building_id: String,
     pub recipe_id: String,
     pub count: i64,
-    /// 0.0 – 250.0 percent. Stored as 100ths-of-percent on disk.
+    /// 1.0 – 250.0 percent. Stored as 100ths-of-percent on disk; the SQL
+    /// CHECK constraint enforces the same range so 0% / >250% never persists.
     pub clock_pct: f32,
     pub created_at: String,
     pub updated_at: String,

@@ -156,18 +156,17 @@ mod tests {
         assert_eq!(outs[0].1, 0.0);
     }
 
-    /// Pin to the values from the Phase 1 wiki research. Mk3 miner on a Pure
-    /// node at 250% should produce 1200 ipm — a regression here would mean
-    /// the throughput formula itself is wrong, not just a single recipe.
+    /// Pin to the values from the Phase 1 wiki research. The Miner Mk.3 row,
+    /// Pure column = **480 ipm** at 100% clock (the dataset bakes purity into
+    /// the recipe value, so it's the 100% number, not the Normal-node base).
+    /// At 250% clock that's `480 × 2.5 = 1200 ipm`. A regression here would
+    /// mean the throughput formula itself is wrong, not just a single recipe.
     #[test]
     fn miner_mk3_pure_at_250pct_matches_wiki() {
-        // Mk3 base = 480 ipm on a normal node; pure = 2× = 960 → ×2.5 = 2400.
-        // We model purity by feeding `recipe_per_minute = base × purity_mod`
-        // since miner recipes in our dataset bake the node into the per_minute.
-        let mk3_pure_base = 480.0 * 2.0;
+        let mk3_pure_at_100 = 480.0;
         assert_eq!(
-            machine_throughput_per_minute(mk3_pure_base, 1, 250.0),
-            2400.0
+            machine_throughput_per_minute(mk3_pure_at_100, 1, 250.0),
+            1200.0
         );
     }
 }

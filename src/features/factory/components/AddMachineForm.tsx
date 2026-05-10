@@ -23,15 +23,19 @@ export function AddMachineForm({ factoryId, onSubmitted }: AddMachineFormProps) 
     () => new Map(buildings.data?.map((b) => [b.id, b]) ?? []),
     [buildings.data],
   );
-  const eligibleRecipes = useMemo(
-    () =>
-      (recipes.data ?? []).filter((r) => {
-        if (r.unlockTier > tierCap) return false;
-        const b = buildingsById.get(r.buildingId);
-        return !b || b.unlockTier <= tierCap;
-      }),
-    [recipes.data, buildingsById, tierCap],
-  );
+  // Wait for buildings before deciding eligibility. Treating "building still
+  // loading" as eligible would briefly show recipes the playthrough's tier
+  // should hide, so we hold the list empty until both queries resolve and
+  // skip recipes whose building is genuinely missing from the dataset.
+  const eligibleRecipes = useMemo(() => {
+    if (!recipes.data || !buildings.data) return [];
+    return recipes.data.filter((r) => {
+      if (r.unlockTier > tierCap) return false;
+      const b = buildingsById.get(r.buildingId);
+      if (!b) return false;
+      return b.unlockTier <= tierCap;
+    });
+  }, [recipes.data, buildings.data, buildingsById, tierCap]);
 
   const [recipeId, setRecipeId] = useState("");
   const [count, setCount] = useState(1);
@@ -46,12 +50,15 @@ export function AddMachineForm({ factoryId, onSubmitted }: AddMachineFormProps) 
       setError("Pick a recipe.");
       return;
     }
-    if (count < 1 || count > 10_000) {
-      setError("Count must be between 1 and 10,000.");
+    // `Number.isFinite` rejects NaN / ±Infinity. A cleared `<input
+    // type="number">` resolves to NaN, and bare `count < 1` is false for NaN
+    // so the bad value would slip through to the backend without this guard.
+    if (!Number.isFinite(count) || count < 1 || count > 10_000) {
+      setError("Count must be a number between 1 and 10,000.");
       return;
     }
-    if (clockPct < 1 || clockPct > 250) {
-      setError("Clock must be between 1% and 250%.");
+    if (!Number.isFinite(clockPct) || clockPct < 1 || clockPct > 250) {
+      setError("Clock must be a number between 1% and 250%.");
       return;
     }
     setError(null);
