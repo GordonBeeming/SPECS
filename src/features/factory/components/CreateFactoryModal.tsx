@@ -76,7 +76,7 @@ export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalPro
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Iron Works, Mass Constructor 1, …"
-              className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-primary"
+              className="mt-1 h-10 w-full rounded-md border border-border bg-bg px-3 text-sm text-fg outline-none focus:border-primary"
               maxLength={80}
             />
           </label>

@@ -1,5 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/shared/ui/Button";
+import { FilterSelect } from "@/shared/ui/FilterSelect";
 import { useBuildings, useRecipes } from "@/features/library/hooks/useLibrary";
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { useAddMachine } from "../hooks/useFactories";
@@ -72,18 +73,20 @@ export function AddMachineForm({ factoryId, onSubmitted }: AddMachineFormProps) 
     <form onSubmit={onSubmit} className="grid gap-3 rounded-md border border-border bg-bg-raised/40 p-3 md:grid-cols-[1fr_6rem_8rem_auto] md:items-end">
       <label className="block">
         <span className="text-xs font-medium text-fg-muted">Recipe</span>
-        <select
-          value={recipeId}
-          onChange={(e) => setRecipeId(e.target.value)}
-          className="mt-1 w-full rounded-md border border-border bg-bg px-2 py-1.5 text-sm text-fg outline-none focus:border-primary"
-        >
-          <option value="">— select —</option>
-          {eligibleRecipes.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}{r.isAlt ? " (alt)" : ""}
-            </option>
-          ))}
-        </select>
+        <div className="mt-1">
+          <FilterSelect
+            ariaLabel="Recipe"
+            compact
+            placeholder="Type to filter recipes…"
+            value={recipeId || null}
+            onChange={(next) => setRecipeId(next ?? "")}
+            options={eligibleRecipes.map((r) => ({
+              value: r.id,
+              label: r.name + (r.isAlt ? " (alt)" : ""),
+              hint: buildingsById.get(r.buildingId)?.name,
+            }))}
+          />
+        </div>
       </label>
 
       <label className="block">
@@ -94,7 +97,7 @@ export function AddMachineForm({ factoryId, onSubmitted }: AddMachineFormProps) 
           max={10000}
           value={count}
           onChange={(e) => setCount(Number(e.target.value))}
-          className="mt-1 w-full rounded-md border border-border bg-bg px-2 py-1.5 text-sm text-fg outline-none focus:border-primary tabular-nums"
+          className="mt-1 h-9 w-full rounded-md border border-border bg-bg px-2 text-sm text-fg outline-none focus:border-primary tabular-nums"
         />
       </label>
 
@@ -107,7 +110,7 @@ export function AddMachineForm({ factoryId, onSubmitted }: AddMachineFormProps) 
           step={0.1}
           value={clockPct}
           onChange={(e) => setClockPct(Number(e.target.value))}
-          className="mt-1 w-full rounded-md border border-border bg-bg px-2 py-1.5 text-sm text-fg outline-none focus:border-primary tabular-nums"
+          className="mt-1 h-9 w-full rounded-md border border-border bg-bg px-2 text-sm text-fg outline-none focus:border-primary tabular-nums"
         />
       </label>
 

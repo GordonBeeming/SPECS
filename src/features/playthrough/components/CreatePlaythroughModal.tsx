@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
+import { FilterSelect } from "@/shared/ui/FilterSelect";
 import { useCreatePlaythrough } from "../hooks/usePlaythroughs";
 
 interface CreatePlaythroughModalProps {
@@ -77,24 +78,26 @@ export function CreatePlaythroughModal({ onClose, onCreated }: CreatePlaythrough
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="Iron Run, Tier 9 push, …"
-              className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-primary"
+              className="mt-1 h-10 w-full rounded-md border border-border bg-bg px-3 text-sm text-fg outline-none focus:border-primary"
               maxLength={80}
             />
           </label>
 
           <label className="block">
             <span className="text-sm font-medium text-fg">Starting tier</span>
-            <select
-              value={startingTier}
-              onChange={(e) => setStartingTier(Number(e.target.value))}
-              className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-primary"
-            >
-              {Array.from({ length: 10 }, (_, i) => (
-                <option key={i} value={i}>
-                  Tier {i}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1">
+              <FilterSelect
+                ariaLabel="Starting tier"
+                placeholder="Tier 0"
+                clearable={false}
+                value={String(startingTier)}
+                onChange={(next) => setStartingTier(next ? Number(next) : 0)}
+                options={Array.from({ length: 10 }, (_, i) => ({
+                  value: String(i),
+                  label: `Tier ${i}`,
+                }))}
+              />
+            </div>
             <p className="mt-1 text-xs text-fg-muted">
               Pick the tier you've reached in-game. Library entries above this
               tier will be marked as locked.

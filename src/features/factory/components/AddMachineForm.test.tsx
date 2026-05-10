@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { AddMachineForm } from "./AddMachineForm";
@@ -38,19 +39,29 @@ function renderWithProviders(node: ReactNode) {
   return render(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
 }
 
+async function openRecipeCombobox(user: ReturnType<typeof userEvent.setup>) {
+  // Headless UI renders the listbox only when the combobox is open. ArrowDown
+  // on a focused combobox is the standard ARIA combobox open gesture and is
+  // the most reliable trigger across Headless UI v2 + jsdom.
+  const combobox = await screen.findByRole("combobox", { name: /recipe/i });
+  await user.click(combobox);
+  await user.keyboard("{ArrowDown}");
+  return combobox;
+}
+
 describe("<AddMachineForm /> — tier gating", () => {
   it("only offers recipes the active playthrough has unlocked", async () => {
     vi.spyOn(playthroughApi, "current").mockResolvedValue({
       id: "p", displayName: "Run", gameVersion: "1.1",
       createdAt: "2026-05-10T00:00:00Z", currentTier: 0, currentMilestoneProgress: 0,
     });
+    const user = userEvent.setup();
     renderWithProviders(<AddMachineForm factoryId="f1" />);
+    await openRecipeCombobox(user);
     await waitFor(() => {
-      const select = screen.getByLabelText(/recipe/i) as HTMLSelectElement;
-      const options = Array.from(select.options).map((o) => o.text);
-      expect(options).toContain("Iron Ingot");
-      expect(options).not.toContain("Rotor");
+      expect(screen.getByRole("option", { name: /Iron Ingot/i })).toBeInTheDocument();
     });
+    expect(screen.queryByRole("option", { name: /Rotor/i })).toBeNull();
   });
 
   it("offers higher-tier recipes once the playthrough catches up", async () => {
@@ -58,23 +69,23 @@ describe("<AddMachineForm /> — tier gating", () => {
       id: "p", displayName: "Run", gameVersion: "1.1",
       createdAt: "2026-05-10T00:00:00Z", currentTier: 1, currentMilestoneProgress: 0,
     });
+    const user = userEvent.setup();
     renderWithProviders(<AddMachineForm factoryId="f1" />);
+    await openRecipeCombobox(user);
     await waitFor(() => {
-      const select = screen.getByLabelText(/recipe/i) as HTMLSelectElement;
-      const options = Array.from(select.options).map((o) => o.text);
-      expect(options).toContain("Iron Ingot");
-      expect(options).toContain("Rotor");
+      expect(screen.getByRole("option", { name: /Iron Ingot/i })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: /Rotor/i })).toBeInTheDocument();
     });
   });
 
   it("offers everything when no playthrough is active", async () => {
     vi.spyOn(playthroughApi, "current").mockResolvedValue(null);
+    const user = userEvent.setup();
     renderWithProviders(<AddMachineForm factoryId="f1" />);
+    await openRecipeCombobox(user);
     await waitFor(() => {
-      const select = screen.getByLabelText(/recipe/i) as HTMLSelectElement;
-      const options = Array.from(select.options).map((o) => o.text);
-      expect(options).toContain("Iron Ingot");
-      expect(options).toContain("Rotor");
+      expect(screen.getByRole("option", { name: /Iron Ingot/i })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: /Rotor/i })).toBeInTheDocument();
     });
   });
 });
