@@ -9,6 +9,7 @@ mod shared;
 
 use tauri::Manager;
 
+use features::playthrough::state::ActivePlaythrough;
 use shared::db::app_db::AppDb;
 use shared::gamedata::GameData;
 use shared::paths::{app_db_path, ensure_dir, playthroughs_dir};
@@ -55,6 +56,11 @@ pub fn run() {
                 AppDb::open(&db_path).map_err(|e| format!("opening app db: {e:#}"))?;
             tracing::info!(path = %db_path.display(), "app db ready");
             app.manage(app_db);
+
+            // No playthrough open at startup — user picks one from the
+            // header switcher (or creates a new one) before per-playthrough
+            // slices have anything to operate on.
+            app.manage(ActivePlaythrough::empty());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -66,6 +72,13 @@ pub fn run() {
             features::library::commands::library_milestones,
             features::library::commands::library_belt_tiers,
             features::library::commands::library_pipe_tiers,
+            features::playthrough::commands::create_playthrough,
+            features::playthrough::commands::list_playthroughs,
+            features::playthrough::commands::open_playthrough,
+            features::playthrough::commands::close_playthrough,
+            features::playthrough::commands::current_playthrough,
+            features::playthrough::commands::set_current_tier,
+            features::playthrough::commands::delete_playthrough,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

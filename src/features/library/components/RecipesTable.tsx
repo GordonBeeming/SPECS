@@ -1,6 +1,7 @@
 import { useBuildings, useItems, useRecipes } from "../hooks/useLibrary";
 import type { Recipe } from "../types";
 import { LibraryTable, type Column } from "./LibraryTable";
+import { TierBadge } from "./TierBadge";
 
 function formatIo(io: { itemId: string; perMinute: number }, itemName: (id: string) => string) {
   return `${io.perMinute.toLocaleString()} ${itemName(io.itemId)}/min`;
@@ -40,7 +41,7 @@ export function RecipesTable() {
       cell: (r) => r.outputs.map((io) => formatIo(io, itemName)).join(" + "),
     },
     { header: "Cycle (s)", cell: (r) => r.cycleSeconds.toFixed(1), align: "right" },
-    { header: "Unlocks at", cell: (r) => `Tier ${r.unlockTier}`, align: "right" },
+    { header: "Unlocks at", cell: (r) => <TierBadge unlockTier={r.unlockTier} />, align: "right" },
   ];
 
   return (

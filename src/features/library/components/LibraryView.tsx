@@ -33,7 +33,8 @@ export function LibraryView() {
             <h1 className="text-xl font-semibold text-primary">Library</h1>
             <p className="mt-1 text-sm text-fg-muted">
               Read-only browser over the bundled Satisfactory game data.
-              Milestone gating overlays land in Phase&nbsp;3.
+              Open a playthrough from the header to see locked-tier overlays
+              on buildings, recipes, and milestones.
             </p>
           </div>
           {summary.isError ? (

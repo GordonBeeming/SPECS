@@ -1,0 +1,18 @@
+import { invoke } from "@/shared/tauri/invoke";
+import type {
+  CreatePlaythroughInput,
+  PlaythroughDetail,
+  PlaythroughSummary,
+} from "./types";
+
+export const playthroughApi = {
+  list: () => invoke<PlaythroughSummary[]>("list_playthroughs"),
+  current: () => invoke<PlaythroughDetail | null>("current_playthrough"),
+  create: (input: CreatePlaythroughInput) =>
+    invoke<PlaythroughDetail>("create_playthrough", { input }),
+  open: (id: string) => invoke<PlaythroughDetail>("open_playthrough", { id }),
+  close: () => invoke<void>("close_playthrough"),
+  setCurrentTier: (tier: number) =>
+    invoke<PlaythroughDetail>("set_current_tier", { tier }),
+  delete: (id: string) => invoke<void>("delete_playthrough", { id }),
+};
