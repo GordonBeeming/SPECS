@@ -189,6 +189,104 @@ pub fn delete_playthrough(
     Ok(())
 }
 
+/// Copy the active playthrough's `.specsdb` file to a destination
+/// path. The user's React side picks the path (file picker integration
+/// lands as a follow-up; for now the path is supplied directly so the
+/// command stays useful in the absence of a plugin). Returns the
+/// destination path on success so the UI can confirm what landed.
+#[tauri::command]
+pub fn export_playthrough(
+    active: State<ActivePlaythrough>,
+    app_db: State<AppDb>,
+    destination_path: String,
+) -> AppResult<String> {
+    let id = active
+        .id()
+        .ok_or_else(|| AppError::Invalid("no active playthrough".into()))?;
+    let source = app_db
+        .with(|c| repo::registry_get_path(c, &id).map_err(AppError::from))?
+        .ok_or_else(|| AppError::NotFound(format!("playthrough {id} not in registry")))?;
+    let dest = PathBuf::from(&destination_path);
+    if let Some(parent) = dest.parent() {
+        if !parent.as_os_str().is_empty() {
+            ensure_dir(parent).map_err(AppError::from)?;
+        }
+    }
+    std::fs::copy(&source, &dest).map_err(|e| {
+        AppError::Internal(format!(
+            "failed to copy {source} -> {}: {e}",
+            destination_path
+        ))
+    })?;
+    Ok(destination_path)
+}
+
+/// Import a `.specsdb` from anywhere on disk into the managed
+/// playthroughs directory. Adds a new registry row pointing at the
+/// imported file (with a fresh uuid for the registry id, distinct
+/// from any uuid the file might internally reference). Returns the
+/// new registry summary so the React side can switch to it.
+#[tauri::command]
+pub fn import_playthrough(
+    handle: AppHandle,
+    app_db: State<AppDb>,
+    source_path: String,
+    display_name: String,
+) -> AppResult<PlaythroughSummary> {
+    validate_name(&display_name)?;
+    let source = PathBuf::from(&source_path);
+    if !source.exists() {
+        return Err(AppError::Invalid(format!(
+            "source file does not exist: {source_path}"
+        )));
+    }
+    if source.extension().and_then(|s| s.to_str()) != Some("specsdb") {
+        return Err(AppError::Invalid(
+            "source file must have a .specsdb extension".into(),
+        ));
+    }
+    // Open the file as a playthrough DB to validate it has the
+    // expected schema BEFORE we copy it into the managed directory —
+    // without this an arbitrary SQLite file (or worse, a non-SQLite
+    // file that just ends in .specsdb) would be silently registered
+    // and then break the next time the user opened it.
+    PlaythroughDb::open(&source).map_err(|e| {
+        AppError::Invalid(format!(
+            "source file isn't a valid playthrough .specsdb: {e:#}"
+        ))
+    })?;
+
+    let pt_dir = playthroughs_dir(&handle).map_err(AppError::from)?;
+    ensure_dir(&pt_dir).map_err(AppError::from)?;
+    let id = Uuid::new_v4().to_string();
+    let dest = pt_dir.join(format!("{id}.specsdb"));
+    std::fs::copy(&source, &dest).map_err(|e| {
+        AppError::Internal(format!(
+            "failed to copy {source_path} -> {}: {e}",
+            dest.display()
+        ))
+    })?;
+    let now = now_iso();
+    app_db.with(|c| {
+        repo::registry_insert(
+            c,
+            &id,
+            display_name.trim(),
+            &dest.to_string_lossy(),
+            SCHEMA_VERSION,
+            &now,
+        )
+        .map_err(AppError::from)
+    })?;
+    Ok(PlaythroughSummary {
+        id,
+        display_name: display_name.trim().to_string(),
+        created_at: now.clone(),
+        last_opened_at: Some(now),
+        schema_version: SCHEMA_VERSION,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     //! These tests exercise the validators and the wired-together repo flow

@@ -61,3 +61,20 @@ export function useDeletePlaythrough() {
     onSuccess: () => invalidatePlaythroughs(client),
   });
 }
+
+export function useExportPlaythrough() {
+  // Export is read-only — no need to invalidate caches; the
+  // playthrough list / current selection don't change.
+  return useMutation({
+    mutationFn: (destinationPath: string) => playthroughApi.export(destinationPath),
+  });
+}
+
+export function useImportPlaythrough() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { sourcePath: string; displayName: string }) =>
+      playthroughApi.import(vars.sourcePath, vars.displayName),
+    onSuccess: () => invalidatePlaythroughs(client),
+  });
+}

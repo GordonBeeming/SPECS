@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, FolderOpen, Plus } from "lucide-react";
+import { ChevronDown, FolderOpen, Plus, Share2 } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import {
   useCurrentPlaythrough,
@@ -7,10 +7,12 @@ import {
   usePlaythroughList,
 } from "../hooks/usePlaythroughs";
 import { CreatePlaythroughModal } from "./CreatePlaythroughModal";
+import { ExportImportModal } from "./ExportImportModal";
 
 export function PlaythroughSwitcher() {
   const [open, setOpen] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const list = usePlaythroughList();
   const current = useCurrentPlaythrough();
   const openMut = useOpenPlaythrough();
@@ -86,11 +88,23 @@ export function PlaythroughSwitcher() {
               <Plus className="h-4 w-4" />
               New playthrough
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowShare(true);
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-fg hover:bg-border"
+            >
+              <Share2 className="h-4 w-4" />
+              Share / Import…
+            </button>
           </div>
         </div>
       )}
 
       {showCreate && <CreatePlaythroughModal onClose={() => setShowCreate(false)} />}
+      {showShare && <ExportImportModal onClose={() => setShowShare(false)} />}
     </div>
   );
 }
