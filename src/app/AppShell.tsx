@@ -5,7 +5,9 @@ import {
   LayoutDashboard,
   Moon,
   Network,
+  Share2,
   Sun,
+  TrainTrack,
 } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
@@ -14,14 +16,18 @@ import { HealthBadge } from "@/features/health/components/HealthBadge";
 import { LibraryView } from "@/features/library/components/LibraryView";
 import { FactoryListView } from "@/features/factory/components/FactoryListView";
 import { LogisticsListView } from "@/features/logistics/components/LogisticsListView";
+import { TrainRoutesView } from "@/features/trains/components/TrainRoutesView";
+import { NetworkView } from "@/features/network/components/NetworkView";
 import { PlaythroughSwitcher } from "@/features/playthrough/components/PlaythroughSwitcher";
 
-type Route = "home" | "factories" | "logistics" | "library";
+type Route = "home" | "factories" | "logistics" | "trains" | "network" | "library";
 
 const NAV: ReadonlyArray<{ id: Route; label: string; Icon: typeof BookOpen }> = [
   { id: "home", label: "Home", Icon: LayoutDashboard },
+  { id: "network", label: "Network", Icon: Share2 },
   { id: "factories", label: "Factories", Icon: FactoryIcon },
   { id: "logistics", label: "Logistics", Icon: Network },
+  { id: "trains", label: "Trains", Icon: TrainTrack },
   { id: "library", label: "Library", Icon: BookOpen },
 ];
 
@@ -74,8 +80,10 @@ export function AppShell() {
 
         <main className="flex-1 overflow-auto p-6">
           {route === "home" && <HomePanel />}
+          {route === "network" && <NetworkView />}
           {route === "factories" && <FactoryListView />}
           {route === "logistics" && <LogisticsListView />}
+          {route === "trains" && <TrainRoutesView />}
           {route === "library" && <LibraryView />}
         </main>
       </div>

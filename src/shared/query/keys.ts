@@ -30,4 +30,8 @@ export const queryKeys = {
     plan: (itemId: string, ipm: number, distanceM: number | null) =>
       ["logistics", "plan", itemId, ipm, distanceM] as const,
   },
+  trains: {
+    list: ["trains", "list"] as const,
+    detail: (id: string) => ["trains", "detail", id] as const,
+  },
 };
