@@ -1,0 +1,159 @@
+//! Indexed, immutable view of the bundled game data.
+//!
+//! Wraps the parsed [`GameDataFile`] with id-keyed lookups and cheap clones
+//! (the underlying data is `Arc`'d). Slices borrow this from Tauri state.
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use anyhow::Result;
+
+use super::loader::load_bundled;
+use super::types::*;
+
+#[derive(Clone)]
+pub struct GameData {
+    inner: Arc<Inner>,
+}
+
+// Lookup tables are populated for use by future slices (Phase 4+ — factory
+// machine config, logistics planner, etc.). Suppressed warning until then.
+#[allow(dead_code)]
+struct Inner {
+    file: GameDataFile,
+    items_by_id: HashMap<String, usize>,
+    buildings_by_id: HashMap<String, usize>,
+    recipes_by_id: HashMap<String, usize>,
+    milestones_by_id: HashMap<String, usize>,
+}
+
+impl GameData {
+    /// Load + index the bundled dataset.
+    pub fn from_bundled() -> Result<Self> {
+        Self::from_file(load_bundled()?)
+    }
+
+    pub fn from_file(file: GameDataFile) -> Result<Self> {
+        let items_by_id = file
+            .items
+            .iter()
+            .enumerate()
+            .map(|(i, it)| (it.id.clone(), i))
+            .collect();
+        let buildings_by_id = file
+            .buildings
+            .iter()
+            .enumerate()
+            .map(|(i, b)| (b.id.clone(), i))
+            .collect();
+        let recipes_by_id = file
+            .recipes
+            .iter()
+            .enumerate()
+            .map(|(i, r)| (r.id.clone(), i))
+            .collect();
+        let milestones_by_id = file
+            .milestones
+            .iter()
+            .enumerate()
+            .map(|(i, m)| (m.id.clone(), i))
+            .collect();
+        Ok(Self {
+            inner: Arc::new(Inner {
+                file,
+                items_by_id,
+                buildings_by_id,
+                recipes_by_id,
+                milestones_by_id,
+            }),
+        })
+    }
+
+    pub fn version(&self) -> &str {
+        &self.inner.file.version
+    }
+
+    pub fn game_version(&self) -> &str {
+        &self.inner.file.game_version
+    }
+
+    pub fn items(&self) -> &[Item] {
+        &self.inner.file.items
+    }
+
+    pub fn buildings(&self) -> &[Building] {
+        &self.inner.file.buildings
+    }
+
+    pub fn recipes(&self) -> &[Recipe] {
+        &self.inner.file.recipes
+    }
+
+    pub fn milestones(&self) -> &[Milestone] {
+        &self.inner.file.milestones
+    }
+
+    pub fn belt_tiers(&self) -> &[BeltTier] {
+        &self.inner.file.belt_tiers
+    }
+
+    pub fn pipe_tiers(&self) -> &[PipeTier] {
+        &self.inner.file.pipe_tiers
+    }
+
+    // Lookup helpers — wired up for use by Phase 4+ slices (factory editor,
+    // logistics planner). Quiet the dead-code warning until those land.
+
+    #[allow(dead_code)]
+    pub fn item(&self, id: &str) -> Option<&Item> {
+        self.inner.items_by_id.get(id).map(|i| &self.inner.file.items[*i])
+    }
+
+    #[allow(dead_code)]
+    pub fn building(&self, id: &str) -> Option<&Building> {
+        self.inner
+            .buildings_by_id
+            .get(id)
+            .map(|i| &self.inner.file.buildings[*i])
+    }
+
+    #[allow(dead_code)]
+    pub fn recipe(&self, id: &str) -> Option<&Recipe> {
+        self.inner
+            .recipes_by_id
+            .get(id)
+            .map(|i| &self.inner.file.recipes[*i])
+    }
+
+    #[allow(dead_code)]
+    pub fn milestone(&self, id: &str) -> Option<&Milestone> {
+        self.inner
+            .milestones_by_id
+            .get(id)
+            .map(|i| &self.inner.file.milestones[*i])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fx() -> GameData {
+        GameData::from_bundled().expect("bundled")
+    }
+
+    #[test]
+    fn lookup_by_id_returns_inserted_records() {
+        let gd = fx();
+        let first_item = &gd.items()[0];
+        assert_eq!(gd.item(&first_item.id).map(|i| &i.id), Some(&first_item.id));
+        assert!(gd.item("not-a-real-id").is_none());
+    }
+
+    #[test]
+    fn version_fields_present() {
+        let gd = fx();
+        assert!(!gd.version().is_empty());
+        assert!(!gd.game_version().is_empty());
+    }
+}
