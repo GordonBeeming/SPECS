@@ -28,11 +28,12 @@ export function useToggleAlt() {
   return useMutation({
     mutationFn: (input: ToggleAltRecipeInput) => altsApi.toggle(input),
     onSuccess: () => {
+      // Only the alts cache changes — factory rows + their machine
+      // configs are unaffected by toggling an alt's lock state. The
+      // recipe picker reads `useUnlockedAlts()` directly so it
+      // re-renders when this query refreshes; no need to bust the
+      // factory caches.
       client.invalidateQueries({ queryKey: queryKeys.alts.list });
-      // The recipe picker filters by unlocked-alts, so factory detail
-      // caches need a kick too — the new toggle changes the visible
-      // recipe set on AddMachineForm.
-      client.invalidateQueries({ queryKey: queryKeys.factory.list });
     },
   });
 }
