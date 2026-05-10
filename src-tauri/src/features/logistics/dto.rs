@@ -2,9 +2,10 @@ use serde::{Deserialize, Serialize};
 
 /// Inputs to the planner: "I want to move N ipm of item X to a destination
 /// that is D metres away, and my playthrough is unlocked through tier T."
-/// The planner returns a ranked list of plans built from the unlocked
-/// transport tiers only — anything requiring a higher tier comes back with
-/// `locked = true` so the UI can grey it out and explain why.
+/// The planner returns a ranked list of plans across every belt/pipe tier
+/// in the dataset — including ones the playthrough hasn't unlocked yet,
+/// flagged with `locked = true` so the UI can grey them out and explain
+/// the gate instead of hiding viable options.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,8 +55,11 @@ pub struct TransportSegment {
 }
 
 /// One viable way to satisfy the requested throughput. The planner returns
-/// these in rank order — fewest segments first, then closest to 100%
-/// utilisation — so the UI can present them top-down.
+/// these in rank order — fewest total belts/pipes (summed across every
+/// segment) first, then closest to 100% utilisation — so the UI can
+/// present them top-down. "Total units" means a 1×Mk6 plan beats a
+/// 1×Mk5 + 1×Mk1 plan because the former is one belt to build vs two,
+/// even though both are cheap to lay out conceptually.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]

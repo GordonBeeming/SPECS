@@ -253,7 +253,9 @@ fn build_plan(
 }
 
 /// Sort + deduplicate + cap. Plans are ranked by:
-/// 1. Lower total segment count first (fewer belts = less work to build)
+/// 1. Lower total *unit* count first (sum of `segment.count` across all
+///    segments — fewer belts/pipes = less infrastructure to build).
+///    A 1×Mk6 plan (1 unit) ranks above a 1×Mk5 + 1×Mk1 plan (2 units).
 /// 2. Higher utilisation second (closer to 100% = less wasted infra)
 /// 3. Lower min_unlock_tier third (cheaper to unlock if otherwise tied)
 fn finalise_plans(mut plans: Vec<TransportPlan>) -> Vec<TransportPlan> {
@@ -396,16 +398,20 @@ mod tests {
     }
 
     #[test]
-    fn plans_are_ranked_by_segment_count_then_utilisation() {
+    fn plans_are_ranked_by_total_unit_count_then_utilisation() {
         let plans = plan_belts(450.0, &all_belts(), 9);
-        // Walk the rankings — total counts should be non-decreasing.
-        let counts: Vec<u32> = plans
+        // Walk the rankings — total belts (summed across segments) must be
+        // non-decreasing.
+        let unit_counts: Vec<u32> = plans
             .iter()
             .map(|p| p.segments.iter().map(|s| s.count).sum())
             .collect();
-        let mut sorted = counts.clone();
+        let mut sorted = unit_counts.clone();
         sorted.sort();
-        assert_eq!(counts, sorted, "plans must be ranked by segment count ASC");
+        assert_eq!(
+            unit_counts, sorted,
+            "plans must be ranked by total unit count ASC"
+        );
     }
 
     #[test]
