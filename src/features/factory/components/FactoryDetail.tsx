@@ -5,6 +5,19 @@ import { useFactoryDetail, useRemoveMachine } from "../hooks/useFactories";
 import { useBuildings, useItems, useRecipes } from "@/features/library/hooks/useLibrary";
 import { AddMachineForm } from "./AddMachineForm";
 import { FactoryLedgerTable } from "./FactoryLedgerTable";
+import type { FactoryMachine } from "../types";
+import { ampSlotsForBuilding } from "../ampRules";
+
+function formatAmpSummary(m: FactoryMachine): string {
+  const parts: string[] = [];
+  if (m.useSomersloop && m.somersloopSlotsFilled > 0) {
+    parts.push(`${m.somersloopSlotsFilled}/${ampSlotsForBuilding(m.buildingId)} S`);
+  }
+  if (m.powerShardCount > 0) {
+    parts.push(`${m.powerShardCount}× PS`);
+  }
+  return parts.length === 0 ? "—" : parts.join(" · ");
+}
 
 interface FactoryDetailProps {
   factoryId: string;
