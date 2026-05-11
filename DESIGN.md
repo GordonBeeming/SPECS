@@ -146,6 +146,62 @@ If Coffee Stain ever objects, swap to "extract from the player's local
 install on first run". The `<Icon itemId="…" />` component abstracts the
 source — only the glob path changes.
 
+## Map view
+
+The Map tab renders the bundled `src/assets/map/satisfactory-map.webp`
+(2048×1981, ~325 KB) as a flat background with two layers on top:
+node markers + draggable factory pins.
+
+- **Node markers** are 6 px dots for unclaimed, 10 px for claimed.
+  Purity colours: Pure `#facc15` (gold), Normal `#94a3b8` (silver),
+  Impure `#b45309` (copper). Tooltip carries resource name + purity +
+  current ipm when claimed.
+- **Factory pins** are rounded chips with the factory's icon + name.
+  Drag-to-move writes straight to `factory.world_x/world_y` via the
+  `set_factory_position` Tauri command — no intermediate buffer; the
+  database is the source of truth.
+- **Node data source:** the `nodes.json` catalog is derived from
+  satisfactory-calculator.com's interactive-map JSON
+  (`mapData/en-Stable.json`); per-purity counts + 3D coordinates for
+  every ore, oil seep, fracking satellite, water well, nitrogen well,
+  and geothermal vent. Credited in About.
+- **Map image source:** community high-res game map (the same
+  artwork SCIM uses, downsampled to 2048 px wide for bundle size).
+  Used under Coffee Stain's fan-content policy.
+- **Coordinate transform:** `src/features/map/transform.ts` maps
+  in-game (x, y) to image pct. The world bounds are empirical
+  approximations against the bundled catalog — if pins land
+  off-target on the released map, tweak `WORLD_BOUNDS` rather than
+  touching the renderer.
+
+## Factory graph view
+
+Factory detail no longer renders machines as a table — the canonical
+view is an `@xyflow/react` graph laid out with `dagre` (LR rank
+direction, 240×110 px cards, 80 px rank gap). Drag persists per
+machine via a new `factory_machine_layout` table so the user's
+nudges survive reloads. Edges are heuristically drawn between any
+two machines whose recipes share an input/output item; they animate
+to convey flow direction. This is a stand-in for true machine-to-
+machine routing (factories currently only model bulk inputs/outputs
+at their boundaries) and will tighten when that lands.
+
+## Planner
+
+The Planner tab takes a target item + ipm and walks the bundled
+recipe graph leaves-first, supply-aware:
+
+- A recipe is "supply-viable" if every input traces back to a
+  claimed extracted resource (or another supply-viable recipe). The
+  picker prefers supply-viable candidates over structural-only ones
+  so "Pure Iron Ingot" is silently unavailable without water rather
+  than producing a chain you can't build.
+- If no supply-viable chain exists, the planner builds a structural
+  fallback so the final raw-demand vs. claim-supply diff surfaces
+  a precise `Insufficient` error (with the exact ipm gap per item).
+- Apply materialises one factory per stage, wires logistics links
+  between consecutive stages, all in a single SQLite transaction.
+
 ## Accessibility
 
 - Every text/background pair WCAG AA verified before committing a token change.
