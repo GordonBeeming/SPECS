@@ -27,24 +27,11 @@ export function FactoryDetail({ factoryId }: FactoryDetailProps) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingIcon, setEditingIcon] = useState(false);
 
-  if (detail.isError) {
-    return (
-      <div role="alert" className="m-3 rounded-md border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
-        Couldn't load this factory
-        {detail.error instanceof Error ? `: ${detail.error.message}` : null}
-      </div>
-    );
-  }
-  if (detail.isPending || !detail.data) {
-    return <div className="m-3 text-sm text-fg-muted">Loading factory…</div>;
-  }
-
-  const { factory, machines, ledger } = detail.data;
-  // Memoise the lookup Maps + layout Map so the FactoryGraphView's
-  // initialNodes useMemo doesn't see a fresh identity every render
-  // (that path led to a `setNodes` ↔ `useEffect` infinite loop
-  // through xyflow's StoreUpdater, surfaced as "Maximum update depth
-  // exceeded" inside ReactFlow's Wrapper).
+  // Memoise the lookup Maps + layout Map BEFORE any early return so
+  // the hook count stays constant across renders (Rules of Hooks).
+  // Stable identity also breaks the FactoryGraphView setNodes ↔
+  // useEffect loop that surfaced as "Maximum update depth exceeded"
+  // inside ReactFlow's Wrapper.
   const buildingNames = useMemo(
     () => new Map(buildings.data?.map((b) => [b.id, b.name]) ?? []),
     [buildings.data],
@@ -64,6 +51,20 @@ export function FactoryDetail({ factoryId }: FactoryDetailProps) {
       ),
     [layouts.data],
   );
+
+  if (detail.isError) {
+    return (
+      <div role="alert" className="m-3 rounded-md border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
+        Couldn't load this factory
+        {detail.error instanceof Error ? `: ${detail.error.message}` : null}
+      </div>
+    );
+  }
+  if (detail.isPending || !detail.data) {
+    return <div className="m-3 text-sm text-fg-muted">Loading factory…</div>;
+  }
+
+  const { factory, machines, ledger } = detail.data;
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-auto">
