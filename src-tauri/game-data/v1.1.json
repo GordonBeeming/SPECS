@@ -1,0 +1,6589 @@
+{
+  "version": "1.1",
+  "gameVersion": "1.1",
+  "items": [
+    {
+      "id": "Desc_SpaceElevatorPart_5_C",
+      "name": "Adaptive Control Unit",
+      "category": "part",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_CircuitBoardHighSpeed_C",
+      "name": "AI Limiter",
+      "category": "part",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_AluminumPlate_C",
+      "name": "Alclad Aluminum Sheet",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_AlienDNACapsule_C",
+      "name": "Alien DNA Capsule",
+      "category": "special",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_AlienProtein_C",
+      "name": "Alien Protein",
+      "category": "special",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_AluminaSolution_C",
+      "name": "Alumina Solution",
+      "category": "fluid",
+      "stackSize": 50000,
+      "isFluid": true
+    },
+    {
+      "id": "Desc_AluminumCasing_C",
+      "name": "Aluminum Casing",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_AluminumIngot_C",
+      "name": "Aluminum Ingot",
+      "category": "ingot",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_AluminumScrap_C",
+      "name": "Aluminum Scrap",
+      "category": "part",
+      "stackSize": 500,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_SpaceElevatorPart_7_C",
+      "name": "Assembly Director System",
+      "category": "part",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_SpaceElevatorPart_3_C",
+      "name": "Automated Wiring",
+      "category": "part",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Battery_C",
+      "name": "Battery",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_OreBauxite_C",
+      "name": "Bauxite",
+      "category": "raw",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "BP_EquipmentDescriptorBeacon_C",
+      "name": "Beacon",
+      "category": "part",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_GenericBiomass_C",
+      "name": "Biomass",
+      "category": "raw",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Gunpowder_C",
+      "name": "Black Powder",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Crystal_C",
+      "name": "Blue Power Slug",
+      "category": "part",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Cable_C",
+      "name": "Cable",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_GoldIngot_C",
+      "name": "Caterium Ingot",
+      "category": "ingot",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_OreGold_C",
+      "name": "Caterium Ore",
+      "category": "raw",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_CircuitBoard_C",
+      "name": "Circuit Board",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_NobeliskCluster_C",
+      "name": "Cluster Nobelisk",
+      "category": "ammo",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Coal_C",
+      "name": "Coal",
+      "category": "raw",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_ColorCartridge_C",
+      "name": "Color Cartridge",
+      "category": "ammo",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_CompactedCoal_C",
+      "name": "Compacted Coal",
+      "category": "part",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Computer_C",
+      "name": "Computer",
+      "category": "component",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Cement_C",
+      "name": "Concrete",
+      "category": "part",
+      "stackSize": 500,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_CoolingSystem_C",
+      "name": "Cooling System",
+      "category": "part",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_CopperIngot_C",
+      "name": "Copper Ingot",
+      "category": "ingot",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_OreCopper_C",
+      "name": "Copper Ore",
+      "category": "raw",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_CopperDust_C",
+      "name": "Copper Powder",
+      "category": "part",
+      "stackSize": 500,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_CopperSheet_C",
+      "name": "Copper Sheet",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_LiquidOil_C",
+      "name": "Crude Oil",
+      "category": "fluid",
+      "stackSize": 50000,
+      "isFluid": true
+    },
+    {
+      "id": "Desc_CrystalOscillator_C",
+      "name": "Crystal Oscillator",
+      "category": "part",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_ElectromagneticControlRod_C",
+      "name": "Electromagnetic Control Rod",
+      "category": "part",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_FluidCanister_C",
+      "name": "Empty Canister",
+      "category": "part",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_GasTank_C",
+      "name": "Empty Fluid Tank",
+      "category": "part",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_SteelPlateReinforced_C",
+      "name": "Encased Industrial Beam",
+      "category": "part",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_PlutoniumCell_C",
+      "name": "Encased Plutonium Cell",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_UraniumCell_C",
+      "name": "Encased Uranium Cell",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Rebar_Explosive_C",
+      "name": "Explosive Rebar",
+      "category": "ammo",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Fabric_C",
+      "name": "Fabric",
+      "category": "part",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_FlowerPetals_C",
+      "name": "Flower Petals",
+      "category": "raw",
+      "stackSize": 500,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_LiquidFuel_C",
+      "name": "Fuel",
+      "category": "fluid",
+      "stackSize": 50000,
+      "isFluid": true
+    },
+    {
+      "id": "Desc_ModularFrameFused_C",
+      "name": "Fused Modular Frame",
+      "category": "component",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Filter_C",
+      "name": "Gas Filter",
+      "category": "part",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_NobeliskGas_C",
+      "name": "Gas Nobelisk",
+      "category": "ammo",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_HatcherParts_C",
+      "name": "Hatcher Remains",
+      "category": "special",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_AluminumPlateReinforced_C",
+      "name": "Heat Sink",
+      "category": "part",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_ModularFrameHeavy_C",
+      "name": "Heavy Modular Frame",
+      "category": "component",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_HeavyOilResidue_C",
+      "name": "Heavy Oil Residue",
+      "category": "fluid",
+      "stackSize": 50000,
+      "isFluid": true
+    },
+    {
+      "id": "Desc_HighSpeedConnector_C",
+      "name": "High-Speed Connector",
+      "category": "component",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_HogParts_C",
+      "name": "Hog Remains",
+      "category": "special",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_CartridgeSmartProjectile_C",
+      "name": "Homing Rifle Ammo",
+      "category": "ammo",
+      "stackSize": 500,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_HazmatFilter_C",
+      "name": "Iodine Infused Filter",
+      "category": "part",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_IronIngot_C",
+      "name": "Iron Ingot",
+      "category": "ingot",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_OreIron_C",
+      "name": "Iron Ore",
+      "category": "raw",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_IronPlate_C",
+      "name": "Iron Plate",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_SpikedRebar_C",
+      "name": "Iron Rebar",
+      "category": "ammo",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_IronRod_C",
+      "name": "Iron Rod",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Leaves_C",
+      "name": "Leaves",
+      "category": "raw",
+      "stackSize": 500,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Stone_C",
+      "name": "Limestone",
+      "category": "raw",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_LiquidBiofuel_C",
+      "name": "Liquid Biofuel",
+      "category": "fluid",
+      "stackSize": 50000,
+      "isFluid": true
+    },
+    {
+      "id": "Desc_SpaceElevatorPart_6_C",
+      "name": "Magnetic Field Generator",
+      "category": "part",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_SpaceElevatorPart_4_C",
+      "name": "Modular Engine",
+      "category": "part",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_ModularFrame_C",
+      "name": "Modular Frame",
+      "category": "component",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Motor_C",
+      "name": "Motor",
+      "category": "part",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Mycelia_C",
+      "name": "Mycelia",
+      "category": "raw",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_NitricAcid_C",
+      "name": "Nitric Acid",
+      "category": "fluid",
+      "stackSize": 50000,
+      "isFluid": true
+    },
+    {
+      "id": "Desc_NitrogenGas_C",
+      "name": "Nitrogen Gas",
+      "category": "fluid",
+      "stackSize": 50000,
+      "isFluid": true
+    },
+    {
+      "id": "Desc_NobeliskExplosive_C",
+      "name": "Nobelisk",
+      "category": "ammo",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_NonFissibleUranium_C",
+      "name": "Non-fissile Uranium",
+      "category": "part",
+      "stackSize": 500,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_SpaceElevatorPart_9_C",
+      "name": "Nuclear Pasta",
+      "category": "part",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_NobeliskNuke_C",
+      "name": "Nuke Nobelisk",
+      "category": "ammo",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_PackagedAlumina_C",
+      "name": "Packaged Alumina Solution",
+      "category": "fluid",
+      "stackSize": 100,
+      "isFluid": true
+    },
+    {
+      "id": "Desc_Fuel_C",
+      "name": "Packaged Fuel",
+      "category": "fluid",
+      "stackSize": 100,
+      "isFluid": true
+    },
+    {
+      "id": "Desc_PackagedOilResidue_C",
+      "name": "Packaged Heavy Oil Residue",
+      "category": "fluid",
+      "stackSize": 100,
+      "isFluid": true
+    },
+    {
+      "id": "Desc_PackagedBiofuel_C",
+      "name": "Packaged Liquid Biofuel",
+      "category": "fluid",
+      "stackSize": 100,
+      "isFluid": true
+    },
+    {
+      "id": "Desc_PackagedNitricAcid_C",
+      "name": "Packaged Nitric Acid",
+      "category": "fluid",
+      "stackSize": 100,
+      "isFluid": true
+    },
+    {
+      "id": "Desc_PackagedNitrogenGas_C",
+      "name": "Packaged Nitrogen Gas",
+      "category": "fluid",
+      "stackSize": 100,
+      "isFluid": true
+    },
+    {
+      "id": "Desc_PackagedOil_C",
+      "name": "Packaged Oil",
+      "category": "part",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_PackagedSulfuricAcid_C",
+      "name": "Packaged Sulfuric Acid",
+      "category": "fluid",
+      "stackSize": 100,
+      "isFluid": true
+    },
+    {
+      "id": "Desc_TurboFuel_C",
+      "name": "Packaged Turbofuel",
+      "category": "fluid",
+      "stackSize": 100,
+      "isFluid": true
+    },
+    {
+      "id": "Desc_PackagedWater_C",
+      "name": "Packaged Water",
+      "category": "fluid",
+      "stackSize": 100,
+      "isFluid": true
+    },
+    {
+      "id": "Desc_PetroleumCoke_C",
+      "name": "Petroleum Coke",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_SpitterParts_C",
+      "name": "Plasma Spitter Remains",
+      "category": "special",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Plastic_C",
+      "name": "Plastic",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_PlutoniumFuelRod_C",
+      "name": "Plutonium Fuel Rod",
+      "category": "part",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_PlutoniumPellet_C",
+      "name": "Plutonium Pellet",
+      "category": "part",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_PolymerResin_C",
+      "name": "Polymer Resin",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "BP_ItemDescriptorPortableMiner_C",
+      "name": "Portable Miner",
+      "category": "part",
+      "stackSize": 1,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_CrystalShard_C",
+      "name": "Power Shard",
+      "category": "special",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_PressureConversionCube_C",
+      "name": "Pressure Conversion Cube",
+      "category": "part",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_NobeliskShockwave_C",
+      "name": "Pulse Nobelisk",
+      "category": "ammo",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Crystal_mk3_C",
+      "name": "Purple Power Slug",
+      "category": "part",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_QuartzCrystal_C",
+      "name": "Quartz Crystal",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_HighSpeedWire_C",
+      "name": "Quickwire",
+      "category": "part",
+      "stackSize": 500,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_ModularFrameLightweight_C",
+      "name": "Radio Control Unit",
+      "category": "component",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_RawQuartz_C",
+      "name": "Raw Quartz",
+      "category": "raw",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_IronPlateReinforced_C",
+      "name": "Reinforced Iron Plate",
+      "category": "part",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_CartridgeStandard_C",
+      "name": "Rifle Ammo",
+      "category": "ammo",
+      "stackSize": 500,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Rotor_C",
+      "name": "Rotor",
+      "category": "part",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Rubber_C",
+      "name": "Rubber",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_IronScrew_C",
+      "name": "Screw",
+      "category": "part",
+      "stackSize": 500,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Rebar_Spreadshot_C",
+      "name": "Shatter Rebar",
+      "category": "ammo",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Silica_C",
+      "name": "Silica",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_SpaceElevatorPart_1_C",
+      "name": "Smart Plating",
+      "category": "part",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_GunpowderMK2_C",
+      "name": "Smokeless Powder",
+      "category": "part",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Biofuel_C",
+      "name": "Solid Biofuel",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Stator_C",
+      "name": "Stator",
+      "category": "component",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_SteelPlate_C",
+      "name": "Steel Beam",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_SteelIngot_C",
+      "name": "Steel Ingot",
+      "category": "ingot",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_SteelPipe_C",
+      "name": "Steel Pipe",
+      "category": "part",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_StingerParts_C",
+      "name": "Stinger Remains",
+      "category": "special",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Rebar_Stunshot_C",
+      "name": "Stun Rebar",
+      "category": "ammo",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Sulfur_C",
+      "name": "Sulfur",
+      "category": "raw",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_SulfuricAcid_C",
+      "name": "Sulfuric Acid",
+      "category": "fluid",
+      "stackSize": 50000,
+      "isFluid": true
+    },
+    {
+      "id": "Desc_ComputerSuper_C",
+      "name": "Supercomputer",
+      "category": "component",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_SpaceElevatorPart_8_C",
+      "name": "Thermal Propulsion Rocket",
+      "category": "part",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_MotorLightweight_C",
+      "name": "Turbo Motor",
+      "category": "component",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_CartridgeChaos_C",
+      "name": "Turbo Rifle Ammo",
+      "category": "ammo",
+      "stackSize": 500,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_LiquidTurboFuel_C",
+      "name": "Turbofuel",
+      "category": "fluid",
+      "stackSize": 50000,
+      "isFluid": true
+    },
+    {
+      "id": "Desc_OreUranium_C",
+      "name": "Uranium",
+      "category": "raw",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_NuclearFuelRod_C",
+      "name": "Uranium Fuel Rod",
+      "category": "part",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_NuclearWaste_C",
+      "name": "Uranium Waste",
+      "category": "part",
+      "stackSize": 500,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_SpaceElevatorPart_2_C",
+      "name": "Versatile Framework",
+      "category": "part",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Water_C",
+      "name": "Water",
+      "category": "fluid",
+      "stackSize": 50000,
+      "isFluid": true
+    },
+    {
+      "id": "Desc_Wire_C",
+      "name": "Wire",
+      "category": "part",
+      "stackSize": 500,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Wood_C",
+      "name": "Wood",
+      "category": "raw",
+      "stackSize": 200,
+      "isFluid": false
+    },
+    {
+      "id": "Desc_Crystal_mk2_C",
+      "name": "Yellow Power Slug",
+      "category": "part",
+      "stackSize": 50,
+      "isFluid": false
+    }
+  ],
+  "buildings": [
+    {
+      "id": "Build_AssemblerMk1_C",
+      "name": "Assembler",
+      "category": "manufacturing",
+      "powerMw": 15,
+      "unlockTier": 1
+    },
+    {
+      "id": "Build_Blender_C",
+      "name": "Blender",
+      "category": "manufacturing",
+      "powerMw": 75,
+      "unlockTier": 7
+    },
+    {
+      "id": "Build_ConstructorMk1_C",
+      "name": "Constructor",
+      "category": "manufacturing",
+      "powerMw": 4,
+      "unlockTier": 0
+    },
+    {
+      "id": "Build_Converter_C",
+      "name": "Converter",
+      "category": "manufacturing",
+      "powerMw": 250,
+      "unlockTier": 8
+    },
+    {
+      "id": "Build_FoundryMk1_C",
+      "name": "Foundry",
+      "category": "smelting",
+      "powerMw": 16,
+      "unlockTier": 3
+    },
+    {
+      "id": "Build_ManufacturerMk1_C",
+      "name": "Manufacturer",
+      "category": "manufacturing",
+      "powerMw": 55,
+      "unlockTier": 7
+    },
+    {
+      "id": "Build_MinerMk1_C",
+      "name": "Miner Mk.1",
+      "category": "extraction",
+      "powerMw": 5,
+      "unlockTier": 0
+    },
+    {
+      "id": "Build_MinerMk2_C",
+      "name": "Miner Mk.2",
+      "category": "extraction",
+      "powerMw": 12,
+      "unlockTier": 3
+    },
+    {
+      "id": "Build_MinerMk3_C",
+      "name": "Miner Mk.3",
+      "category": "extraction",
+      "powerMw": 30,
+      "unlockTier": 7
+    },
+    {
+      "id": "Build_OilPump_C",
+      "name": "Oil Extractor",
+      "category": "extraction",
+      "powerMw": 40,
+      "unlockTier": 5
+    },
+    {
+      "id": "Build_Packager_C",
+      "name": "Packager",
+      "category": "manufacturing",
+      "powerMw": 10,
+      "unlockTier": 5
+    },
+    {
+      "id": "Build_HadronCollider_C",
+      "name": "Particle Accelerator",
+      "category": "manufacturing",
+      "powerMw": 1500,
+      "unlockTier": 8
+    },
+    {
+      "id": "Build_QuantumEncoder_C",
+      "name": "Quantum Encoder",
+      "category": "manufacturing",
+      "powerMw": 1000,
+      "unlockTier": 9
+    },
+    {
+      "id": "Build_OilRefinery_C",
+      "name": "Refinery",
+      "category": "manufacturing",
+      "powerMw": 30,
+      "unlockTier": 5
+    },
+    {
+      "id": "Build_FrackingExtractor_C",
+      "name": "Resource Well Extractor",
+      "category": "extraction",
+      "powerMw": 150,
+      "unlockTier": 7
+    },
+    {
+      "id": "Build_FrackingSmasher_C",
+      "name": "Resource Well Pressuriser",
+      "category": "extraction",
+      "powerMw": 300,
+      "unlockTier": 7
+    },
+    {
+      "id": "Build_SmelterMk1_C",
+      "name": "Smelter",
+      "category": "smelting",
+      "powerMw": 4,
+      "unlockTier": 0
+    },
+    {
+      "id": "Build_WaterPump_C",
+      "name": "Water Extractor",
+      "category": "extraction",
+      "powerMw": 20,
+      "unlockTier": 3
+    }
+  ],
+  "recipes": [
+    {
+      "id": "Recipe_SpaceElevatorPart_5_C",
+      "name": "Adaptive Control Unit",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": false,
+      "unlockTier": 5,
+      "cycleSeconds": 120,
+      "inputs": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_3_C",
+          "perMinute": 7.5
+        },
+        {
+          "itemId": "Desc_CircuitBoard_C",
+          "perMinute": 5
+        },
+        {
+          "itemId": "Desc_ModularFrameHeavy_C",
+          "perMinute": 1
+        },
+        {
+          "itemId": "Desc_Computer_C",
+          "perMinute": 1
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_5_C",
+          "perMinute": 1
+        }
+      ]
+    },
+    {
+      "id": "Recipe_AILimiter_C",
+      "name": "AI Limiter",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_CopperSheet_C",
+          "perMinute": 25
+        },
+        {
+          "itemId": "Desc_HighSpeedWire_C",
+          "perMinute": 100
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CircuitBoardHighSpeed_C",
+          "perMinute": 5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_AluminumSheet_C",
+      "name": "Alclad Aluminum Sheet",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 7,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_AluminumIngot_C",
+          "perMinute": 30
+        },
+        {
+          "itemId": "Desc_CopperIngot_C",
+          "perMinute": 10
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_AluminumPlate_C",
+          "perMinute": 30
+        }
+      ]
+    },
+    {
+      "id": "Recipe_AlienDNACapsule_C",
+      "name": "Alien DNA Capsule",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_AlienProtein_C",
+          "perMinute": 10
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_AlienDNACapsule_C",
+          "perMinute": 10
+        }
+      ]
+    },
+    {
+      "id": "Recipe_AluminaSolution_C",
+      "name": "Alumina Solution",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": false,
+      "unlockTier": 7,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_OreBauxite_C",
+          "perMinute": 120
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 180
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_AluminaSolution_C",
+          "perMinute": 120
+        },
+        {
+          "itemId": "Desc_Silica_C",
+          "perMinute": 50
+        }
+      ]
+    },
+    {
+      "id": "Recipe_AluminumCasing_C",
+      "name": "Aluminum Casing",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 7,
+      "cycleSeconds": 2,
+      "inputs": [
+        {
+          "itemId": "Desc_AluminumIngot_C",
+          "perMinute": 90
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_AluminumCasing_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_IngotAluminum_C",
+      "name": "Aluminum Ingot",
+      "buildingId": "Build_FoundryMk1_C",
+      "isAlt": false,
+      "unlockTier": 7,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_AluminumScrap_C",
+          "perMinute": 90
+        },
+        {
+          "itemId": "Desc_Silica_C",
+          "perMinute": 75
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_AluminumIngot_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_AluminumScrap_C",
+      "name": "Aluminum Scrap",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": false,
+      "unlockTier": 7,
+      "cycleSeconds": 1,
+      "inputs": [
+        {
+          "itemId": "Desc_AluminaSolution_C",
+          "perMinute": 240
+        },
+        {
+          "itemId": "Desc_Coal_C",
+          "perMinute": 120
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_AluminumScrap_C",
+          "perMinute": 360
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 120
+        }
+      ]
+    },
+    {
+      "id": "Recipe_SpaceElevatorPart_7_C",
+      "name": "Assembly Director System",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 7,
+      "cycleSeconds": 80,
+      "inputs": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_5_C",
+          "perMinute": 1.5
+        },
+        {
+          "itemId": "Desc_ComputerSuper_C",
+          "perMinute": 0.75
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_7_C",
+          "perMinute": 0.75
+        }
+      ]
+    },
+    {
+      "id": "Recipe_SpaceElevatorPart_3_C",
+      "name": "Automated Wiring",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 4,
+      "cycleSeconds": 24,
+      "inputs": [
+        {
+          "itemId": "Desc_Stator_C",
+          "perMinute": 2.5
+        },
+        {
+          "itemId": "Desc_Cable_C",
+          "perMinute": 50
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_3_C",
+          "perMinute": 2.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Battery_C",
+      "name": "Battery",
+      "buildingId": "Build_Blender_C",
+      "isAlt": false,
+      "unlockTier": 7,
+      "cycleSeconds": 3,
+      "inputs": [
+        {
+          "itemId": "Desc_SulfuricAcid_C",
+          "perMinute": 50
+        },
+        {
+          "itemId": "Desc_AluminaSolution_C",
+          "perMinute": 40
+        },
+        {
+          "itemId": "Desc_AluminumCasing_C",
+          "perMinute": 20
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Battery_C",
+          "perMinute": 20
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 30
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Beacon_C",
+      "name": "Beacon",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": false,
+      "unlockTier": 1,
+      "cycleSeconds": 8,
+      "inputs": [
+        {
+          "itemId": "Desc_IronPlate_C",
+          "perMinute": 22.5
+        },
+        {
+          "itemId": "Desc_IronRod_C",
+          "perMinute": 7.5
+        },
+        {
+          "itemId": "Desc_Wire_C",
+          "perMinute": 112.5
+        },
+        {
+          "itemId": "Desc_Cable_C",
+          "perMinute": 15
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "BP_EquipmentDescriptorBeacon_C",
+          "perMinute": 7.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Biomass_AlienProtein_C",
+      "name": "Biomass (Alien Protein)",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_AlienProtein_C",
+          "perMinute": 15
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_GenericBiomass_C",
+          "perMinute": 1500
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Biomass_Leaves_C",
+      "name": "Biomass (Leaves)",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 5,
+      "inputs": [
+        {
+          "itemId": "Desc_Leaves_C",
+          "perMinute": 120
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_GenericBiomass_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Biomass_Mycelia_C",
+      "name": "Biomass (Mycelia)",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_Mycelia_C",
+          "perMinute": 15
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_GenericBiomass_C",
+          "perMinute": 150
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Biomass_Wood_C",
+      "name": "Biomass (Wood)",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_Wood_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_GenericBiomass_C",
+          "perMinute": 300
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Gunpowder_C",
+      "name": "Black Powder",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_Coal_C",
+          "perMinute": 15
+        },
+        {
+          "itemId": "Desc_Sulfur_C",
+          "perMinute": 15
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Gunpowder_C",
+          "perMinute": 30
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Cable_C",
+      "name": "Cable",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 2,
+      "inputs": [
+        {
+          "itemId": "Desc_Wire_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Cable_C",
+          "perMinute": 30
+        }
+      ]
+    },
+    {
+      "id": "Recipe_IngotCaterium_C",
+      "name": "Caterium Ingot",
+      "buildingId": "Build_SmelterMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_OreGold_C",
+          "perMinute": 45
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_GoldIngot_C",
+          "perMinute": 15
+        }
+      ]
+    },
+    {
+      "id": "Recipe_CircuitBoard_C",
+      "name": "Circuit Board",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 5,
+      "cycleSeconds": 8,
+      "inputs": [
+        {
+          "itemId": "Desc_CopperSheet_C",
+          "perMinute": 15
+        },
+        {
+          "itemId": "Desc_Plastic_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CircuitBoard_C",
+          "perMinute": 7.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_NobeliskCluster_C",
+      "name": "Cluster Nobelisk",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 24,
+      "inputs": [
+        {
+          "itemId": "Desc_NobeliskExplosive_C",
+          "perMinute": 7.5
+        },
+        {
+          "itemId": "Desc_GunpowderMK2_C",
+          "perMinute": 10
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_NobeliskCluster_C",
+          "perMinute": 2.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_ColorCartridge_C",
+      "name": "Color Cartridge",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 2,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_FlowerPetals_C",
+          "perMinute": 50
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_ColorCartridge_C",
+          "perMinute": 100
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Computer_C",
+      "name": "Computer",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": false,
+      "unlockTier": 5,
+      "cycleSeconds": 24,
+      "inputs": [
+        {
+          "itemId": "Desc_CircuitBoard_C",
+          "perMinute": 25
+        },
+        {
+          "itemId": "Desc_Cable_C",
+          "perMinute": 22.5
+        },
+        {
+          "itemId": "Desc_Plastic_C",
+          "perMinute": 45
+        },
+        {
+          "itemId": "Desc_IronScrew_C",
+          "perMinute": 130
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Computer_C",
+          "perMinute": 2.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Concrete_C",
+      "name": "Concrete",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_Stone_C",
+          "perMinute": 45
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Cement_C",
+          "perMinute": 15
+        }
+      ]
+    },
+    {
+      "id": "Recipe_CoolingSystem_C",
+      "name": "Cooling System",
+      "buildingId": "Build_Blender_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 10,
+      "inputs": [
+        {
+          "itemId": "Desc_AluminumPlateReinforced_C",
+          "perMinute": 12
+        },
+        {
+          "itemId": "Desc_Rubber_C",
+          "perMinute": 12
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 30
+        },
+        {
+          "itemId": "Desc_NitrogenGas_C",
+          "perMinute": 150
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CoolingSystem_C",
+          "perMinute": 6
+        }
+      ]
+    },
+    {
+      "id": "Recipe_IngotCopper_C",
+      "name": "Copper Ingot",
+      "buildingId": "Build_SmelterMk1_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 2,
+      "inputs": [
+        {
+          "itemId": "Desc_OreCopper_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CopperIngot_C",
+          "perMinute": 30
+        }
+      ]
+    },
+    {
+      "id": "Recipe_CopperDust_C",
+      "name": "Copper Powder",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_CopperIngot_C",
+          "perMinute": 300
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CopperDust_C",
+          "perMinute": 50
+        }
+      ]
+    },
+    {
+      "id": "Recipe_CopperSheet_C",
+      "name": "Copper Sheet",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 2,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_CopperIngot_C",
+          "perMinute": 20
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CopperSheet_C",
+          "perMinute": 10
+        }
+      ]
+    },
+    {
+      "id": "Recipe_CrystalOscillator_C",
+      "name": "Crystal Oscillator",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 120,
+      "inputs": [
+        {
+          "itemId": "Desc_QuartzCrystal_C",
+          "perMinute": 18
+        },
+        {
+          "itemId": "Desc_Cable_C",
+          "perMinute": 14
+        },
+        {
+          "itemId": "Desc_IronPlateReinforced_C",
+          "perMinute": 2.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CrystalOscillator_C",
+          "perMinute": 1
+        }
+      ]
+    },
+    {
+      "id": "Recipe_ElectromagneticControlRod_C",
+      "name": "Electromagnetic Control Rod",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 30,
+      "inputs": [
+        {
+          "itemId": "Desc_Stator_C",
+          "perMinute": 6
+        },
+        {
+          "itemId": "Desc_CircuitBoardHighSpeed_C",
+          "perMinute": 4
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_ElectromagneticControlRod_C",
+          "perMinute": 4
+        }
+      ]
+    },
+    {
+      "id": "Recipe_FluidCanister_C",
+      "name": "Empty Canister",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 5,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_Plastic_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_FluidCanister_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_GasTank_C",
+      "name": "Empty Fluid Tank",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 1,
+      "inputs": [
+        {
+          "itemId": "Desc_AluminumIngot_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_GasTank_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_EncasedIndustrialBeam_C",
+      "name": "Encased Industrial Beam",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 4,
+      "cycleSeconds": 10,
+      "inputs": [
+        {
+          "itemId": "Desc_SteelPlate_C",
+          "perMinute": 24
+        },
+        {
+          "itemId": "Desc_Cement_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SteelPlateReinforced_C",
+          "perMinute": 6
+        }
+      ]
+    },
+    {
+      "id": "Recipe_PlutoniumCell_C",
+      "name": "Encased Plutonium Cell",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_PlutoniumPellet_C",
+          "perMinute": 10
+        },
+        {
+          "itemId": "Desc_Cement_C",
+          "perMinute": 20
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_PlutoniumCell_C",
+          "perMinute": 5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_UraniumCell_C",
+      "name": "Encased Uranium Cell",
+      "buildingId": "Build_Blender_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_OreUranium_C",
+          "perMinute": 50
+        },
+        {
+          "itemId": "Desc_Cement_C",
+          "perMinute": 15
+        },
+        {
+          "itemId": "Desc_SulfuricAcid_C",
+          "perMinute": 40
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_UraniumCell_C",
+          "perMinute": 25
+        },
+        {
+          "itemId": "Desc_SulfuricAcid_C",
+          "perMinute": 10
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Rebar_Explosive_C",
+      "name": "Explosive Rebar",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_SpikedRebar_C",
+          "perMinute": 10
+        },
+        {
+          "itemId": "Desc_GunpowderMK2_C",
+          "perMinute": 10
+        },
+        {
+          "itemId": "Desc_SteelPipe_C",
+          "perMinute": 10
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Rebar_Explosive_C",
+          "perMinute": 5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Fabric_C",
+      "name": "Fabric",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_Mycelia_C",
+          "perMinute": 15
+        },
+        {
+          "itemId": "Desc_GenericBiomass_C",
+          "perMinute": 75
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Fabric_C",
+          "perMinute": 15
+        }
+      ]
+    },
+    {
+      "id": "Recipe_LiquidFuel_C",
+      "name": "Fuel",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": false,
+      "unlockTier": 5,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_LiquidOil_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_LiquidFuel_C",
+          "perMinute": 40
+        },
+        {
+          "itemId": "Desc_PolymerResin_C",
+          "perMinute": 30
+        }
+      ]
+    },
+    {
+      "id": "Recipe_FusedModularFrame_C",
+      "name": "Fused Modular Frame",
+      "buildingId": "Build_Blender_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 40,
+      "inputs": [
+        {
+          "itemId": "Desc_ModularFrameHeavy_C",
+          "perMinute": 1.5
+        },
+        {
+          "itemId": "Desc_AluminumCasing_C",
+          "perMinute": 75
+        },
+        {
+          "itemId": "Desc_NitrogenGas_C",
+          "perMinute": 37.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_ModularFrameFused_C",
+          "perMinute": 1.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_FilterGasMask_C",
+      "name": "Gas Filter",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": false,
+      "unlockTier": 5,
+      "cycleSeconds": 8,
+      "inputs": [
+        {
+          "itemId": "Desc_Coal_C",
+          "perMinute": 37.5
+        },
+        {
+          "itemId": "Desc_Rubber_C",
+          "perMinute": 15
+        },
+        {
+          "itemId": "Desc_Fabric_C",
+          "perMinute": 15
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Filter_C",
+          "perMinute": 7.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_NobeliskGas_C",
+      "name": "Gas Nobelisk",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_NobeliskExplosive_C",
+          "perMinute": 5
+        },
+        {
+          "itemId": "Desc_GenericBiomass_C",
+          "perMinute": 50
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_NobeliskGas_C",
+          "perMinute": 5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Protein_Crab_C",
+      "name": "Hatcher Protein",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 3,
+      "inputs": [
+        {
+          "itemId": "Desc_HatcherParts_C",
+          "perMinute": 20
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_AlienProtein_C",
+          "perMinute": 20
+        }
+      ]
+    },
+    {
+      "id": "Recipe_HeatSink_C",
+      "name": "Heat Sink",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 8,
+      "inputs": [
+        {
+          "itemId": "Desc_AluminumPlate_C",
+          "perMinute": 37.5
+        },
+        {
+          "itemId": "Desc_CopperSheet_C",
+          "perMinute": 22.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_AluminumPlateReinforced_C",
+          "perMinute": 7.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_ModularFrameHeavy_C",
+      "name": "Heavy Modular Frame",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": false,
+      "unlockTier": 4,
+      "cycleSeconds": 30,
+      "inputs": [
+        {
+          "itemId": "Desc_ModularFrame_C",
+          "perMinute": 10
+        },
+        {
+          "itemId": "Desc_SteelPipe_C",
+          "perMinute": 30
+        },
+        {
+          "itemId": "Desc_SteelPlateReinforced_C",
+          "perMinute": 10
+        },
+        {
+          "itemId": "Desc_IronScrew_C",
+          "perMinute": 200
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_ModularFrameHeavy_C",
+          "perMinute": 2
+        }
+      ]
+    },
+    {
+      "id": "Recipe_HighSpeedConnector_C",
+      "name": "High-Speed Connector",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 16,
+      "inputs": [
+        {
+          "itemId": "Desc_HighSpeedWire_C",
+          "perMinute": 210
+        },
+        {
+          "itemId": "Desc_Cable_C",
+          "perMinute": 37.5
+        },
+        {
+          "itemId": "Desc_CircuitBoard_C",
+          "perMinute": 3.75
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_HighSpeedConnector_C",
+          "perMinute": 3.75
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Protein_Hog_C",
+      "name": "Hog Protein",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 3,
+      "inputs": [
+        {
+          "itemId": "Desc_HogParts_C",
+          "perMinute": 20
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_AlienProtein_C",
+          "perMinute": 20
+        }
+      ]
+    },
+    {
+      "id": "Recipe_CartridgeSmart_C",
+      "name": "Homing Rifle Ammo",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 24,
+      "inputs": [
+        {
+          "itemId": "Desc_CartridgeStandard_C",
+          "perMinute": 50
+        },
+        {
+          "itemId": "Desc_HighSpeedConnector_C",
+          "perMinute": 2.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CartridgeSmartProjectile_C",
+          "perMinute": 25
+        }
+      ]
+    },
+    {
+      "id": "Recipe_FilterHazmat_C",
+      "name": "Iodine Infused Filter",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": false,
+      "unlockTier": 7,
+      "cycleSeconds": 16,
+      "inputs": [
+        {
+          "itemId": "Desc_Filter_C",
+          "perMinute": 3.75
+        },
+        {
+          "itemId": "Desc_HighSpeedWire_C",
+          "perMinute": 30
+        },
+        {
+          "itemId": "Desc_AluminumCasing_C",
+          "perMinute": 3.75
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_HazmatFilter_C",
+          "perMinute": 3.75
+        }
+      ]
+    },
+    {
+      "id": "Recipe_IngotIron_C",
+      "name": "Iron Ingot",
+      "buildingId": "Build_SmelterMk1_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 2,
+      "inputs": [
+        {
+          "itemId": "Desc_OreIron_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_IronIngot_C",
+          "perMinute": 30
+        }
+      ]
+    },
+    {
+      "id": "Recipe_IronPlate_C",
+      "name": "Iron Plate",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_IronIngot_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_IronPlate_C",
+          "perMinute": 20
+        }
+      ]
+    },
+    {
+      "id": "Recipe_SpikedRebar_C",
+      "name": "Iron Rebar",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_IronRod_C",
+          "perMinute": 15
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SpikedRebar_C",
+          "perMinute": 15
+        }
+      ]
+    },
+    {
+      "id": "Recipe_IronRod_C",
+      "name": "Iron Rod",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_IronIngot_C",
+          "perMinute": 15
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_IronRod_C",
+          "perMinute": 15
+        }
+      ]
+    },
+    {
+      "id": "Recipe_LiquidBiofuel_C",
+      "name": "Liquid Biofuel",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": false,
+      "unlockTier": 5,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_Biofuel_C",
+          "perMinute": 90
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 45
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_LiquidBiofuel_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_SpaceElevatorPart_6_C",
+      "name": "Magnetic Field Generator",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 120,
+      "inputs": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_2_C",
+          "perMinute": 2.5
+        },
+        {
+          "itemId": "Desc_ElectromagneticControlRod_C",
+          "perMinute": 1
+        },
+        {
+          "itemId": "Desc_Battery_C",
+          "perMinute": 5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_6_C",
+          "perMinute": 1
+        }
+      ]
+    },
+    {
+      "id": "Recipe_SpaceElevatorPart_4_C",
+      "name": "Modular Engine",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": false,
+      "unlockTier": 5,
+      "cycleSeconds": 60,
+      "inputs": [
+        {
+          "itemId": "Desc_Motor_C",
+          "perMinute": 2
+        },
+        {
+          "itemId": "Desc_Rubber_C",
+          "perMinute": 15
+        },
+        {
+          "itemId": "Desc_SpaceElevatorPart_1_C",
+          "perMinute": 2
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_4_C",
+          "perMinute": 1
+        }
+      ]
+    },
+    {
+      "id": "Recipe_ModularFrame_C",
+      "name": "Modular Frame",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 2,
+      "cycleSeconds": 60,
+      "inputs": [
+        {
+          "itemId": "Desc_IronPlateReinforced_C",
+          "perMinute": 3
+        },
+        {
+          "itemId": "Desc_IronRod_C",
+          "perMinute": 12
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_ModularFrame_C",
+          "perMinute": 2
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Motor_C",
+      "name": "Motor",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 4,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_Rotor_C",
+          "perMinute": 10
+        },
+        {
+          "itemId": "Desc_Stator_C",
+          "perMinute": 10
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Motor_C",
+          "perMinute": 5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_NitricAcid_C",
+      "name": "Nitric Acid",
+      "buildingId": "Build_Blender_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_NitrogenGas_C",
+          "perMinute": 120
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 30
+        },
+        {
+          "itemId": "Desc_IronPlate_C",
+          "perMinute": 10
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_NitricAcid_C",
+          "perMinute": 30
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Nobelisk_C",
+      "name": "Nobelisk",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_Gunpowder_C",
+          "perMinute": 20
+        },
+        {
+          "itemId": "Desc_SteelPipe_C",
+          "perMinute": 20
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_NobeliskExplosive_C",
+          "perMinute": 10
+        }
+      ]
+    },
+    {
+      "id": "Recipe_NonFissileUranium_C",
+      "name": "Non-fissile Uranium",
+      "buildingId": "Build_Blender_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 24,
+      "inputs": [
+        {
+          "itemId": "Desc_NuclearWaste_C",
+          "perMinute": 37.5
+        },
+        {
+          "itemId": "Desc_Silica_C",
+          "perMinute": 25
+        },
+        {
+          "itemId": "Desc_NitricAcid_C",
+          "perMinute": 15
+        },
+        {
+          "itemId": "Desc_SulfuricAcid_C",
+          "perMinute": 15
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_NonFissibleUranium_C",
+          "perMinute": 50
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 15
+        }
+      ]
+    },
+    {
+      "id": "Recipe_SpaceElevatorPart_9_C",
+      "name": "Nuclear Pasta",
+      "buildingId": "Build_HadronCollider_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 120,
+      "inputs": [
+        {
+          "itemId": "Desc_CopperDust_C",
+          "perMinute": 100
+        },
+        {
+          "itemId": "Desc_PressureConversionCube_C",
+          "perMinute": 0.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_9_C",
+          "perMinute": 0.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_NobeliskNuke_C",
+      "name": "Nuke Nobelisk",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 120,
+      "inputs": [
+        {
+          "itemId": "Desc_NobeliskExplosive_C",
+          "perMinute": 2.5
+        },
+        {
+          "itemId": "Desc_UraniumCell_C",
+          "perMinute": 10
+        },
+        {
+          "itemId": "Desc_GunpowderMK2_C",
+          "perMinute": 5
+        },
+        {
+          "itemId": "Desc_CircuitBoardHighSpeed_C",
+          "perMinute": 3
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_NobeliskNuke_C",
+          "perMinute": 0.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_PackagedAlumina_C",
+      "name": "Packaged Alumina Solution",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 7,
+      "cycleSeconds": 1,
+      "inputs": [
+        {
+          "itemId": "Desc_AluminaSolution_C",
+          "perMinute": 120
+        },
+        {
+          "itemId": "Desc_FluidCanister_C",
+          "perMinute": 120
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_PackagedAlumina_C",
+          "perMinute": 120
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Fuel_C",
+      "name": "Packaged Fuel",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 5,
+      "cycleSeconds": 3,
+      "inputs": [
+        {
+          "itemId": "Desc_LiquidFuel_C",
+          "perMinute": 40
+        },
+        {
+          "itemId": "Desc_FluidCanister_C",
+          "perMinute": 40
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Fuel_C",
+          "perMinute": 40
+        }
+      ]
+    },
+    {
+      "id": "Recipe_PackagedOilResidue_C",
+      "name": "Packaged Heavy Oil Residue",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 5,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_HeavyOilResidue_C",
+          "perMinute": 30
+        },
+        {
+          "itemId": "Desc_FluidCanister_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_PackagedOilResidue_C",
+          "perMinute": 30
+        }
+      ]
+    },
+    {
+      "id": "Recipe_PackagedBiofuel_C",
+      "name": "Packaged Liquid Biofuel",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 5,
+      "cycleSeconds": 3,
+      "inputs": [
+        {
+          "itemId": "Desc_LiquidBiofuel_C",
+          "perMinute": 40
+        },
+        {
+          "itemId": "Desc_FluidCanister_C",
+          "perMinute": 40
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_PackagedBiofuel_C",
+          "perMinute": 40
+        }
+      ]
+    },
+    {
+      "id": "Recipe_PackagedNitricAcid_C",
+      "name": "Packaged Nitric Acid",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 2,
+      "inputs": [
+        {
+          "itemId": "Desc_NitricAcid_C",
+          "perMinute": 30
+        },
+        {
+          "itemId": "Desc_GasTank_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_PackagedNitricAcid_C",
+          "perMinute": 30
+        }
+      ]
+    },
+    {
+      "id": "Recipe_PackagedNitrogen_C",
+      "name": "Packaged Nitrogen Gas",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 1,
+      "inputs": [
+        {
+          "itemId": "Desc_NitrogenGas_C",
+          "perMinute": 240
+        },
+        {
+          "itemId": "Desc_GasTank_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_PackagedNitrogenGas_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_PackagedCrudeOil_C",
+      "name": "Packaged Oil",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 5,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_LiquidOil_C",
+          "perMinute": 30
+        },
+        {
+          "itemId": "Desc_FluidCanister_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_PackagedOil_C",
+          "perMinute": 30
+        }
+      ]
+    },
+    {
+      "id": "Recipe_PackagedSulfuricAcid_C",
+      "name": "Packaged Sulfuric Acid",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 7,
+      "cycleSeconds": 3,
+      "inputs": [
+        {
+          "itemId": "Desc_SulfuricAcid_C",
+          "perMinute": 40
+        },
+        {
+          "itemId": "Desc_FluidCanister_C",
+          "perMinute": 40
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_PackagedSulfuricAcid_C",
+          "perMinute": 40
+        }
+      ]
+    },
+    {
+      "id": "Recipe_PackagedTurboFuel_C",
+      "name": "Packaged Turbofuel",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_LiquidTurboFuel_C",
+          "perMinute": 20
+        },
+        {
+          "itemId": "Desc_FluidCanister_C",
+          "perMinute": 20
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_TurboFuel_C",
+          "perMinute": 20
+        }
+      ]
+    },
+    {
+      "id": "Recipe_PackagedWater_C",
+      "name": "Packaged Water",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 5,
+      "cycleSeconds": 2,
+      "inputs": [
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 60
+        },
+        {
+          "itemId": "Desc_FluidCanister_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_PackagedWater_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_PetroleumCoke_C",
+      "name": "Petroleum Coke",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": false,
+      "unlockTier": 5,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_HeavyOilResidue_C",
+          "perMinute": 40
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_PetroleumCoke_C",
+          "perMinute": 120
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Plastic_C",
+      "name": "Plastic",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": false,
+      "unlockTier": 5,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_LiquidOil_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Plastic_C",
+          "perMinute": 20
+        },
+        {
+          "itemId": "Desc_HeavyOilResidue_C",
+          "perMinute": 10
+        }
+      ]
+    },
+    {
+      "id": "Recipe_PlutoniumFuelRod_C",
+      "name": "Plutonium Fuel Rod",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 240,
+      "inputs": [
+        {
+          "itemId": "Desc_PlutoniumCell_C",
+          "perMinute": 7.5
+        },
+        {
+          "itemId": "Desc_SteelPlate_C",
+          "perMinute": 4.5
+        },
+        {
+          "itemId": "Desc_ElectromagneticControlRod_C",
+          "perMinute": 1.5
+        },
+        {
+          "itemId": "Desc_AluminumPlateReinforced_C",
+          "perMinute": 2.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_PlutoniumFuelRod_C",
+          "perMinute": 0.25
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Plutonium_C",
+      "name": "Plutonium Pellet",
+      "buildingId": "Build_HadronCollider_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 60,
+      "inputs": [
+        {
+          "itemId": "Desc_NonFissibleUranium_C",
+          "perMinute": 100
+        },
+        {
+          "itemId": "Desc_NuclearWaste_C",
+          "perMinute": 25
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_PlutoniumPellet_C",
+          "perMinute": 30
+        }
+      ]
+    },
+    {
+      "id": "Recipe_PowerCrystalShard_1_C",
+      "name": "Power Shard (1)",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 8,
+      "inputs": [
+        {
+          "itemId": "Desc_Crystal_C",
+          "perMinute": 7.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CrystalShard_C",
+          "perMinute": 7.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_PowerCrystalShard_2_C",
+      "name": "Power Shard (2)",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_Crystal_mk2_C",
+          "perMinute": 5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CrystalShard_C",
+          "perMinute": 10
+        }
+      ]
+    },
+    {
+      "id": "Recipe_PowerCrystalShard_3_C",
+      "name": "Power Shard (5)",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 24,
+      "inputs": [
+        {
+          "itemId": "Desc_Crystal_mk3_C",
+          "perMinute": 2.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CrystalShard_C",
+          "perMinute": 12.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_PressureConversionCube_C",
+      "name": "Pressure Conversion Cube",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 60,
+      "inputs": [
+        {
+          "itemId": "Desc_ModularFrameFused_C",
+          "perMinute": 1
+        },
+        {
+          "itemId": "Desc_ModularFrameLightweight_C",
+          "perMinute": 2
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_PressureConversionCube_C",
+          "perMinute": 1
+        }
+      ]
+    },
+    {
+      "id": "Recipe_NobeliskShockwave_C",
+      "name": "Pulse Nobelisk",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 60,
+      "inputs": [
+        {
+          "itemId": "Desc_NobeliskExplosive_C",
+          "perMinute": 5
+        },
+        {
+          "itemId": "Desc_CrystalOscillator_C",
+          "perMinute": 1
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_NobeliskShockwave_C",
+          "perMinute": 5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_QuartzCrystal_C",
+      "name": "Quartz Crystal",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 8,
+      "inputs": [
+        {
+          "itemId": "Desc_RawQuartz_C",
+          "perMinute": 37.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_QuartzCrystal_C",
+          "perMinute": 22.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Quickwire_C",
+      "name": "Quickwire",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 5,
+      "inputs": [
+        {
+          "itemId": "Desc_GoldIngot_C",
+          "perMinute": 12
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_HighSpeedWire_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_RadioControlUnit_C",
+      "name": "Radio Control Unit",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": false,
+      "unlockTier": 7,
+      "cycleSeconds": 48,
+      "inputs": [
+        {
+          "itemId": "Desc_AluminumCasing_C",
+          "perMinute": 40
+        },
+        {
+          "itemId": "Desc_CrystalOscillator_C",
+          "perMinute": 1.25
+        },
+        {
+          "itemId": "Desc_Computer_C",
+          "perMinute": 1.25
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_ModularFrameLightweight_C",
+          "perMinute": 2.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_IronPlateReinforced_C",
+      "name": "Reinforced Iron Plate",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_IronPlate_C",
+          "perMinute": 30
+        },
+        {
+          "itemId": "Desc_IronScrew_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_IronPlateReinforced_C",
+          "perMinute": 5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_ResidualFuel_C",
+      "name": "Residual Fuel",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_HeavyOilResidue_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_LiquidFuel_C",
+          "perMinute": 40
+        }
+      ]
+    },
+    {
+      "id": "Recipe_ResidualPlastic_C",
+      "name": "Residual Plastic",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_PolymerResin_C",
+          "perMinute": 60
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 20
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Plastic_C",
+          "perMinute": 20
+        }
+      ]
+    },
+    {
+      "id": "Recipe_ResidualRubber_C",
+      "name": "Residual Rubber",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_PolymerResin_C",
+          "perMinute": 40
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 40
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Rubber_C",
+          "perMinute": 20
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Cartridge_C",
+      "name": "Rifle Ammo",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_CopperSheet_C",
+          "perMinute": 15
+        },
+        {
+          "itemId": "Desc_GunpowderMK2_C",
+          "perMinute": 10
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CartridgeStandard_C",
+          "perMinute": 75
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Rotor_C",
+      "name": "Rotor",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 2,
+      "cycleSeconds": 15,
+      "inputs": [
+        {
+          "itemId": "Desc_IronRod_C",
+          "perMinute": 20
+        },
+        {
+          "itemId": "Desc_IronScrew_C",
+          "perMinute": 100
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Rotor_C",
+          "perMinute": 4
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Rubber_C",
+      "name": "Rubber",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": false,
+      "unlockTier": 5,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_LiquidOil_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Rubber_C",
+          "perMinute": 20
+        },
+        {
+          "itemId": "Desc_HeavyOilResidue_C",
+          "perMinute": 20
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Screw_C",
+      "name": "Screw",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_IronRod_C",
+          "perMinute": 10
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_IronScrew_C",
+          "perMinute": 40
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Rebar_Spreadshot_C",
+      "name": "Shatter Rebar",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_SpikedRebar_C",
+          "perMinute": 10
+        },
+        {
+          "itemId": "Desc_QuartzCrystal_C",
+          "perMinute": 15
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Rebar_Spreadshot_C",
+          "perMinute": 5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Silica_C",
+      "name": "Silica",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 8,
+      "inputs": [
+        {
+          "itemId": "Desc_RawQuartz_C",
+          "perMinute": 22.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Silica_C",
+          "perMinute": 37.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_SpaceElevatorPart_1_C",
+      "name": "Smart Plating",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 2,
+      "cycleSeconds": 30,
+      "inputs": [
+        {
+          "itemId": "Desc_IronPlateReinforced_C",
+          "perMinute": 2
+        },
+        {
+          "itemId": "Desc_Rotor_C",
+          "perMinute": 2
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_1_C",
+          "perMinute": 2
+        }
+      ]
+    },
+    {
+      "id": "Recipe_GunpowderMK2_C",
+      "name": "Smokeless Powder",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_Gunpowder_C",
+          "perMinute": 20
+        },
+        {
+          "itemId": "Desc_HeavyOilResidue_C",
+          "perMinute": 10
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_GunpowderMK2_C",
+          "perMinute": 20
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Biofuel_C",
+      "name": "Solid Biofuel",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 2,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_GenericBiomass_C",
+          "perMinute": 120
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Biofuel_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Protein_Spitter_C",
+      "name": "Spitter Protein",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 3,
+      "inputs": [
+        {
+          "itemId": "Desc_SpitterParts_C",
+          "perMinute": 20
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_AlienProtein_C",
+          "perMinute": 20
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Stator_C",
+      "name": "Stator",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 4,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_SteelPipe_C",
+          "perMinute": 15
+        },
+        {
+          "itemId": "Desc_Wire_C",
+          "perMinute": 40
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Stator_C",
+          "perMinute": 5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_SteelBeam_C",
+      "name": "Steel Beam",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_SteelIngot_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SteelPlate_C",
+          "perMinute": 15
+        }
+      ]
+    },
+    {
+      "id": "Recipe_IngotSteel_C",
+      "name": "Steel Ingot",
+      "buildingId": "Build_FoundryMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_OreIron_C",
+          "perMinute": 45
+        },
+        {
+          "itemId": "Desc_Coal_C",
+          "perMinute": 45
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SteelIngot_C",
+          "perMinute": 45
+        }
+      ]
+    },
+    {
+      "id": "Recipe_SteelPipe_C",
+      "name": "Steel Pipe",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_SteelIngot_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SteelPipe_C",
+          "perMinute": 20
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Protein_Stinger_C",
+      "name": "Stinger Protein",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 3,
+      "inputs": [
+        {
+          "itemId": "Desc_StingerParts_C",
+          "perMinute": 20
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_AlienProtein_C",
+          "perMinute": 20
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Rebar_Stunshot_C",
+      "name": "Stun Rebar",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_SpikedRebar_C",
+          "perMinute": 10
+        },
+        {
+          "itemId": "Desc_HighSpeedWire_C",
+          "perMinute": 50
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Rebar_Stunshot_C",
+          "perMinute": 10
+        }
+      ]
+    },
+    {
+      "id": "Recipe_SulfuricAcid_C",
+      "name": "Sulfuric Acid",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": false,
+      "unlockTier": 7,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_Sulfur_C",
+          "perMinute": 50
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 50
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SulfuricAcid_C",
+          "perMinute": 50
+        }
+      ]
+    },
+    {
+      "id": "Recipe_ComputerSuper_C",
+      "name": "Supercomputer",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": false,
+      "unlockTier": 7,
+      "cycleSeconds": 32,
+      "inputs": [
+        {
+          "itemId": "Desc_Computer_C",
+          "perMinute": 3.75
+        },
+        {
+          "itemId": "Desc_CircuitBoardHighSpeed_C",
+          "perMinute": 3.75
+        },
+        {
+          "itemId": "Desc_HighSpeedConnector_C",
+          "perMinute": 5.63
+        },
+        {
+          "itemId": "Desc_Plastic_C",
+          "perMinute": 52.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_ComputerSuper_C",
+          "perMinute": 1.88
+        }
+      ]
+    },
+    {
+      "id": "Recipe_SpaceElevatorPart_8_C",
+      "name": "Thermal Propulsion Rocket",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 120,
+      "inputs": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_4_C",
+          "perMinute": 2.5
+        },
+        {
+          "itemId": "Desc_MotorLightweight_C",
+          "perMinute": 1
+        },
+        {
+          "itemId": "Desc_CoolingSystem_C",
+          "perMinute": 3
+        },
+        {
+          "itemId": "Desc_ModularFrameFused_C",
+          "perMinute": 1
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_8_C",
+          "perMinute": 1
+        }
+      ]
+    },
+    {
+      "id": "Recipe_MotorTurbo_C",
+      "name": "Turbo Motor",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 32,
+      "inputs": [
+        {
+          "itemId": "Desc_CoolingSystem_C",
+          "perMinute": 7.5
+        },
+        {
+          "itemId": "Desc_ModularFrameLightweight_C",
+          "perMinute": 3.75
+        },
+        {
+          "itemId": "Desc_Motor_C",
+          "perMinute": 7.5
+        },
+        {
+          "itemId": "Desc_Rubber_C",
+          "perMinute": 45
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_MotorLightweight_C",
+          "perMinute": 1.88
+        }
+      ]
+    },
+    {
+      "id": "Recipe_CartridgeChaos_Packaged_C",
+      "name": "Turbo Rifle Ammo",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_CartridgeStandard_C",
+          "perMinute": 125
+        },
+        {
+          "itemId": "Desc_AluminumCasing_C",
+          "perMinute": 15
+        },
+        {
+          "itemId": "Desc_TurboFuel_C",
+          "perMinute": 15
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CartridgeChaos_C",
+          "perMinute": 250
+        }
+      ]
+    },
+    {
+      "id": "Recipe_CartridgeChaos_C",
+      "name": "Turbo Rifle Ammo",
+      "buildingId": "Build_Blender_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_CartridgeStandard_C",
+          "perMinute": 125
+        },
+        {
+          "itemId": "Desc_AluminumCasing_C",
+          "perMinute": 15
+        },
+        {
+          "itemId": "Desc_LiquidTurboFuel_C",
+          "perMinute": 15
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CartridgeChaos_C",
+          "perMinute": 250
+        }
+      ]
+    },
+    {
+      "id": "Recipe_UnpackageAlumina_C",
+      "name": "Unpackage Alumina Solution",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 1,
+      "inputs": [
+        {
+          "itemId": "Desc_PackagedAlumina_C",
+          "perMinute": 120
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_AluminaSolution_C",
+          "perMinute": 120
+        },
+        {
+          "itemId": "Desc_FluidCanister_C",
+          "perMinute": 120
+        }
+      ]
+    },
+    {
+      "id": "Recipe_UnpackageFuel_C",
+      "name": "Unpackage Fuel",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 2,
+      "inputs": [
+        {
+          "itemId": "Desc_Fuel_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_LiquidFuel_C",
+          "perMinute": 60
+        },
+        {
+          "itemId": "Desc_FluidCanister_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_UnpackageOilResidue_C",
+      "name": "Unpackage Heavy Oil Residue",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_PackagedOilResidue_C",
+          "perMinute": 20
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_HeavyOilResidue_C",
+          "perMinute": 20
+        },
+        {
+          "itemId": "Desc_FluidCanister_C",
+          "perMinute": 20
+        }
+      ]
+    },
+    {
+      "id": "Recipe_UnpackageBioFuel_C",
+      "name": "Unpackage Liquid Biofuel",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 2,
+      "inputs": [
+        {
+          "itemId": "Desc_PackagedBiofuel_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_LiquidBiofuel_C",
+          "perMinute": 60
+        },
+        {
+          "itemId": "Desc_FluidCanister_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_UnpackageNitricAcid_C",
+      "name": "Unpackage Nitric Acid",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 3,
+      "inputs": [
+        {
+          "itemId": "Desc_PackagedNitricAcid_C",
+          "perMinute": 20
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_NitricAcid_C",
+          "perMinute": 20
+        },
+        {
+          "itemId": "Desc_GasTank_C",
+          "perMinute": 20
+        }
+      ]
+    },
+    {
+      "id": "Recipe_UnpackageNitrogen_C",
+      "name": "Unpackage Nitrogen Gas",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 1,
+      "inputs": [
+        {
+          "itemId": "Desc_PackagedNitrogenGas_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_NitrogenGas_C",
+          "perMinute": 240
+        },
+        {
+          "itemId": "Desc_GasTank_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_UnpackageOil_C",
+      "name": "Unpackage Oil",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 2,
+      "inputs": [
+        {
+          "itemId": "Desc_PackagedOil_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_LiquidOil_C",
+          "perMinute": 60
+        },
+        {
+          "itemId": "Desc_FluidCanister_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_UnpackageSulfuricAcid_C",
+      "name": "Unpackage Sulfuric Acid",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 1,
+      "inputs": [
+        {
+          "itemId": "Desc_PackagedSulfuricAcid_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SulfuricAcid_C",
+          "perMinute": 60
+        },
+        {
+          "itemId": "Desc_FluidCanister_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_UnpackageTurboFuel_C",
+      "name": "Unpackage Turbofuel",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_TurboFuel_C",
+          "perMinute": 20
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_LiquidTurboFuel_C",
+          "perMinute": 20
+        },
+        {
+          "itemId": "Desc_FluidCanister_C",
+          "perMinute": 20
+        }
+      ]
+    },
+    {
+      "id": "Recipe_UnpackageWater_C",
+      "name": "Unpackage Water",
+      "buildingId": "Build_Packager_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 1,
+      "inputs": [
+        {
+          "itemId": "Desc_PackagedWater_C",
+          "perMinute": 120
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 120
+        },
+        {
+          "itemId": "Desc_FluidCanister_C",
+          "perMinute": 120
+        }
+      ]
+    },
+    {
+      "id": "Recipe_NuclearFuelRod_C",
+      "name": "Uranium Fuel Rod",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 150,
+      "inputs": [
+        {
+          "itemId": "Desc_UraniumCell_C",
+          "perMinute": 20
+        },
+        {
+          "itemId": "Desc_SteelPlateReinforced_C",
+          "perMinute": 1.2
+        },
+        {
+          "itemId": "Desc_ElectromagneticControlRod_C",
+          "perMinute": 2
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_NuclearFuelRod_C",
+          "perMinute": 0.4
+        }
+      ]
+    },
+    {
+      "id": "Recipe_SpaceElevatorPart_2_C",
+      "name": "Versatile Framework",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": false,
+      "unlockTier": 3,
+      "cycleSeconds": 24,
+      "inputs": [
+        {
+          "itemId": "Desc_ModularFrame_C",
+          "perMinute": 2.5
+        },
+        {
+          "itemId": "Desc_SteelPlate_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_2_C",
+          "perMinute": 5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Wire_C",
+      "name": "Wire",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": false,
+      "unlockTier": 0,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_CopperIngot_C",
+          "perMinute": 15
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Wire_C",
+          "perMinute": 30
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_AdheredIronPlate_C",
+      "name": "Alternate: Adhered Iron Plate",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 16,
+      "inputs": [
+        {
+          "itemId": "Desc_IronPlate_C",
+          "perMinute": 11.25
+        },
+        {
+          "itemId": "Desc_Rubber_C",
+          "perMinute": 3.75
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_IronPlateReinforced_C",
+          "perMinute": 3.75
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_AlcladCasing_C",
+      "name": "Alternate: Alclad Casing",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 8,
+      "inputs": [
+        {
+          "itemId": "Desc_AluminumIngot_C",
+          "perMinute": 150
+        },
+        {
+          "itemId": "Desc_CopperIngot_C",
+          "perMinute": 75
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_AluminumCasing_C",
+          "perMinute": 112.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_AutomatedMiner_C",
+      "name": "Alternate: Automated Miner",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 60,
+      "inputs": [
+        {
+          "itemId": "Desc_Motor_C",
+          "perMinute": 1
+        },
+        {
+          "itemId": "Desc_SteelPipe_C",
+          "perMinute": 4
+        },
+        {
+          "itemId": "Desc_IronRod_C",
+          "perMinute": 4
+        },
+        {
+          "itemId": "Desc_IronPlate_C",
+          "perMinute": 2
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "BP_ItemDescriptorPortableMiner_C",
+          "perMinute": 1
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_HighSpeedWiring_C",
+      "name": "Alternate: Automated Speed Wiring",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 32,
+      "inputs": [
+        {
+          "itemId": "Desc_Stator_C",
+          "perMinute": 3.75
+        },
+        {
+          "itemId": "Desc_Wire_C",
+          "perMinute": 75
+        },
+        {
+          "itemId": "Desc_HighSpeedConnector_C",
+          "perMinute": 1.88
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_3_C",
+          "perMinute": 7.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Coal_2_C",
+      "name": "Alternate: Biocoal",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 8,
+      "inputs": [
+        {
+          "itemId": "Desc_GenericBiomass_C",
+          "perMinute": 37.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Coal_C",
+          "perMinute": 45
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_BoltedFrame_C",
+      "name": "Alternate: Bolted Frame",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 24,
+      "inputs": [
+        {
+          "itemId": "Desc_IronPlateReinforced_C",
+          "perMinute": 7.5
+        },
+        {
+          "itemId": "Desc_IronScrew_C",
+          "perMinute": 140
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_ModularFrame_C",
+          "perMinute": 5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_ReinforcedIronPlate_1_C",
+      "name": "Alternate: Bolted Iron Plate",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_IronPlate_C",
+          "perMinute": 90
+        },
+        {
+          "itemId": "Desc_IronScrew_C",
+          "perMinute": 250
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_IronPlateReinforced_C",
+          "perMinute": 15
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Screw_C",
+      "name": "Alternate: Cast Screw",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 24,
+      "inputs": [
+        {
+          "itemId": "Desc_IronIngot_C",
+          "perMinute": 12.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_IronScrew_C",
+          "perMinute": 50
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_CircuitBoard_2_C",
+      "name": "Alternate: Caterium Circuit Board",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 48,
+      "inputs": [
+        {
+          "itemId": "Desc_Plastic_C",
+          "perMinute": 12.5
+        },
+        {
+          "itemId": "Desc_HighSpeedWire_C",
+          "perMinute": 37.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CircuitBoard_C",
+          "perMinute": 8.75
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Computer_1_C",
+      "name": "Alternate: Caterium Computer",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 16,
+      "inputs": [
+        {
+          "itemId": "Desc_CircuitBoard_C",
+          "perMinute": 26.25
+        },
+        {
+          "itemId": "Desc_HighSpeedWire_C",
+          "perMinute": 105
+        },
+        {
+          "itemId": "Desc_Rubber_C",
+          "perMinute": 45
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Computer_C",
+          "perMinute": 3.75
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Wire_2_C",
+      "name": "Alternate: Caterium Wire",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_GoldIngot_C",
+          "perMinute": 15
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Wire_C",
+          "perMinute": 120
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Coal_1_C",
+      "name": "Alternate: Charcoal",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_Wood_C",
+          "perMinute": 15
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Coal_C",
+          "perMinute": 150
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Silica_C",
+      "name": "Alternate: Cheap Silica",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 16,
+      "inputs": [
+        {
+          "itemId": "Desc_RawQuartz_C",
+          "perMinute": 11.25
+        },
+        {
+          "itemId": "Desc_Stone_C",
+          "perMinute": 18.75
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Silica_C",
+          "perMinute": 26.25
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_ClassicBattery_C",
+      "name": "Alternate: Classic Battery",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 8,
+      "inputs": [
+        {
+          "itemId": "Desc_Sulfur_C",
+          "perMinute": 45
+        },
+        {
+          "itemId": "Desc_AluminumPlate_C",
+          "perMinute": 52.5
+        },
+        {
+          "itemId": "Desc_Plastic_C",
+          "perMinute": 60
+        },
+        {
+          "itemId": "Desc_Wire_C",
+          "perMinute": 90
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Battery_C",
+          "perMinute": 30
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_CoatedCable_C",
+      "name": "Alternate: Coated Cable",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 8,
+      "inputs": [
+        {
+          "itemId": "Desc_Wire_C",
+          "perMinute": 37.5
+        },
+        {
+          "itemId": "Desc_HeavyOilResidue_C",
+          "perMinute": 15
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Cable_C",
+          "perMinute": 67.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_CoatedIronCanister_C",
+      "name": "Alternate: Coated Iron Canister",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_IronPlate_C",
+          "perMinute": 30
+        },
+        {
+          "itemId": "Desc_CopperSheet_C",
+          "perMinute": 15
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_FluidCanister_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_CoatedIronPlate_C",
+      "name": "Alternate: Coated Iron Plate",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_IronIngot_C",
+          "perMinute": 50
+        },
+        {
+          "itemId": "Desc_Plastic_C",
+          "perMinute": 10
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_IronPlate_C",
+          "perMinute": 75
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_CokeSteelIngot_C",
+      "name": "Alternate: Coke Steel Ingot",
+      "buildingId": "Build_FoundryMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_OreIron_C",
+          "perMinute": 75
+        },
+        {
+          "itemId": "Desc_PetroleumCoke_C",
+          "perMinute": 75
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SteelIngot_C",
+          "perMinute": 100
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_EnrichedCoal_C",
+      "name": "Alternate: Compacted Coal",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_Coal_C",
+          "perMinute": 25
+        },
+        {
+          "itemId": "Desc_Sulfur_C",
+          "perMinute": 25
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CompactedCoal_C",
+          "perMinute": 25
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_IngotSteel_2_C",
+      "name": "Alternate: Compacted Steel Ingot",
+      "buildingId": "Build_FoundryMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 16,
+      "inputs": [
+        {
+          "itemId": "Desc_OreIron_C",
+          "perMinute": 22.5
+        },
+        {
+          "itemId": "Desc_CompactedCoal_C",
+          "perMinute": 11.25
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SteelIngot_C",
+          "perMinute": 37.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_CoolingDevice_C",
+      "name": "Alternate: Cooling Device",
+      "buildingId": "Build_Blender_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 32,
+      "inputs": [
+        {
+          "itemId": "Desc_AluminumPlateReinforced_C",
+          "perMinute": 9.38
+        },
+        {
+          "itemId": "Desc_Motor_C",
+          "perMinute": 1.88
+        },
+        {
+          "itemId": "Desc_NitrogenGas_C",
+          "perMinute": 45
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CoolingSystem_C",
+          "perMinute": 3.75
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_CopperAlloyIngot_C",
+      "name": "Alternate: Copper Alloy Ingot",
+      "buildingId": "Build_FoundryMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_OreCopper_C",
+          "perMinute": 50
+        },
+        {
+          "itemId": "Desc_OreIron_C",
+          "perMinute": 25
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CopperIngot_C",
+          "perMinute": 100
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_CopperRotor_C",
+      "name": "Alternate: Copper Rotor",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 16,
+      "inputs": [
+        {
+          "itemId": "Desc_CopperSheet_C",
+          "perMinute": 22.5
+        },
+        {
+          "itemId": "Desc_IronScrew_C",
+          "perMinute": 195
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Rotor_C",
+          "perMinute": 11.25
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Beacon_1_C",
+      "name": "Alternate: Crystal Beacon",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 120,
+      "inputs": [
+        {
+          "itemId": "Desc_SteelPlate_C",
+          "perMinute": 2
+        },
+        {
+          "itemId": "Desc_SteelPipe_C",
+          "perMinute": 8
+        },
+        {
+          "itemId": "Desc_CrystalOscillator_C",
+          "perMinute": 0.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "BP_EquipmentDescriptorBeacon_C",
+          "perMinute": 10
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Computer_2_C",
+      "name": "Alternate: Crystal Computer",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 64,
+      "inputs": [
+        {
+          "itemId": "Desc_CircuitBoard_C",
+          "perMinute": 7.5
+        },
+        {
+          "itemId": "Desc_CrystalOscillator_C",
+          "perMinute": 2.81
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Computer_C",
+          "perMinute": 2.81
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_DilutedFuel_C",
+      "name": "Alternate: Diluted Fuel",
+      "buildingId": "Build_Blender_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_HeavyOilResidue_C",
+          "perMinute": 50
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 100
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_LiquidFuel_C",
+          "perMinute": 100
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_DilutedPackagedFuel_C",
+      "name": "Alternate: Diluted Packaged Fuel",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 2,
+      "inputs": [
+        {
+          "itemId": "Desc_HeavyOilResidue_C",
+          "perMinute": 30
+        },
+        {
+          "itemId": "Desc_PackagedWater_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Fuel_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_ElectricMotor_C",
+      "name": "Alternate: Electric Motor",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 16,
+      "inputs": [
+        {
+          "itemId": "Desc_ElectromagneticControlRod_C",
+          "perMinute": 3.75
+        },
+        {
+          "itemId": "Desc_Rotor_C",
+          "perMinute": 7.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Motor_C",
+          "perMinute": 7.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_ElectroAluminumScrap_C",
+      "name": "Alternate: Electrode Aluminum Scrap",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 4,
+      "inputs": [
+        {
+          "itemId": "Desc_AluminaSolution_C",
+          "perMinute": 180
+        },
+        {
+          "itemId": "Desc_PetroleumCoke_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_AluminumScrap_C",
+          "perMinute": 300
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 105
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_ElectrodeCircuitBoard_C",
+      "name": "Alternate: Electrode Circuit Board",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_Rubber_C",
+          "perMinute": 30
+        },
+        {
+          "itemId": "Desc_PetroleumCoke_C",
+          "perMinute": 45
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CircuitBoard_C",
+          "perMinute": 5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_ElectromagneticControlRod_1_C",
+      "name": "Alternate: Electromagnetic Connection Rod",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 15,
+      "inputs": [
+        {
+          "itemId": "Desc_Stator_C",
+          "perMinute": 8
+        },
+        {
+          "itemId": "Desc_HighSpeedConnector_C",
+          "perMinute": 4
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_ElectromagneticControlRod_C",
+          "perMinute": 8
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_EncasedIndustrialBeam_C",
+      "name": "Alternate: Encased Industrial Pipe",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 15,
+      "inputs": [
+        {
+          "itemId": "Desc_SteelPipe_C",
+          "perMinute": 28
+        },
+        {
+          "itemId": "Desc_Cement_C",
+          "perMinute": 20
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SteelPlateReinforced_C",
+          "perMinute": 4
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_FertileUranium_C",
+      "name": "Alternate: Fertile Uranium",
+      "buildingId": "Build_Blender_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_OreUranium_C",
+          "perMinute": 25
+        },
+        {
+          "itemId": "Desc_NuclearWaste_C",
+          "perMinute": 25
+        },
+        {
+          "itemId": "Desc_NitricAcid_C",
+          "perMinute": 15
+        },
+        {
+          "itemId": "Desc_SulfuricAcid_C",
+          "perMinute": 25
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_NonFissibleUranium_C",
+          "perMinute": 100
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 40
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Gunpowder_1_C",
+      "name": "Alternate: Fine Black Powder",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 16,
+      "inputs": [
+        {
+          "itemId": "Desc_Sulfur_C",
+          "perMinute": 7.5
+        },
+        {
+          "itemId": "Desc_CompactedCoal_C",
+          "perMinute": 3.75
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Gunpowder_C",
+          "perMinute": 15
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Concrete_C",
+      "name": "Alternate: Fine Concrete",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 24,
+      "inputs": [
+        {
+          "itemId": "Desc_Silica_C",
+          "perMinute": 7.5
+        },
+        {
+          "itemId": "Desc_Stone_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Cement_C",
+          "perMinute": 25
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_FlexibleFramework_C",
+      "name": "Alternate: Flexible Framework",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 16,
+      "inputs": [
+        {
+          "itemId": "Desc_ModularFrame_C",
+          "perMinute": 3.75
+        },
+        {
+          "itemId": "Desc_SteelPlate_C",
+          "perMinute": 22.5
+        },
+        {
+          "itemId": "Desc_Rubber_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_2_C",
+          "perMinute": 7.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Quickwire_C",
+      "name": "Alternate: Fused Quickwire",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 8,
+      "inputs": [
+        {
+          "itemId": "Desc_GoldIngot_C",
+          "perMinute": 7.5
+        },
+        {
+          "itemId": "Desc_CopperIngot_C",
+          "perMinute": 37.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_HighSpeedWire_C",
+          "perMinute": 90
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_FusedWire_C",
+      "name": "Alternate: Fused Wire",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 20,
+      "inputs": [
+        {
+          "itemId": "Desc_CopperIngot_C",
+          "perMinute": 12
+        },
+        {
+          "itemId": "Desc_GoldIngot_C",
+          "perMinute": 3
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Wire_C",
+          "perMinute": 90
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_HeatSink_1_C",
+      "name": "Alternate: Heat Exchanger",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_AluminumCasing_C",
+          "perMinute": 30
+        },
+        {
+          "itemId": "Desc_Rubber_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_AluminumPlateReinforced_C",
+          "perMinute": 10
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_HeatFusedFrame_C",
+      "name": "Alternate: Heat-Fused Frame",
+      "buildingId": "Build_Blender_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 20,
+      "inputs": [
+        {
+          "itemId": "Desc_ModularFrameHeavy_C",
+          "perMinute": 3
+        },
+        {
+          "itemId": "Desc_AluminumIngot_C",
+          "perMinute": 150
+        },
+        {
+          "itemId": "Desc_NitricAcid_C",
+          "perMinute": 24
+        },
+        {
+          "itemId": "Desc_LiquidFuel_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_ModularFrameFused_C",
+          "perMinute": 3
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_ModularFrameHeavy_C",
+      "name": "Alternate: Heavy Encased Frame",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 64,
+      "inputs": [
+        {
+          "itemId": "Desc_ModularFrame_C",
+          "perMinute": 7.5
+        },
+        {
+          "itemId": "Desc_SteelPlateReinforced_C",
+          "perMinute": 9.38
+        },
+        {
+          "itemId": "Desc_SteelPipe_C",
+          "perMinute": 33.75
+        },
+        {
+          "itemId": "Desc_Cement_C",
+          "perMinute": 20.63
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_ModularFrameHeavy_C",
+          "perMinute": 2.81
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_HeavyFlexibleFrame_C",
+      "name": "Alternate: Heavy Flexible Frame",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 16,
+      "inputs": [
+        {
+          "itemId": "Desc_ModularFrame_C",
+          "perMinute": 18.75
+        },
+        {
+          "itemId": "Desc_SteelPlateReinforced_C",
+          "perMinute": 11.25
+        },
+        {
+          "itemId": "Desc_Rubber_C",
+          "perMinute": 75
+        },
+        {
+          "itemId": "Desc_IronScrew_C",
+          "perMinute": 390
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_ModularFrameHeavy_C",
+          "perMinute": 3.75
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_HeavyOilResidue_C",
+      "name": "Alternate: Heavy Oil Residue",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_LiquidOil_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_HeavyOilResidue_C",
+          "perMinute": 40
+        },
+        {
+          "itemId": "Desc_PolymerResin_C",
+          "perMinute": 20
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_UraniumCell_1_C",
+      "name": "Alternate: Infused Uranium Cell",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_OreUranium_C",
+          "perMinute": 25
+        },
+        {
+          "itemId": "Desc_Silica_C",
+          "perMinute": 15
+        },
+        {
+          "itemId": "Desc_Sulfur_C",
+          "perMinute": 25
+        },
+        {
+          "itemId": "Desc_HighSpeedWire_C",
+          "perMinute": 75
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_UraniumCell_C",
+          "perMinute": 20
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_InstantPlutoniumCell_C",
+      "name": "Alternate: Instant Plutonium Cell",
+      "buildingId": "Build_HadronCollider_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 120,
+      "inputs": [
+        {
+          "itemId": "Desc_NonFissibleUranium_C",
+          "perMinute": 75
+        },
+        {
+          "itemId": "Desc_AluminumCasing_C",
+          "perMinute": 10
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_PlutoniumCell_C",
+          "perMinute": 10
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_InstantScrap_C",
+      "name": "Alternate: Instant Scrap",
+      "buildingId": "Build_Blender_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_OreBauxite_C",
+          "perMinute": 150
+        },
+        {
+          "itemId": "Desc_Coal_C",
+          "perMinute": 100
+        },
+        {
+          "itemId": "Desc_SulfuricAcid_C",
+          "perMinute": 50
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_AluminumScrap_C",
+          "perMinute": 300
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 50
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Cable_1_C",
+      "name": "Alternate: Insulated Cable",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_Wire_C",
+          "perMinute": 45
+        },
+        {
+          "itemId": "Desc_Rubber_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Cable_C",
+          "perMinute": 100
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_CrystalOscillator_C",
+      "name": "Alternate: Insulated Crystal Oscillator",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 32,
+      "inputs": [
+        {
+          "itemId": "Desc_QuartzCrystal_C",
+          "perMinute": 18.75
+        },
+        {
+          "itemId": "Desc_Rubber_C",
+          "perMinute": 13.13
+        },
+        {
+          "itemId": "Desc_CircuitBoardHighSpeed_C",
+          "perMinute": 1.88
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CrystalOscillator_C",
+          "perMinute": 1.88
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_IngotIron_C",
+      "name": "Alternate: Iron Alloy Ingot",
+      "buildingId": "Build_FoundryMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_OreIron_C",
+          "perMinute": 20
+        },
+        {
+          "itemId": "Desc_OreCopper_C",
+          "perMinute": 20
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_IronIngot_C",
+          "perMinute": 50
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Wire_1_C",
+      "name": "Alternate: Iron Wire",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 24,
+      "inputs": [
+        {
+          "itemId": "Desc_IronIngot_C",
+          "perMinute": 12.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Wire_C",
+          "perMinute": 22.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_OCSupercomputer_C",
+      "name": "Alternate: OC Supercomputer",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 20,
+      "inputs": [
+        {
+          "itemId": "Desc_ModularFrameLightweight_C",
+          "perMinute": 9
+        },
+        {
+          "itemId": "Desc_CoolingSystem_C",
+          "perMinute": 9
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_ComputerSuper_C",
+          "perMinute": 3
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_PlasticSmartPlating_C",
+      "name": "Alternate: Plastic Smart Plating",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 24,
+      "inputs": [
+        {
+          "itemId": "Desc_IronPlateReinforced_C",
+          "perMinute": 2.5
+        },
+        {
+          "itemId": "Desc_Rotor_C",
+          "perMinute": 2.5
+        },
+        {
+          "itemId": "Desc_Plastic_C",
+          "perMinute": 7.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_1_C",
+          "perMinute": 5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_PlutoniumFuelUnit_C",
+      "name": "Alternate: Plutonium Fuel Unit",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 120,
+      "inputs": [
+        {
+          "itemId": "Desc_PlutoniumCell_C",
+          "perMinute": 10
+        },
+        {
+          "itemId": "Desc_PressureConversionCube_C",
+          "perMinute": 0.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_PlutoniumFuelRod_C",
+          "perMinute": 0.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_PolyesterFabric_C",
+      "name": "Alternate: Polyester Fabric",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 2,
+      "inputs": [
+        {
+          "itemId": "Desc_PolymerResin_C",
+          "perMinute": 30
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Fabric_C",
+          "perMinute": 30
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_PolymerResin_C",
+      "name": "Alternate: Polymer Resin",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 6,
+      "inputs": [
+        {
+          "itemId": "Desc_LiquidOil_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_PolymerResin_C",
+          "perMinute": 130
+        },
+        {
+          "itemId": "Desc_HeavyOilResidue_C",
+          "perMinute": 20
+        }
+      ]
+    },
+    {
+      "id": "Recipe_PureAluminumIngot_C",
+      "name": "Alternate: Pure Aluminum Ingot",
+      "buildingId": "Build_SmelterMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 2,
+      "inputs": [
+        {
+          "itemId": "Desc_AluminumScrap_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_AluminumIngot_C",
+          "perMinute": 30
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_PureCateriumIngot_C",
+      "name": "Alternate: Pure Caterium Ingot",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 5,
+      "inputs": [
+        {
+          "itemId": "Desc_OreGold_C",
+          "perMinute": 24
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 24
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_GoldIngot_C",
+          "perMinute": 12
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_PureCopperIngot_C",
+      "name": "Alternate: Pure Copper Ingot",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 24,
+      "inputs": [
+        {
+          "itemId": "Desc_OreCopper_C",
+          "perMinute": 15
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 10
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CopperIngot_C",
+          "perMinute": 37.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_PureIronIngot_C",
+      "name": "Alternate: Pure Iron Ingot",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_OreIron_C",
+          "perMinute": 35
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 20
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_IronIngot_C",
+          "perMinute": 65
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_PureQuartzCrystal_C",
+      "name": "Alternate: Pure Quartz Crystal",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 8,
+      "inputs": [
+        {
+          "itemId": "Desc_RawQuartz_C",
+          "perMinute": 67.5
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 37.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_QuartzCrystal_C",
+          "perMinute": 52.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Cable_2_C",
+      "name": "Alternate: Quickwire Cable",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 24,
+      "inputs": [
+        {
+          "itemId": "Desc_HighSpeedWire_C",
+          "perMinute": 7.5
+        },
+        {
+          "itemId": "Desc_Rubber_C",
+          "perMinute": 5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Cable_C",
+          "perMinute": 27.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Stator_C",
+      "name": "Alternate: Quickwire Stator",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 15,
+      "inputs": [
+        {
+          "itemId": "Desc_SteelPipe_C",
+          "perMinute": 16
+        },
+        {
+          "itemId": "Desc_HighSpeedWire_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Stator_C",
+          "perMinute": 8
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_RadioControlUnit_1_C",
+      "name": "Alternate: Radio Connection Unit",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 16,
+      "inputs": [
+        {
+          "itemId": "Desc_AluminumPlateReinforced_C",
+          "perMinute": 15
+        },
+        {
+          "itemId": "Desc_HighSpeedConnector_C",
+          "perMinute": 7.5
+        },
+        {
+          "itemId": "Desc_QuartzCrystal_C",
+          "perMinute": 45
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_ModularFrameLightweight_C",
+          "perMinute": 3.75
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_RadioControlSystem_C",
+      "name": "Alternate: Radio Control System",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 40,
+      "inputs": [
+        {
+          "itemId": "Desc_CrystalOscillator_C",
+          "perMinute": 1.5
+        },
+        {
+          "itemId": "Desc_CircuitBoard_C",
+          "perMinute": 15
+        },
+        {
+          "itemId": "Desc_AluminumCasing_C",
+          "perMinute": 90
+        },
+        {
+          "itemId": "Desc_Rubber_C",
+          "perMinute": 45
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_ModularFrameLightweight_C",
+          "perMinute": 4.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Plastic_1_C",
+      "name": "Alternate: Recycled Plastic",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_Rubber_C",
+          "perMinute": 30
+        },
+        {
+          "itemId": "Desc_LiquidFuel_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Plastic_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_RecycledRubber_C",
+      "name": "Alternate: Recycled Rubber",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_Plastic_C",
+          "perMinute": 30
+        },
+        {
+          "itemId": "Desc_LiquidFuel_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Rubber_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Motor_1_C",
+      "name": "Alternate: Rigour Motor",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 48,
+      "inputs": [
+        {
+          "itemId": "Desc_Rotor_C",
+          "perMinute": 3.75
+        },
+        {
+          "itemId": "Desc_Stator_C",
+          "perMinute": 3.75
+        },
+        {
+          "itemId": "Desc_CrystalOscillator_C",
+          "perMinute": 1.25
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Motor_C",
+          "perMinute": 7.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_RubberConcrete_C",
+      "name": "Alternate: Rubber Concrete",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_Stone_C",
+          "perMinute": 50
+        },
+        {
+          "itemId": "Desc_Rubber_C",
+          "perMinute": 10
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Cement_C",
+          "perMinute": 45
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_CircuitBoard_1_C",
+      "name": "Alternate: Silicon Circuit Board",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 24,
+      "inputs": [
+        {
+          "itemId": "Desc_CopperSheet_C",
+          "perMinute": 27.5
+        },
+        {
+          "itemId": "Desc_Silica_C",
+          "perMinute": 27.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CircuitBoard_C",
+          "perMinute": 12.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_HighSpeedConnector_C",
+      "name": "Alternate: Silicon High-Speed Connector",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 40,
+      "inputs": [
+        {
+          "itemId": "Desc_HighSpeedWire_C",
+          "perMinute": 90
+        },
+        {
+          "itemId": "Desc_Silica_C",
+          "perMinute": 37.5
+        },
+        {
+          "itemId": "Desc_CircuitBoard_C",
+          "perMinute": 3
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_HighSpeedConnector_C",
+          "perMinute": 3
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_SloppyAlumina_C",
+      "name": "Alternate: Sloppy Alumina",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 3,
+      "inputs": [
+        {
+          "itemId": "Desc_OreBauxite_C",
+          "perMinute": 200
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 200
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_AluminaSolution_C",
+          "perMinute": 240
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_IngotSteel_1_C",
+      "name": "Alternate: Solid Steel Ingot",
+      "buildingId": "Build_FoundryMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 3,
+      "inputs": [
+        {
+          "itemId": "Desc_IronIngot_C",
+          "perMinute": 40
+        },
+        {
+          "itemId": "Desc_Coal_C",
+          "perMinute": 40
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_SteelIngot_C",
+          "perMinute": 60
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_SteamedCopperSheet_C",
+      "name": "Alternate: Steamed Copper Sheet",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 8,
+      "inputs": [
+        {
+          "itemId": "Desc_CopperIngot_C",
+          "perMinute": 22.5
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 22.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_CopperSheet_C",
+          "perMinute": 22.5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_SteelCanister_C",
+      "name": "Alternate: Steel Canister",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 3,
+      "inputs": [
+        {
+          "itemId": "Desc_SteelIngot_C",
+          "perMinute": 60
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_FluidCanister_C",
+          "perMinute": 40
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_SteelCoatedPlate_C",
+      "name": "Alternate: Steel Coated Plate",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 24,
+      "inputs": [
+        {
+          "itemId": "Desc_SteelIngot_C",
+          "perMinute": 7.5
+        },
+        {
+          "itemId": "Desc_Plastic_C",
+          "perMinute": 5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_IronPlate_C",
+          "perMinute": 45
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_SteelRod_C",
+      "name": "Alternate: Steel Rod",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 5,
+      "inputs": [
+        {
+          "itemId": "Desc_SteelIngot_C",
+          "perMinute": 12
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_IronRod_C",
+          "perMinute": 48
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Rotor_C",
+      "name": "Alternate: Steel Rotor",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_SteelPipe_C",
+          "perMinute": 10
+        },
+        {
+          "itemId": "Desc_Wire_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Rotor_C",
+          "perMinute": 5
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Screw_2_C",
+      "name": "Alternate: Steel Screw",
+      "buildingId": "Build_ConstructorMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 12,
+      "inputs": [
+        {
+          "itemId": "Desc_SteelPlate_C",
+          "perMinute": 5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_IronScrew_C",
+          "perMinute": 260
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_ModularFrame_C",
+      "name": "Alternate: Steeled Frame",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 60,
+      "inputs": [
+        {
+          "itemId": "Desc_IronPlateReinforced_C",
+          "perMinute": 2
+        },
+        {
+          "itemId": "Desc_SteelPipe_C",
+          "perMinute": 10
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_ModularFrame_C",
+          "perMinute": 3
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_ReinforcedIronPlate_2_C",
+      "name": "Alternate: Stitched Iron Plate",
+      "buildingId": "Build_AssemblerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 32,
+      "inputs": [
+        {
+          "itemId": "Desc_IronPlate_C",
+          "perMinute": 18.75
+        },
+        {
+          "itemId": "Desc_Wire_C",
+          "perMinute": 37.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_IronPlateReinforced_C",
+          "perMinute": 5.63
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_SuperStateComputer_C",
+      "name": "Alternate: Super-State Computer",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 50,
+      "inputs": [
+        {
+          "itemId": "Desc_Computer_C",
+          "perMinute": 3.6
+        },
+        {
+          "itemId": "Desc_ElectromagneticControlRod_C",
+          "perMinute": 2.4
+        },
+        {
+          "itemId": "Desc_Battery_C",
+          "perMinute": 24
+        },
+        {
+          "itemId": "Desc_Wire_C",
+          "perMinute": 54
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_ComputerSuper_C",
+          "perMinute": 2.4
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_TurboBlendFuel_C",
+      "name": "Alternate: Turbo Blend Fuel",
+      "buildingId": "Build_Blender_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 8,
+      "inputs": [
+        {
+          "itemId": "Desc_LiquidFuel_C",
+          "perMinute": 15
+        },
+        {
+          "itemId": "Desc_HeavyOilResidue_C",
+          "perMinute": 30
+        },
+        {
+          "itemId": "Desc_Sulfur_C",
+          "perMinute": 22.5
+        },
+        {
+          "itemId": "Desc_PetroleumCoke_C",
+          "perMinute": 22.5
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_LiquidTurboFuel_C",
+          "perMinute": 45
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_TurboMotor_1_C",
+      "name": "Alternate: Turbo Electric Motor",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 64,
+      "inputs": [
+        {
+          "itemId": "Desc_Motor_C",
+          "perMinute": 6.56
+        },
+        {
+          "itemId": "Desc_ModularFrameLightweight_C",
+          "perMinute": 8.44
+        },
+        {
+          "itemId": "Desc_ElectromagneticControlRod_C",
+          "perMinute": 4.69
+        },
+        {
+          "itemId": "Desc_Rotor_C",
+          "perMinute": 6.56
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_MotorLightweight_C",
+          "perMinute": 2.81
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_TurboHeavyFuel_C",
+      "name": "Alternate: Turbo Heavy Fuel",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 8,
+      "inputs": [
+        {
+          "itemId": "Desc_HeavyOilResidue_C",
+          "perMinute": 37.5
+        },
+        {
+          "itemId": "Desc_CompactedCoal_C",
+          "perMinute": 30
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_LiquidTurboFuel_C",
+          "perMinute": 30
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_TurboPressureMotor_C",
+      "name": "Alternate: Turbo Pressure Motor",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 32,
+      "inputs": [
+        {
+          "itemId": "Desc_Motor_C",
+          "perMinute": 7.5
+        },
+        {
+          "itemId": "Desc_PressureConversionCube_C",
+          "perMinute": 1.88
+        },
+        {
+          "itemId": "Desc_PackagedNitrogenGas_C",
+          "perMinute": 45
+        },
+        {
+          "itemId": "Desc_Stator_C",
+          "perMinute": 15
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_MotorLightweight_C",
+          "perMinute": 3.75
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_NuclearFuelRod_1_C",
+      "name": "Alternate: Uranium Fuel Unit",
+      "buildingId": "Build_ManufacturerMk1_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 300,
+      "inputs": [
+        {
+          "itemId": "Desc_UraniumCell_C",
+          "perMinute": 20
+        },
+        {
+          "itemId": "Desc_ElectromagneticControlRod_C",
+          "perMinute": 2
+        },
+        {
+          "itemId": "Desc_CrystalOscillator_C",
+          "perMinute": 0.6
+        },
+        {
+          "itemId": "BP_EquipmentDescriptorBeacon_C",
+          "perMinute": 1.2
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_NuclearFuelRod_C",
+          "perMinute": 0.6
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_WetConcrete_C",
+      "name": "Alternate: Wet Concrete",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 3,
+      "inputs": [
+        {
+          "itemId": "Desc_Stone_C",
+          "perMinute": 120
+        },
+        {
+          "itemId": "Desc_Water_C",
+          "perMinute": 100
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_Cement_C",
+          "perMinute": 80
+        }
+      ]
+    },
+    {
+      "id": "Recipe_Alternate_Turbofuel_C",
+      "name": "Turbofuel",
+      "buildingId": "Build_OilRefinery_C",
+      "isAlt": true,
+      "unlockTier": 0,
+      "cycleSeconds": 16,
+      "inputs": [
+        {
+          "itemId": "Desc_LiquidFuel_C",
+          "perMinute": 22.5
+        },
+        {
+          "itemId": "Desc_CompactedCoal_C",
+          "perMinute": 15
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_LiquidTurboFuel_C",
+          "perMinute": 18.75
+        }
+      ]
+    }
+  ],
+  "milestones": [
+    {
+      "id": "tier-0",
+      "tier": 0,
+      "name": "HUB Upgrade 1",
+      "unlocks": [
+        "Build_ConstructorMk1_C",
+        "Build_SmelterMk1_C"
+      ]
+    },
+    {
+      "id": "tier-1",
+      "tier": 1,
+      "name": "Field Research",
+      "unlocks": [
+        "Build_AssemblerMk1_C",
+        "Build_ConveyorBeltMk2_C"
+      ]
+    },
+    {
+      "id": "tier-2",
+      "tier": 2,
+      "name": "Logistics Mk.2",
+      "unlocks": [
+        "Build_StorageContainerMk1_C"
+      ]
+    },
+    {
+      "id": "tier-3",
+      "tier": 3,
+      "name": "Coal Power",
+      "unlocks": [
+        "Build_GeneratorCoal_C",
+        "Build_FoundryMk1_C",
+        "Build_MinerMk2_C",
+        "Build_ConveyorBeltMk3_C"
+      ]
+    },
+    {
+      "id": "tier-4",
+      "tier": 4,
+      "name": "Advanced Steel Production",
+      "unlocks": [
+        "Build_ConveyorBeltMk4_C"
+      ]
+    },
+    {
+      "id": "tier-5",
+      "tier": 5,
+      "name": "Oil Processing",
+      "unlocks": [
+        "Build_OilRefinery_C",
+        "Build_OilPump_C",
+        "Build_Packager_C",
+        "Build_ConveyorBeltMk5_C"
+      ]
+    },
+    {
+      "id": "tier-6",
+      "tier": 6,
+      "name": "Expanded Power Infrastructure",
+      "unlocks": [
+        "Build_GeneratorFuel_C",
+        "Build_PipelineMK2_C"
+      ]
+    },
+    {
+      "id": "tier-7",
+      "tier": 7,
+      "name": "Bauxite Refinement",
+      "unlocks": [
+        "Build_ManufacturerMk1_C",
+        "Build_Blender_C",
+        "Build_MinerMk3_C",
+        "Build_FrackingExtractor_C"
+      ]
+    },
+    {
+      "id": "tier-8",
+      "tier": 8,
+      "name": "Particle Enrichment",
+      "unlocks": [
+        "Build_HadronCollider_C",
+        "Build_GeneratorNuclear_C",
+        "Build_Converter_C",
+        "Build_ConveyorBeltMk6_C"
+      ]
+    },
+    {
+      "id": "tier-9",
+      "tier": 9,
+      "name": "Project Assembly Phase 5",
+      "unlocks": [
+        "Build_QuantumEncoder_C"
+      ]
+    }
+  ],
+  "beltTiers": [
+    {
+      "mark": 1,
+      "itemsPerMinute": 60,
+      "unlockTier": 0
+    },
+    {
+      "mark": 2,
+      "itemsPerMinute": 120,
+      "unlockTier": 2
+    },
+    {
+      "mark": 3,
+      "itemsPerMinute": 270,
+      "unlockTier": 4
+    },
+    {
+      "mark": 4,
+      "itemsPerMinute": 480,
+      "unlockTier": 5
+    },
+    {
+      "mark": 5,
+      "itemsPerMinute": 780,
+      "unlockTier": 7
+    },
+    {
+      "mark": 6,
+      "itemsPerMinute": 1200,
+      "unlockTier": 9
+    }
+  ],
+  "pipeTiers": [
+    {
+      "mark": 1,
+      "cubicMetersPerMinute": 300,
+      "unlockTier": 3
+    },
+    {
+      "mark": 2,
+      "cubicMetersPerMinute": 600,
+      "unlockTier": 6
+    }
+  ],
+  "generators": [
+    {
+      "id": "Build_GeneratorBiomass_C",
+      "name": "Biomass Burner",
+      "category": "burner",
+      "powerMw": 30,
+      "unlockTier": 0,
+      "fuels": [
+        {
+          "fuelItemId": "Desc_Wood_C",
+          "fuelPerMinute": 18
+        },
+        {
+          "fuelItemId": "Desc_GenericBiomass_C",
+          "fuelPerMinute": 4
+        },
+        {
+          "fuelItemId": "Desc_Leaves_C",
+          "fuelPerMinute": 60
+        },
+        {
+          "fuelItemId": "Desc_Mycelia_C",
+          "fuelPerMinute": 15
+        }
+      ]
+    },
+    {
+      "id": "Build_GeneratorCoal_C",
+      "name": "Coal Generator",
+      "category": "burner",
+      "powerMw": 75,
+      "unlockTier": 3,
+      "fuels": [
+        {
+          "fuelItemId": "Desc_Coal_C",
+          "fuelPerMinute": 15,
+          "supplementalItemId": "Desc_Water_C",
+          "supplementalPerMinute": 45
+        },
+        {
+          "fuelItemId": "Desc_CompactedCoal_C",
+          "fuelPerMinute": 7.14,
+          "supplementalItemId": "Desc_Water_C",
+          "supplementalPerMinute": 45
+        },
+        {
+          "fuelItemId": "Desc_PetroleumCoke_C",
+          "fuelPerMinute": 25,
+          "supplementalItemId": "Desc_Water_C",
+          "supplementalPerMinute": 45
+        }
+      ]
+    },
+    {
+      "id": "Build_GeneratorFuel_C",
+      "name": "Fuel Generator",
+      "category": "fluid",
+      "powerMw": 250,
+      "unlockTier": 6,
+      "fuels": [
+        {
+          "fuelItemId": "Desc_LiquidFuel_C",
+          "fuelPerMinute": 20
+        },
+        {
+          "fuelItemId": "Desc_LiquidTurboFuel_C",
+          "fuelPerMinute": 7.5
+        },
+        {
+          "fuelItemId": "Desc_LiquidBiofuel_C",
+          "fuelPerMinute": 20
+        },
+        {
+          "fuelItemId": "Desc_RocketFuel_C",
+          "fuelPerMinute": 4.17
+        },
+        {
+          "fuelItemId": "Desc_IonizedFuel_C",
+          "fuelPerMinute": 3
+        }
+      ]
+    },
+    {
+      "id": "Build_GeneratorNuclear_C",
+      "name": "Nuclear Power Plant",
+      "category": "nuclear",
+      "powerMw": 2500,
+      "unlockTier": 8,
+      "fuels": [
+        {
+          "fuelItemId": "Desc_NuclearFuelRod_C",
+          "fuelPerMinute": 0.2,
+          "supplementalItemId": "Desc_Water_C",
+          "supplementalPerMinute": 240
+        },
+        {
+          "fuelItemId": "Desc_PlutoniumFuelRod_C",
+          "fuelPerMinute": 0.1,
+          "supplementalItemId": "Desc_Water_C",
+          "supplementalPerMinute": 240
+        }
+      ]
+    },
+    {
+      "id": "Build_GeneratorGeoThermal_Impure_C",
+      "name": "Geothermal Generator (Impure)",
+      "category": "geothermal",
+      "powerMw": 100,
+      "unlockTier": 8,
+      "fuels": []
+    },
+    {
+      "id": "Build_GeneratorGeoThermal_Normal_C",
+      "name": "Geothermal Generator (Normal)",
+      "category": "geothermal",
+      "powerMw": 200,
+      "unlockTier": 8,
+      "fuels": []
+    },
+    {
+      "id": "Build_GeneratorGeoThermal_Pure_C",
+      "name": "Geothermal Generator (Pure)",
+      "category": "geothermal",
+      "powerMw": 400,
+      "unlockTier": 8,
+      "fuels": []
+    }
+  ],
+  "miners": [
+    {
+      "id": "Build_MinerMk1_C",
+      "mark": 1,
+      "baseItemsPerMinute": 60,
+      "unlockTier": 0
+    },
+    {
+      "id": "Build_MinerMk2_C",
+      "mark": 2,
+      "baseItemsPerMinute": 120,
+      "unlockTier": 3
+    },
+    {
+      "id": "Build_MinerMk3_C",
+      "mark": 3,
+      "baseItemsPerMinute": 240,
+      "unlockTier": 7
+    }
+  ],
+  "transportVehicles": [
+    {
+      "id": "Build_Tractor_C",
+      "name": "Tractor",
+      "kind": "tractor",
+      "slots": 25,
+      "baseItemsPerMinute": 60,
+      "batteryPerKm": 0,
+      "unlockTier": 3
+    },
+    {
+      "id": "Build_Truck_C",
+      "name": "Truck",
+      "kind": "truck",
+      "slots": 48,
+      "baseItemsPerMinute": 120,
+      "batteryPerKm": 0,
+      "unlockTier": 5
+    },
+    {
+      "id": "Build_Explorer_C",
+      "name": "Explorer",
+      "kind": "tractor",
+      "slots": 12,
+      "baseItemsPerMinute": 30,
+      "batteryPerKm": 0,
+      "unlockTier": 3
+    },
+    {
+      "id": "Build_DroneTransport_C",
+      "name": "Drone",
+      "kind": "drone",
+      "slots": 9,
+      "baseItemsPerMinute": 250,
+      "batteryPerKm": 1,
+      "unlockTier": 7
+    }
+  ]
+}

@@ -475,13 +475,13 @@ mod tests {
         // + 1× Constructor consuming exactly that ingot → producing Iron Plate
         // The ingot should net to 0 (produced 30 - consumed 30).
         let machines = vec![
-            machine("m1", "Build_SmelterMk1_C", "Recipe_IronIngot_C", 1, 100.0),
+            machine("m1", "Build_SmelterMk1_C", "Recipe_IngotIron_C", 1, 100.0),
             machine("m2", "Build_ConstructorMk1_C", "Recipe_IronPlate_C", 1, 100.0),
         ];
         let ledger = compose_ledger("f1", &machines, &gd());
         let ingot = ledger.flows.iter().find(|f| f.item_id == "Desc_IronIngot_C").unwrap();
         assert!((ingot.net_per_minute).abs() < 0.001, "ingot should net to 0, got {}", ingot.net_per_minute);
-        let ore = ledger.flows.iter().find(|f| f.item_id == "Desc_IronOre_C").unwrap();
+        let ore = ledger.flows.iter().find(|f| f.item_id == "Desc_OreIron_C").unwrap();
         assert!((ore.net_per_minute - (-30.0)).abs() < 0.001);
         let plate = ledger.flows.iter().find(|f| f.item_id == "Desc_IronPlate_C").unwrap();
         assert!((plate.net_per_minute - 20.0).abs() < 0.001);
@@ -495,8 +495,8 @@ mod tests {
         // total ≈ 3.2 MW (vs the old linear 4 MW). The change is
         // intentional — the linear model in Phase 4 was a placeholder.
         let machines = vec![
-            machine("m1", "Build_SmelterMk1_C", "Recipe_IronIngot_C", 1, 50.0),
-            machine("m2", "Build_SmelterMk1_C", "Recipe_IronIngot_C", 1, 50.0),
+            machine("m1", "Build_SmelterMk1_C", "Recipe_IngotIron_C", 1, 50.0),
+            machine("m2", "Build_SmelterMk1_C", "Recipe_IngotIron_C", 1, 50.0),
         ];
         let ledger = compose_ledger("f1", &machines, &gd());
         let expected = 2.0 * 4.0 * (0.5_f32).powf(1.321928);
@@ -524,10 +524,10 @@ mod tests {
     #[test]
     fn ledger_overclock_scales_both_inputs_and_outputs() {
         let machines = vec![
-            machine("m1", "Build_SmelterMk1_C", "Recipe_IronIngot_C", 1, 250.0),
+            machine("m1", "Build_SmelterMk1_C", "Recipe_IngotIron_C", 1, 250.0),
         ];
         let ledger = compose_ledger("f1", &machines, &gd());
-        let ore = ledger.flows.iter().find(|f| f.item_id == "Desc_IronOre_C").unwrap();
+        let ore = ledger.flows.iter().find(|f| f.item_id == "Desc_OreIron_C").unwrap();
         let ingot = ledger.flows.iter().find(|f| f.item_id == "Desc_IronIngot_C").unwrap();
         // 250% on a 30 ipm recipe → 75 ipm both ways.
         assert!((ore.consumed_per_minute - 75.0).abs() < 0.001);

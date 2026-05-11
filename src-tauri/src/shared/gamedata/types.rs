@@ -24,6 +24,14 @@ pub struct GameDataFile {
     /// 9 lands.
     #[serde(default)]
     pub generators: Vec<Generator>,
+    /// Resource miners (Mk1/Mk2/Mk3). Optional so v0.x datasets keep
+    /// parsing — v1.1 ships them.
+    #[serde(default)]
+    pub miners: Vec<Miner>,
+    /// Truck / tractor / drone planner inputs. Optional for the same
+    /// migration reason as `miners`.
+    #[serde(default)]
+    pub transport_vehicles: Vec<TransportVehicle>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -168,4 +176,44 @@ pub struct PipeTier {
     pub mark: u8,
     pub cubic_meters_per_minute: u32,
     pub unlock_tier: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Miner {
+    /// Building id this miner row represents (e.g. `Build_MinerMk1_C`).
+    pub id: String,
+    /// 1, 2, or 3.
+    pub mark: u8,
+    /// Items per minute at 100% clock on a Normal-purity node. Impure
+    /// nodes halve this; Pure nodes double it.
+    pub base_items_per_minute: f32,
+    pub unlock_tier: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TransportVehicle {
+    /// Building id (e.g. `Build_Truck_C`).
+    pub id: String,
+    pub name: String,
+    pub kind: VehicleKind,
+    /// Cargo slots — combined with the item stack size in
+    /// `plan_vehicles` to estimate per-trip payload.
+    pub slots: u32,
+    /// Convenience baseline used when distance is unknown: items per
+    /// minute a single vehicle can sustain on a typical (~1 km) route.
+    pub base_items_per_minute: f32,
+    /// Drone-only: batteries consumed per kilometre travelled.
+    #[serde(default)]
+    pub battery_per_km: f32,
+    pub unlock_tier: u8,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum VehicleKind {
+    Tractor,
+    Truck,
+    Drone,
 }
