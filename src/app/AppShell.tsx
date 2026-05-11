@@ -14,9 +14,9 @@ import {
 } from "lucide-react";
 import { AboutModal } from "@/features/about/components/AboutModal";
 import { Button } from "@/shared/ui/Button";
-import { Card } from "@/shared/ui/Card";
 import { useThemeMode } from "@/shared/theme/useThemeMode";
 import { HealthBadge } from "@/features/health/components/HealthBadge";
+import { HomeView } from "@/features/home/components/HomeView";
 import { LibraryView } from "@/features/library/components/LibraryView";
 import { FactoryListView } from "@/features/factory/components/FactoryListView";
 import { LogisticsListView } from "@/features/logistics/components/LogisticsListView";
@@ -28,7 +28,15 @@ import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythrou
 import { PowerView } from "@/features/power/components/PowerView";
 import { useUndoStore } from "@/shared/undo/store";
 
-type Route = "home" | "factories" | "logistics" | "trains" | "power" | "network" | "library" | "alts";
+type Route =
+  | "home"
+  | "factories"
+  | "logistics"
+  | "trains"
+  | "power"
+  | "network"
+  | "library"
+  | "alts";
 
 const NAV: ReadonlyArray<{ id: Route; label: string; Icon: typeof BookOpen }> = [
   { id: "home", label: "Home", Icon: LayoutDashboard },
@@ -43,7 +51,7 @@ const NAV: ReadonlyArray<{ id: Route; label: string; Icon: typeof BookOpen }> = 
 
 export function AppShell() {
   const { mode, toggle } = useThemeMode();
-  const [route, setRoute] = useState<Route>("factories");
+  const [route, setRoute] = useState<Route>("home");
   const [showAbout, setShowAbout] = useState(false);
   const undo = useUndoStore((s) => s.undo);
   const redo = useUndoStore((s) => s.redo);
@@ -97,8 +105,11 @@ export function AppShell() {
           S.P.E.C.S
         </div>
         <div className="flex items-center gap-3">
-          <PlaythroughSwitcher />
+          {/* Health dot lives to the left of the switcher per the
+              "loud green badge" feedback — it's now a tiny indicator
+              you only notice when something's wrong. */}
           <HealthBadge />
+          <PlaythroughSwitcher />
           <Button variant="ghost" onClick={() => setShowAbout(true)} aria-label="About">
             <Info className="h-4 w-4" />
           </Button>
@@ -144,7 +155,7 @@ export function AppShell() {
         </nav>
 
         <main className="flex-1 overflow-auto p-6">
-          {route === "home" && <HomePanel />}
+          {route === "home" && <HomeView goTo={(r) => setRoute(r)} />}
           {route === "network" && <NetworkView />}
           {route === "factories" && <FactoryListView />}
           {route === "logistics" && <LogisticsListView />}
@@ -155,23 +166,5 @@ export function AppShell() {
         </main>
       </div>
     </div>
-  );
-}
-
-function HomePanel() {
-  return (
-    <Card className="mx-auto max-w-2xl">
-      <h1 className="text-xl font-semibold text-primary">Welcome to S.P.E.C.S</h1>
-      <p className="mt-2 text-sm text-fg-muted">
-        Satisfactory Production Efficiency &amp; Control System. Plan whole
-        playthroughs: factories, cross-factory logistics, milestone-aware
-        unlocks. Pick <strong>Library</strong> on the left to browse the
-        bundled game data.
-      </p>
-      <ul className="mt-4 space-y-1 text-sm">
-        <li>• Architecture &amp; slice rules: <code>docs/vsa/</code></li>
-        <li>• Design system &amp; brand tokens: <code>DESIGN.md</code></li>
-      </ul>
-    </Card>
   );
 }

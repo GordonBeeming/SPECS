@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Github, RefreshCw, X } from "lucide-react";
 
 import { Button } from "@/shared/ui/Button";
+import { buildInfo, isDevBuild, shortCommit } from "@/shared/build-info";
 
 interface AboutModalProps {
   onClose: () => void;
@@ -58,6 +59,26 @@ export function AboutModal({ onClose }: AboutModalProps) {
           <div className="flex justify-between gap-3">
             <dt className="text-fg-muted">Architecture</dt>
             <dd className="text-fg">Vertical Slice (see <code>docs/vsa/</code>)</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-fg-muted">Build</dt>
+            <dd className="text-fg tabular-nums">
+              {isDevBuild ? (
+                <span title="No CI build metadata — running a local dev build">
+                  local dev
+                </span>
+              ) : (
+                <a
+                  href={`https://github.com/GordonBeeming/SPECS/commit/${buildInfo.commit}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-primary underline-offset-2 hover:underline"
+                  title={`${buildInfo.commit}\nbuilt ${buildInfo.buildTime}`}
+                >
+                  {buildInfo.branch}@{shortCommit}
+                </a>
+              )}
+            </dd>
           </div>
         </dl>
 

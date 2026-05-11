@@ -1,40 +1,51 @@
-import { useState } from "react";
-import { ChevronDown, FolderOpen, Gauge, Plus, Share2, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, FolderOpen, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import {
   useCurrentPlaythrough,
   useDeletePlaythrough,
   useOpenPlaythrough,
   usePlaythroughList,
-  useSetCurrentTier,
 } from "../hooks/usePlaythroughs";
-import { AmplifierInventoryPanel } from "./AmplifierInventoryPanel";
 import { CreatePlaythroughModal } from "./CreatePlaythroughModal";
-import { ExportImportModal } from "./ExportImportModal";
 
-// Satisfactory ships ten milestone tiers (0–9). The progress slice
-// validates the same range Rust-side; the dropdown surfaces the full
-// list so a player switching milestones doesn't need a separate panel.
-const TIERS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
-
+/**
+ * Header dropdown — exclusively for switching the active playthrough,
+ * creating a new one, or deleting an existing one. Per-playthrough
+ * controls (tier, amplifier supply, share/import) live on the Home
+ * surface so this menu stays focused.
+ */
 export function PlaythroughSwitcher() {
   const [open, setOpen] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
-  const [showShare, setShowShare] = useState(false);
-  const [showAmplifier, setShowAmplifier] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const list = usePlaythroughList();
   const current = useCurrentPlaythrough();
   const openMut = useOpenPlaythrough();
-  const setTierMut = useSetCurrentTier();
   const deleteMut = useDeletePlaythrough();
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
-  const label = current.data
-    ? `${current.data.displayName} · T${current.data.currentTier}`
-    : "No playthrough";
+  // Click-outside-to-close: a global pointerdown listener that bails on any
+  // event whose target lives outside the wrapper. Registered only while the
+  // popover is open so we're not paying for a no-op listener at all times.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (!wrapperRef.current || !target) return;
+      if (!wrapperRef.current.contains(target)) {
+        setOpen(false);
+        setConfirmDeleteId(null);
+      }
+    };
+    window.addEventListener("pointerdown", onDown);
+    return () => window.removeEventListener("pointerdown", onDown);
+  }, [open]);
+
+  const label = current.data ? current.data.displayName : "No playthrough";
 
   return (
-    <div className="relative">
+    <div className="relative" ref={wrapperRef}>
       <Button
         variant="ghost"
         onClick={() => setOpen((v) => !v)}
@@ -53,36 +64,8 @@ export function PlaythroughSwitcher() {
         // is the keyboard story we actually want here.
         <div
           aria-label="Playthroughs"
-          className="absolute right-0 z-40 mt-2 w-80 rounded-lg border border-border bg-bg-raised p-1 shadow-lg"
+          className="absolute right-0 z-40 mt-2 w-72 rounded-lg border border-border bg-bg-raised p-1 shadow-lg"
         >
-          {current.data && (
-            <div className="border-b border-border px-3 py-2">
-              <label className="flex items-center justify-between gap-2 text-xs text-fg-muted">
-                <span>Current tier</span>
-                <select
-                  aria-label="Current tier"
-                  value={current.data.currentTier}
-                  disabled={setTierMut.isPending}
-                  onChange={(e) => setTierMut.mutate(Number(e.target.value))}
-                  className="h-7 rounded border border-border bg-bg px-2 text-sm text-fg outline-none focus:border-primary disabled:opacity-50"
-                >
-                  {TIERS.map((t) => (
-                    <option key={t} value={t}>
-                      Tier {t}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {setTierMut.isError && (
-                <div role="alert" className="mt-1 text-xs text-danger">
-                  Couldn't change tier:{" "}
-                  {setTierMut.error instanceof Error
-                    ? setTierMut.error.message
-                    : String(setTierMut.error)}
-                </div>
-              )}
-            </div>
-          )}
           <div className="max-h-72 overflow-auto py-1">
             {list.isPending && (
               <div className="px-3 py-2 text-sm text-fg-muted">Loading…</div>
@@ -203,39 +186,11 @@ export function PlaythroughSwitcher() {
               <Plus className="h-4 w-4" />
               New playthrough
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                setShowShare(true);
-                setOpen(false);
-              }}
-              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-fg hover:bg-border"
-            >
-              <Share2 className="h-4 w-4" />
-              Share / Import…
-            </button>
-            {current.data && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAmplifier(true);
-                  setOpen(false);
-                }}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-fg hover:bg-border"
-              >
-                <Gauge className="h-4 w-4" />
-                Amplifier supply…
-              </button>
-            )}
           </div>
         </div>
       )}
 
       {showCreate && <CreatePlaythroughModal onClose={() => setShowCreate(false)} />}
-      {showShare && <ExportImportModal onClose={() => setShowShare(false)} />}
-      {showAmplifier && (
-        <AmplifierInventoryPanel onClose={() => setShowAmplifier(false)} />
-      )}
     </div>
   );
 }

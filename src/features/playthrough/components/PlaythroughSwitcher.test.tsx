@@ -53,11 +53,13 @@ afterEach(() => {
 });
 
 describe("<PlaythroughSwitcher />", () => {
-  it("renders the current playthrough name and tier in the trigger", async () => {
+  it("renders the current playthrough name in the trigger", async () => {
+    // Tier display moved to the Home view; the header trigger now shows
+    // only the name so the dropdown stays focused on playthrough
+    // switching.
     renderWithProviders(<PlaythroughSwitcher />);
     await waitFor(() => {
-      // "Iron Run · T4"
-      expect(screen.getByRole("button", { name: /iron run/i })).toHaveTextContent(/T4/);
+      expect(screen.getByRole("button", { name: /iron run/i })).toBeInTheDocument();
     });
   });
 
@@ -83,16 +85,6 @@ describe("<PlaythroughSwitcher />", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Speedrun" }));
     await waitFor(() => {
       expect(playthroughApi.open).toHaveBeenCalledWith("def");
-    });
-  });
-
-  it("changes the current tier through the tier selector", async () => {
-    renderWithProviders(<PlaythroughSwitcher />);
-    fireEvent.click(await screen.findByRole("button", { name: /iron run/i }));
-    const select = await screen.findByLabelText("Current tier");
-    fireEvent.change(select, { target: { value: "6" } });
-    await waitFor(() => {
-      expect(playthroughApi.setCurrentTier).toHaveBeenCalledWith(6);
     });
   });
 

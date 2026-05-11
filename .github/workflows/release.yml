@@ -141,6 +141,12 @@ jobs:
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # action-v0.6.2
         env:
           NODE_ENV: production
+          # Stamp the about-modal build identity. `vite.config.ts` reads
+          # these via `define` so the renderer can show "branch@sha"
+          # without a runtime fetch.
+          SPECS_COMMIT_SHA: ${{ github.sha }}
+          SPECS_BRANCH: ${{ github.ref_name }}
+          SPECS_BUILD_TIME: ${{ github.event.repository.updated_at }}
           # tauri-action picks these up automatically when present;
           # mac signing + notarisation skip silently when they're empty.
           APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
