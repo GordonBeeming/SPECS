@@ -22,9 +22,13 @@ export function useResourceNodes() {
 
 function invalidate(client: ReturnType<typeof useQueryClient>) {
   client.invalidateQueries({ queryKey: queryKeys.resources.list });
-  // Available-supply readers (planner, factory ledger) need to see the
-  // claim change immediately.
-  client.invalidateQueries({ queryKey: queryKeys.factory.list });
+  // Available-supply readers (planner, factory ledger, factory detail
+  // popover on the map) need to see the claim change immediately.
+  // Invalidating the `factory` prefix covers list + detail(id) +
+  // ledger(id) in one go, so the map popover auto-refreshes the
+  // moment a node is bound or released without the user having to
+  // re-click the factory.
+  client.invalidateQueries({ queryKey: ["factory"] });
 }
 
 export function useSetNodeClaim() {

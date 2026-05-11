@@ -424,6 +424,13 @@ export function MapView() {
                         aria-label={tooltip}
                         title={tooltip}
                         className="specs-map-marker absolute -translate-x-1/2 -translate-y-1/2 inline-flex items-center justify-center rounded-full bg-bg-raised transition-transform hover:scale-125"
+                        onClick={(e) => {
+                          // mousedown→up already toggles the popover
+                          // — stop the synthetic click bubbling so the
+                          // map wrapper's onClick={setSelectedNodeId(null)}
+                          // doesn't immediately clear what we just set.
+                          e.stopPropagation();
+                        }}
                         style={{
                           left: `${xPct * MAP_W}px`,
                           top: `${yPct * MAP_H}px`,
@@ -926,27 +933,62 @@ function FactoryPopover({ factoryId, hasPower, onEdit, onEditPower, onClose }: F
   const f = detail.data?.factory;
   const ledger = detail.data?.ledger;
 
-  // Roll the factory's deficit inputs back through the recipe graph
-  // so the popover can show 'this factory ultimately needs X Iron
-  // Ore / min' instead of stopping at the direct recipe inputs. Net
-  // demand only — inputs covered by bound nodes already are
-  // subtracted out so the trace shows what's still missing at the
-  // raw end.
-  const rawTrace = useMemo(() => {
-    if (!ledger || !recipes.data) return {};
-    const deficits = ledger.flows
-      .filter((flow) => {
-        const need = -flow.netPerMinute;
-        const fromNodes = flow.fromNodesPerMinute ?? 0;
-        return need - fromNodes > 0.001;
-      })
+  // Roll every deficit input back through the recipe graph so the
+  // popover can show 'this factory ultimately needs X Iron Ore /
+  // min' — burning down as bound nodes contribute. We trace GROSS
+  // demand (pre-subtracting fromNodes) so the UI can render the
+  // burn-down as "180 of 675 bound · 495 missing"; subtracting too
+  // early collapses that into a single 'missing' number and loses
+  // the telemetry. Intermediates (Iron Rod, Screw, …) never bind
+  // from nodes so the rollup is the only useful demand view.
+  const requires = useMemo(() => {
+    if (!ledger || !recipes.data) return [] as Array<{
+      itemId: string;
+      required: number;
+      bound: number;
+      missing: number;
+    }>;
+    const grossDeficits = ledger.flows
+      .filter((flow) => flow.netPerMinute < -0.001)
       .map((flow) => ({
         itemId: flow.itemId,
-        ratePerMin: -flow.netPerMinute - (flow.fromNodesPerMinute ?? 0),
+        ratePerMin: -flow.netPerMinute,
       }));
-    if (deficits.length === 0) return {};
-    return traceRawDemand(deficits, recipes.data);
+    const raw = grossDeficits.length === 0
+      ? {}
+      : traceRawDemand(grossDeficits, recipes.data);
+    // Map raw item id → bound supply from the factory's flow rows.
+    const boundFor = (itemId: string): number => {
+      const flow = ledger.flows.find((f) => f.itemId === itemId);
+      return flow?.fromNodesPerMinute ?? 0;
+    };
+    return Object.entries(raw)
+      .map(([itemId, required]) => {
+        const bound = boundFor(itemId);
+        return {
+          itemId,
+          required,
+          bound: Math.min(bound, required),
+          missing: Math.max(0, required - bound),
+        };
+      })
+      .sort((a, b) => b.required - a.required);
   }, [ledger, recipes.data]);
+  // Bound supply for items the factory doesn't actually need (so a
+  // wired-up node never silently disappears from the UI).
+  const unusedBindings = useMemo(() => {
+    if (!ledger) return [] as Array<{ itemId: string; itemName: string; bound: number }>;
+    const requiredIds = new Set(requires.map((r) => r.itemId));
+    return ledger.flows
+      .filter(
+        (f) =>
+          (f.fromNodesPerMinute ?? 0) > 0.001 &&
+          !requiredIds.has(f.itemId) &&
+          // ignore items the factory is producing — they're shown as outputs already
+          f.netPerMinute <= 0.001,
+      )
+      .map((f) => ({ itemId: f.itemId, itemName: f.itemName, bound: f.fromNodesPerMinute ?? 0 }));
+  }, [ledger, requires]);
   return (
     <Card className="w-[320px] p-3">
       <div className="flex items-start justify-between gap-2">
@@ -979,113 +1021,111 @@ function FactoryPopover({ factoryId, hasPower, onEdit, onEditPower, onClose }: F
 
       {(() => {
         if (!detail.data || !ledger) return null;
-        // Keep ALL of: net-positive (factory output), net-negative
-        // (factory input), and any item with non-zero supply coming
-        // in from bound nodes (so a node the user wired up to this
-        // factory still shows even if no machine here consumes it
-        // yet — without it the bound resource silently disappears).
-        // Intermediates that produce-and-consume internally (net 0,
-        // no node supply) still get filtered — they're noise.
-        const meaningful = ledger.flows.filter(
-          (f) =>
-            Math.abs(f.netPerMinute) > 0.001 ||
-            (f.fromNodesPerMinute ?? 0) > 0.001,
-        );
-        if (meaningful.length === 0) return null;
-        const inputs = meaningful.filter(
-          (f) => f.netPerMinute < -0.001 || (f.fromNodesPerMinute ?? 0) > 0.001,
-        );
-        const outputs = meaningful.filter((f) => f.netPerMinute > 0.001);
+        const outputs = ledger.flows.filter((f) => f.netPerMinute > 0.001);
+        if (outputs.length === 0 && requires.length === 0 && unusedBindings.length === 0)
+          return null;
         return (
-          <ul className="mt-3 max-h-44 space-y-1 overflow-auto text-[11px]">
-            {outputs.map((flow) => (
-              <li
-                key={`out-${flow.itemId}`}
-                className="flex items-center justify-between gap-2"
-              >
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <Icon itemId={flow.itemId} alt="" className="h-3.5 w-3.5" />
-                  <span className="truncate">{flow.itemName}</span>
-                </span>
-                <span className="tabular-nums text-success">
-                  +{flow.netPerMinute.toFixed(1)}/min
-                </span>
-              </li>
-            ))}
-            {inputs.map((flow) => {
-              const need = Math.max(0, -flow.netPerMinute);
-              const fromNodes = flow.fromNodesPerMinute ?? 0;
-              const covered = Math.min(fromNodes, need);
-              const shortfall = Math.max(0, need - fromNodes);
-              const unusedSupply = need === 0 && fromNodes > 0;
-              return (
-                <li
-                  key={`in-${flow.itemId}`}
-                  className="flex items-center justify-between gap-2"
-                >
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <Icon itemId={flow.itemId} alt="" className="h-3.5 w-3.5" />
-                    <span className="truncate">{flow.itemName}</span>
-                  </span>
-                  <span className="flex items-center gap-1 tabular-nums">
-                    {unusedSupply ? (
-                      // Bound supply with nothing in this factory
-                      // consuming it — surface it so the user
-                      // doesn't lose track of the binding.
-                      <span
-                        className="text-fg-muted"
-                        title={`From bound nodes: ${fromNodes.toFixed(1)}/min · no machine in this factory uses it`}
+          <>
+            {outputs.length > 0 && (
+              <ul className="mt-3 space-y-1 text-[11px]">
+                {outputs.map((flow) => (
+                  <li
+                    key={`out-${flow.itemId}`}
+                    className="flex items-center justify-between gap-2"
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <Icon itemId={flow.itemId} alt="" className="h-3.5 w-3.5" />
+                      <span className="truncate">{flow.itemName}</span>
+                    </span>
+                    <span className="tabular-nums text-success">
+                      +{flow.netPerMinute.toFixed(1)}/min
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {requires.length > 0 && (
+              <div className="mt-3 border-t border-border/40 pt-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
+                  Requires
+                </div>
+                <ul className="mt-1 space-y-1 text-[11px]">
+                  {requires.map((r) => {
+                    const fullyCovered = r.missing <= 0.001;
+                    return (
+                      <li
+                        key={r.itemId}
+                        className="flex items-center justify-between gap-2"
                       >
-                        {fromNodes.toFixed(1)}/min available
-                      </span>
-                    ) : (
-                      <>
-                        <span className="text-danger">-{need.toFixed(1)}/min</span>
-                        {fromNodes > 0 && (
-                          <span
-                            className="rounded-full bg-primary/10 px-1.5 text-[10px] font-medium text-primary"
-                            title={`From bound nodes: ${fromNodes.toFixed(1)}/min · still needed: ${shortfall.toFixed(1)}/min`}
-                          >
-                            {covered.toFixed(0)}/{need.toFixed(0)}
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <Icon
+                            itemId={markerIconId(r.itemId)}
+                            alt=""
+                            className="h-3.5 w-3.5"
+                          />
+                          <span className="truncate">
+                            {r.itemId.replace(/^Desc_/, "").replace(/_C$/, "")}
                           </span>
-                        )}
-                      </>
-                    )}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+                        </span>
+                        <span className="flex items-center gap-1 tabular-nums">
+                          {fullyCovered ? (
+                            <span
+                              className="text-success"
+                              title={`Bound: ${r.bound.toFixed(1)}/min covers required ${r.required.toFixed(1)}/min`}
+                            >
+                              {r.required.toFixed(0)}/min ✓
+                            </span>
+                          ) : (
+                            <>
+                              <span className="text-danger">
+                                {r.missing.toFixed(0)}/min missing
+                              </span>
+                              <span
+                                className="rounded-full bg-primary/10 px-1.5 text-[10px] font-medium text-primary"
+                                title={`Bound nodes provide ${r.bound.toFixed(1)}/min of ${r.required.toFixed(1)}/min required`}
+                              >
+                                {r.bound.toFixed(0)}/{r.required.toFixed(0)}
+                              </span>
+                            </>
+                          )}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            {unusedBindings.length > 0 && (
+              <div className="mt-3 border-t border-border/40 pt-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
+                  Bound · unused
+                </div>
+                <ul className="mt-1 space-y-1 text-[11px]">
+                  {unusedBindings.map((u) => (
+                    <li
+                      key={`unused-${u.itemId}`}
+                      className="flex items-center justify-between gap-2"
+                    >
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <Icon itemId={u.itemId} alt="" className="h-3.5 w-3.5" />
+                        <span className="truncate">{u.itemName}</span>
+                      </span>
+                      <span
+                        className="tabular-nums text-fg-muted"
+                        title="No machine in this factory consumes (or traces back to) this resource"
+                      >
+                        {u.bound.toFixed(1)}/min
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
         );
       })()}
-
-      {Object.keys(rawTrace).length > 0 && (
-        <div className="mt-3 border-t border-border/40 pt-2">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
-            Traces to raw
-          </div>
-          <ul className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px]">
-            {Object.entries(rawTrace)
-              .sort(([, a], [, b]) => b - a)
-              .map(([id, ipm]) => (
-                <li
-                  key={id}
-                  className="flex items-center justify-between gap-2 tabular-nums"
-                >
-                  <span className="flex min-w-0 items-center gap-1">
-                    <Icon
-                      itemId={markerIconId(id)}
-                      alt=""
-                      className="h-3 w-3"
-                    />
-                    <span className="truncate">{id.replace(/^Desc_/, "").replace(/_C$/, "")}</span>
-                  </span>
-                  <span className="text-fg-muted">{Math.ceil(ipm)}/min</span>
-                </li>
-              ))}
-          </ul>
-        </div>
-      )}
 
       <div className="mt-3 flex items-center justify-end gap-2">
         {hasPower && onEditPower && (
