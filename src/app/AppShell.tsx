@@ -10,6 +10,7 @@ import {
   Moon,
   Network,
   Share2,
+  Sparkles,
   Sun,
   TrainTrack,
   Zap,
@@ -34,6 +35,7 @@ import {
 import { PowerView } from "@/features/power/components/PowerView";
 import { ResourcesView } from "@/features/resources/components/ResourcesView";
 import { MapView } from "@/features/map/components/MapView";
+import { PlannerView } from "@/features/planner/components/PlannerView";
 import { useUndoStore } from "@/shared/undo/store";
 
 type Route =
@@ -46,13 +48,15 @@ type Route =
   | "library"
   | "alts"
   | "resources"
-  | "map";
+  | "map"
+  | "planner";
 
 const NAV: ReadonlyArray<{ id: Route; label: string; Icon: typeof BookOpen }> = [
   { id: "home", label: "Home", Icon: LayoutDashboard },
   { id: "map", label: "Map", Icon: Compass },
   { id: "network", label: "Network", Icon: Share2 },
   { id: "resources", label: "Resources", Icon: MapPin },
+  { id: "planner", label: "Planner", Icon: Sparkles },
   { id: "factories", label: "Factories", Icon: FactoryIcon },
   { id: "logistics", label: "Logistics", Icon: Network },
   { id: "trains", label: "Trains", Icon: TrainTrack },
@@ -217,6 +221,7 @@ export function AppShell() {
           {route === "alts" && <AltsView />}
           {route === "resources" && <ResourcesView />}
           {route === "map" && <MapView />}
+          {route === "planner" && <PlannerView />}
           {route === "library" && <LibraryView />}
         </main>
       </div>
