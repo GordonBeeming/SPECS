@@ -291,6 +291,17 @@ const HAND_AUTHORED_ITEMS: SpecsItem[] = [
     stackSize: 50,
     isFluid: false,
   },
+  {
+    // SAM is a 1.0+ map resource the SatisfactoryTools dump pre-dates.
+    // Catalog references it via `Desc_SAM_C`; this row gives the
+    // Resources / Map UIs a real name + category instead of the raw
+    // class id, and downstream slices treat it like any other raw ore.
+    id: "Desc_SAM_C",
+    name: "SAM",
+    category: "raw",
+    stackSize: 100,
+    isFluid: false,
+  },
 ];
 for (const it of HAND_AUTHORED_ITEMS) referencedItems.add(it.id);
 

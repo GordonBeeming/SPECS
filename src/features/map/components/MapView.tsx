@@ -7,7 +7,7 @@ import {
 } from "react-zoom-pan-pinch";
 
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
-import { useFactoryList } from "@/features/factory/hooks/useFactories";
+import { useFactoryDetail, useFactoryList } from "@/features/factory/hooks/useFactories";
 import {
   useClearNodeClaim,
   useResourceNodes,
@@ -17,6 +17,8 @@ import { factoryApi } from "@/features/factory/api";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { Icon } from "@/shared/ui/Icon";
+import { useNavStore } from "@/shared/nav-store";
+import { Factory as FactoryGlyph, Pencil } from "lucide-react";
 
 import mapAsset from "@/assets/map/satisfactory-map.webp";
 
@@ -58,17 +60,46 @@ export function MapView() {
   // "where are the nodes I've already wired up?".
   const [showClaimedToo, setShowClaimedToo] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedFactoryId, setSelectedFactoryId] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
+
+  // Resources and purities the user has toggled OFF in the legend.
+  // Empty sets = "show everything" so first-paint isn't a wall of
+  // checkboxes — opt out, not opt in.
+  const [hiddenResources, setHiddenResources] = useState<Set<string>>(new Set());
+  const [hiddenPurities, setHiddenPurities] = useState<Set<string>>(new Set());
+
+  const resourceTypes = useMemo(() => {
+    const m = new Map<string, { id: string; name: string; total: number }>();
+    for (const n of nodes.data ?? []) {
+      const entry = m.get(n.resourceItemId);
+      if (entry) entry.total++;
+      else m.set(n.resourceItemId, { id: n.resourceItemId, name: n.resourceItemName, total: 1 });
+    }
+    return Array.from(m.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [nodes.data]);
 
   const visibleNodes = useMemo(() => {
     const data = nodes.data ?? [];
-    return showClaimedToo ? data : data.filter((n) => !n.claim);
-  }, [nodes.data, showClaimedToo]);
+    return data.filter((n) => {
+      if (!showClaimedToo && n.claim) return false;
+      if (hiddenResources.has(n.resourceItemId)) return false;
+      if (hiddenPurities.has(n.purity)) return false;
+      return true;
+    });
+  }, [nodes.data, showClaimedToo, hiddenResources, hiddenPurities]);
 
   const selectedNode = useMemo(
     () => visibleNodes.find((n) => n.id === selectedNodeId) ?? null,
     [visibleNodes, selectedNodeId],
   );
+
+  const toggleSet = (set: Set<string>, value: string): Set<string> => {
+    const next = new Set(set);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    return next;
+  };
 
   if (!playthrough.data) {
     return (
@@ -105,6 +136,57 @@ export function MapView() {
             />
             Show claimed nodes too
           </label>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">
+          <span className="mr-1 text-fg-muted">Resources:</span>
+          {resourceTypes.map((r) => {
+            const hidden = hiddenResources.has(r.id);
+            return (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => setHiddenResources((s) => toggleSet(s, r.id))}
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 ${
+                  hidden
+                    ? "border-border bg-bg text-fg-muted line-through"
+                    : "border-primary/50 bg-primary/10 text-fg"
+                }`}
+                title={hidden ? `Show ${r.name}` : `Hide ${r.name}`}
+              >
+                <Icon itemId={markerIconId(r.id)} alt="" className="h-3.5 w-3.5" />
+                {r.name}
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+          <span className="mr-1 text-fg-muted">Purity:</span>
+          {(["Pure", "Normal", "Impure"] as const).map((p) => {
+            const hidden = hiddenPurities.has(p);
+            return (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setHiddenPurities((s) => toggleSet(s, p))}
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 ${
+                  hidden
+                    ? "border-border bg-bg text-fg-muted line-through"
+                    : "border-primary/50 bg-primary/10 text-fg"
+                }`}
+              >
+                <span
+                  aria-hidden
+                  className="inline-block h-2 w-2 rounded-full"
+                  style={{
+                    background:
+                      p === "Pure" ? "#facc15" : p === "Normal" ? "#94a3b8" : "#b45309",
+                  }}
+                />
+                {p}
+              </button>
+            );
+          })}
         </div>
       </Card>
 
@@ -242,6 +324,10 @@ export function MapView() {
                           .setPosition({ id: f.id, worldX, worldY })
                           .finally(() => factories.refetch());
                       }}
+                      onClick={() => {
+                        setSelectedNodeId(null);
+                        setSelectedFactoryId(f.id);
+                      }}
                       currentScale={() => wrapRef.current?.state.scale ?? 1}
                     />
                   ))}
@@ -274,6 +360,20 @@ export function MapView() {
               />
             </div>
           )}
+
+          {selectedFactoryId && (
+            <div className="absolute bottom-3 left-3 z-20">
+              <FactoryPopover
+                factoryId={selectedFactoryId}
+                onEdit={() => {
+                  useNavStore.getState().selectFactory(selectedFactoryId);
+                  useNavStore.getState().goTo("factories");
+                  setSelectedFactoryId(null);
+                }}
+                onClose={() => setSelectedFactoryId(null)}
+              />
+            </div>
+          )}
         </div>
       </Card>
     </div>
@@ -285,14 +385,27 @@ interface FactoryPinProps {
   dragging: boolean;
   onDragStart: () => void;
   onDragEnd: (pt: { x: number; y: number }) => void;
+  /** Fires when the mouseup happens within `CLICK_THRESHOLD_PX` of mousedown — treat as a click, not a drag. */
+  onClick: () => void;
   /** Reads the current zoom scale from the wrapper so pixel deltas
       from drag events translate into world deltas correctly. */
   currentScale: () => number;
 }
 
-function FactoryPin({ factory, onDragStart, onDragEnd, currentScale }: FactoryPinProps) {
+// Mousedown→up movement under this distance (in screen pixels) counts
+// as a click instead of a drag. Trackpads register tiny jitter even on
+// a real "click", so 4 px is safer than 0.
+const CLICK_THRESHOLD_PX = 4;
+
+function FactoryPin({ factory, onDragStart, onDragEnd, onClick, currentScale }: FactoryPinProps) {
   const { xPct, yPct } = worldToPct(factory.worldX, factory.worldY);
-  const startRef = useRef<{ x: number; y: number; clientX: number; clientY: number } | null>(null);
+  const startRef = useRef<{
+    x: number;
+    y: number;
+    clientX: number;
+    clientY: number;
+    moved: boolean;
+  } | null>(null);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
 
   const baseX = xPct * MAP_W;
@@ -314,15 +427,24 @@ function FactoryPin({ factory, onDragStart, onDragEnd, currentScale }: FactoryPi
           y: baseY,
           clientX: e.clientX,
           clientY: e.clientY,
+          moved: false,
         };
-        onDragStart();
         const onMove = (ev: MouseEvent) => {
           const s = startRef.current;
           if (!s) return;
-          const scale = currentScale();
-          const dx = (ev.clientX - s.clientX) / scale;
-          const dy = (ev.clientY - s.clientY) / scale;
-          setHoverPos({ x: s.x + dx, y: s.y + dy });
+          const dxScreen = ev.clientX - s.clientX;
+          const dyScreen = ev.clientY - s.clientY;
+          // Don't start the drag UI until the pointer moves past the
+          // click threshold — otherwise a plain click flashes the pin
+          // through a no-op "drag" before re-rendering at its origin.
+          if (!s.moved && Math.hypot(dxScreen, dyScreen) >= CLICK_THRESHOLD_PX) {
+            s.moved = true;
+            onDragStart();
+          }
+          if (s.moved) {
+            const scale = currentScale();
+            setHoverPos({ x: s.x + dxScreen / scale, y: s.y + dyScreen / scale });
+          }
         };
         const onUp = (ev: MouseEvent) => {
           const s = startRef.current;
@@ -355,6 +477,89 @@ function FactoryPin({ factory, onDragStart, onDragEnd, currentScale }: FactoryPi
         factory.name
       )}
     </button>
+  );
+}
+
+interface FactoryPopoverProps {
+  factoryId: string;
+  onEdit: () => void;
+  onClose: () => void;
+}
+
+function FactoryPopover({ factoryId, onEdit, onClose }: FactoryPopoverProps) {
+  const detail = useFactoryDetail(factoryId);
+  const f = detail.data?.factory;
+  const ledger = detail.data?.ledger;
+  return (
+    <Card className="w-[320px] p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          {f?.iconId ? (
+            <Icon itemId={f.iconId} alt="" className="h-6 w-6" />
+          ) : (
+            <FactoryGlyph className="h-5 w-5 text-fg-muted" />
+          )}
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-fg">
+              {f?.name ?? "Loading…"}
+            </div>
+            <div className="text-[11px] text-fg-muted tabular-nums">
+              {detail.data
+                ? `${detail.data.machines.length} machine${detail.data.machines.length === 1 ? "" : "s"} · ${ledger?.powerMw.toFixed(1)} MW`
+                : ""}
+            </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="rounded p-1 text-fg-muted hover:bg-border hover:text-fg"
+        >
+          ×
+        </button>
+      </div>
+
+      {detail.data && ledger && ledger.flows.length > 0 && (
+        <ul className="mt-3 max-h-40 space-y-1 overflow-auto text-[11px]">
+          {ledger.flows.slice(0, 8).map((flow) => (
+            <li
+              key={flow.itemId}
+              className="flex items-center justify-between gap-2"
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                <Icon itemId={flow.itemId} alt="" className="h-3.5 w-3.5" />
+                <span className="truncate">{flow.itemName}</span>
+              </span>
+              <span
+                className={`tabular-nums ${
+                  flow.netPerMinute > 0.001
+                    ? "text-success"
+                    : flow.netPerMinute < -0.001
+                      ? "text-danger"
+                      : "text-fg-muted"
+                }`}
+              >
+                {flow.netPerMinute > 0 ? "+" : ""}
+                {flow.netPerMinute.toFixed(1)}/min
+              </span>
+            </li>
+          ))}
+          {ledger.flows.length > 8 && (
+            <li className="pt-1 text-center text-fg-muted">
+              + {ledger.flows.length - 8} more
+            </li>
+          )}
+        </ul>
+      )}
+
+      <div className="mt-3 flex items-center justify-end gap-2">
+        <Button onClick={onEdit} className="px-3 py-1 text-xs">
+          <Pencil className="h-3 w-3" />
+          Edit factory
+        </Button>
+      </div>
+    </Card>
   );
 }
 
