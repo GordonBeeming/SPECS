@@ -1,8 +1,12 @@
 //! Pure throughput math for resource nodes. Kept out of `commands.rs`
 //! so the planner can call it without going through Tauri state.
 
+use std::collections::HashMap;
+
 use crate::shared::gamedata::GameData;
 use crate::shared::gamedata::types::{MapNode, NodeKind, NodePurity};
+
+use super::repo::ClaimRow;
 
 /// Items-per-minute a single extractor produces on a node at the given
 /// clock. Geysers produce nothing — they're for power.
@@ -53,6 +57,53 @@ pub fn miner_node_ipm(
     clock_pct: f32,
 ) -> f32 {
     miner_base_ipm * purity.multiplier() * (clock_pct / 100.0)
+}
+
+/// Aggregate ipm per item across *all* claimed nodes, regardless of
+/// factory binding. The planner uses this as its raw "what could in
+/// principle be supplied" pool; the bound vs. unbound split is the
+/// caller's responsibility.
+#[allow(dead_code)]
+pub fn available_supply(
+    claims: &HashMap<String, ClaimRow>,
+    game_data: &GameData,
+) -> HashMap<String, f32> {
+    let mut out: HashMap<String, f32> = HashMap::new();
+    for (node_id, claim) in claims {
+        let Some(node) = game_data.node(node_id) else {
+            continue;
+        };
+        let ipm = extractor_output_ipm(node, claim.miner_id.as_deref(), claim.clock_pct, game_data);
+        if ipm <= 0.0 {
+            continue;
+        }
+        *out.entry(node.resource_item_id.clone()).or_insert(0.0) += ipm;
+    }
+    out
+}
+
+/// Supply pool fed into one factory by its bound claims. Used by the
+/// factory ledger's "From nodes: X ipm" chip.
+pub fn supply_for_factory(
+    claims: &HashMap<String, ClaimRow>,
+    factory_id: &str,
+    game_data: &GameData,
+) -> HashMap<String, f32> {
+    let mut out: HashMap<String, f32> = HashMap::new();
+    for (node_id, claim) in claims {
+        if claim.factory_id.as_deref() != Some(factory_id) {
+            continue;
+        }
+        let Some(node) = game_data.node(node_id) else {
+            continue;
+        };
+        let ipm = extractor_output_ipm(node, claim.miner_id.as_deref(), claim.clock_pct, game_data);
+        if ipm <= 0.0 {
+            continue;
+        }
+        *out.entry(node.resource_item_id.clone()).or_insert(0.0) += ipm;
+    }
+    out
 }
 
 #[cfg(test)]
@@ -135,6 +186,87 @@ mod tests {
         // 60 × 2.0 (Pure) × 1.0 (clock) = 120.
         let ipm = extractor_output_ipm(&water_pure, None, 100.0, &gd);
         assert!((ipm - 120.0).abs() < 0.01, "got {ipm}");
+    }
+
+    #[test]
+    fn available_supply_sums_claimed_ipm_by_item() {
+        let gd = GameData::from_bundled().unwrap();
+        // Use real node ids from the bundled catalog so the lookup
+        // resolves. Pick three known iron nodes.
+        let iron_nodes: Vec<&MapNode> = gd
+            .nodes()
+            .iter()
+            .filter(|n| n.resource_item_id == "Desc_OreIron_C")
+            .take(3)
+            .collect();
+        assert_eq!(iron_nodes.len(), 3);
+
+        let mut claims = HashMap::new();
+        for n in &iron_nodes {
+            claims.insert(
+                n.id.clone(),
+                ClaimRow {
+                    node_id: n.id.clone(),
+                    miner_id: Some("Build_MinerMk1_C".into()),
+                    clock_pct: 100.0,
+                    factory_id: None,
+                    notes: None,
+                    created_at: "n".into(),
+                    updated_at: "n".into(),
+                },
+            );
+        }
+        let supply = available_supply(&claims, &gd);
+        // Mk1 = 60 ipm Normal; three claims of mixed purity should yield
+        // a positive total. We don't pin the exact value (varies with
+        // which three nodes the catalog enumerates first) but the
+        // bookkeeping must roll up under Desc_OreIron_C.
+        assert!(supply["Desc_OreIron_C"] > 0.0);
+        assert_eq!(supply.len(), 1);
+    }
+
+    #[test]
+    fn supply_for_factory_only_returns_bound_claims() {
+        let gd = GameData::from_bundled().unwrap();
+        let iron = gd
+            .nodes()
+            .iter()
+            .find(|n| n.resource_item_id == "Desc_OreIron_C" && n.purity == NodePurity::Pure)
+            .unwrap();
+        let copper = gd
+            .nodes()
+            .iter()
+            .find(|n| n.resource_item_id == "Desc_OreCopper_C")
+            .unwrap();
+        let mut claims = HashMap::new();
+        // Iron is bound to F1; copper is claimed but unbound.
+        claims.insert(
+            iron.id.clone(),
+            ClaimRow {
+                node_id: iron.id.clone(),
+                miner_id: Some("Build_MinerMk1_C".into()),
+                clock_pct: 100.0,
+                factory_id: Some("F1".into()),
+                notes: None,
+                created_at: "n".into(),
+                updated_at: "n".into(),
+            },
+        );
+        claims.insert(
+            copper.id.clone(),
+            ClaimRow {
+                node_id: copper.id.clone(),
+                miner_id: Some("Build_MinerMk1_C".into()),
+                clock_pct: 100.0,
+                factory_id: None,
+                notes: None,
+                created_at: "n".into(),
+                updated_at: "n".into(),
+            },
+        );
+        let f1_supply = supply_for_factory(&claims, "F1", &gd);
+        assert!(f1_supply.contains_key("Desc_OreIron_C"));
+        assert!(!f1_supply.contains_key("Desc_OreCopper_C"));
     }
 
     #[test]

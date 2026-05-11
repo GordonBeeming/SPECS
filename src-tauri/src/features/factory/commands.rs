@@ -312,7 +312,12 @@ pub fn factory_ledger(
 ) -> AppResult<FactoryLedger> {
     let db = require_active(&active)?;
     let machines = db.with(|c| repo::machines_for_factory(c, &factory_id).map_err(AppError::from))?;
-    Ok(compose_ledger(&factory_id, &machines, &game_data))
+    let claims = db.with(|c| {
+        crate::features::resource_nodes::repo::claims_all(c).map_err(AppError::from)
+    })?;
+    let supply =
+        crate::features::resource_nodes::domain::supply_for_factory(&claims, &factory_id, &game_data);
+    Ok(compose_ledger_with_supply(&factory_id, &machines, &game_data, &supply))
 }
 
 #[tauri::command]
@@ -326,7 +331,12 @@ pub fn get_factory_detail(
         .with(|c| repo::factory_get(c, &id).map_err(AppError::from))?
         .ok_or_else(|| AppError::NotFound(format!("factory {id} not found")))?;
     let machines = db.with(|c| repo::machines_for_factory(c, &id).map_err(AppError::from))?;
-    let ledger = compose_ledger(&id, &machines, &game_data);
+    let claims = db.with(|c| {
+        crate::features::resource_nodes::repo::claims_all(c).map_err(AppError::from)
+    })?;
+    let supply =
+        crate::features::resource_nodes::domain::supply_for_factory(&claims, &id, &game_data);
+    let ledger = compose_ledger_with_supply(&id, &machines, &game_data, &supply);
     Ok(FactoryDetail {
         factory,
         machines,
@@ -357,6 +367,19 @@ pub fn compose_ledger(
     factory_id: &str,
     machines: &[FactoryMachine],
     game_data: &GameData,
+) -> FactoryLedger {
+    compose_ledger_with_supply(factory_id, machines, game_data, &std::collections::HashMap::new())
+}
+
+/// Same as `compose_ledger` but also annotates each `ItemFlow` with the
+/// ipm available from resource nodes bound to this factory. The
+/// power slice + tests stay on `compose_ledger` and get the zero-supply
+/// behaviour by default.
+pub fn compose_ledger_with_supply(
+    factory_id: &str,
+    machines: &[FactoryMachine],
+    game_data: &GameData,
+    node_supply: &std::collections::HashMap<String, f32>,
 ) -> FactoryLedger {
     let mut produced: BTreeMap<String, f32> = BTreeMap::new();
     let mut consumed: BTreeMap<String, f32> = BTreeMap::new();
@@ -397,7 +420,15 @@ pub fn compose_ledger(
         }
     }
 
-    let mut all_ids: Vec<String> = produced.keys().chain(consumed.keys()).cloned().collect();
+    // Include items that are *only* fed by bound nodes (e.g. the user
+    // wired water wells to this factory before adding any water-using
+    // machines) so the supply chip isn't silently invisible.
+    let mut all_ids: Vec<String> = produced
+        .keys()
+        .chain(consumed.keys())
+        .chain(node_supply.keys())
+        .cloned()
+        .collect();
     all_ids.sort();
     all_ids.dedup();
 

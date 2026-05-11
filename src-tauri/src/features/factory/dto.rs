@@ -57,6 +57,16 @@ pub struct ItemFlow {
     /// produced - consumed. Negative means the factory needs imports;
     /// positive means it has surplus to ship out.
     pub net_per_minute: f32,
+    /// ipm available from claimed resource nodes bound to *this*
+    /// factory. Surfaces as a "From nodes: X ipm" chip on raw-material
+    /// rows so the user can see at a glance whether their staked
+    /// supply covers what the recipe needs.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub from_nodes_per_minute: f32,
+}
+
+fn is_zero(v: &f32) -> bool {
+    *v == 0.0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
