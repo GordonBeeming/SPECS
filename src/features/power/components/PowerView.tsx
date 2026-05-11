@@ -87,6 +87,18 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
   const playthrough = useCurrentPlaythrough();
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<PowerGen | null>(null);
+  // Tauri 2's webview suppresses window.confirm()/alert() — using
+  // the browser dialog meant clicking Trash silently did nothing.
+  // Two-click confirm instead: first click arms the row, second
+  // fires the mutation. Auto-disarms after 3 s so a stale primed
+  // row can't accidentally delete on the next click.
+  const [armedDeleteId, setArmedDeleteId] = useState<string | null>(null);
+  const armForDelete = (id: string) => {
+    setArmedDeleteId(id);
+    window.setTimeout(() => {
+      setArmedDeleteId((cur) => (cur === id ? null : cur));
+    }, 3000);
+  };
 
   const generatorsById = useMemo(
     () => new Map(generators.data?.map((g) => [g.id, g]) ?? []),
