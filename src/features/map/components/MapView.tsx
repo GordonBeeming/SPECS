@@ -305,7 +305,7 @@ function FactoryPin({ factory, onDragStart, onDragEnd, currentScale }: FactoryPi
       type="button"
       className="specs-map-pin absolute -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-md border-2 border-primary bg-bg-raised/95 px-2 py-1 text-[11px] font-medium text-fg shadow-sm hover:bg-bg-raised active:cursor-grabbing"
       style={{ left: `${px}px`, top: `${py}px` }}
-      title={`${factory.name} (drag to move)`}
+      title={`${factory.name} — click for details, drag to move`}
       onMouseDown={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -330,6 +330,12 @@ function FactoryPin({ factory, onDragStart, onDragEnd, currentScale }: FactoryPi
           window.removeEventListener("mouseup", onUp);
           startRef.current = null;
           if (!s) return;
+          if (!s.moved) {
+            // Plain click — open the factory card popover instead.
+            setHoverPos(null);
+            onClick();
+            return;
+          }
           const scale = currentScale();
           const dx = (ev.clientX - s.clientX) / scale;
           const dy = (ev.clientY - s.clientY) / scale;
