@@ -1,6 +1,9 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
+import { Icon } from "@/shared/ui/Icon";
+import { IconPicker } from "@/shared/ui/IconPicker";
+import { useBuildings } from "@/features/library/hooks/useLibrary";
 import { useCreateFactory } from "../hooks/useFactories";
 
 interface CreateFactoryModalProps {
@@ -11,8 +14,20 @@ interface CreateFactoryModalProps {
 export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalProps) {
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
+  const [iconId, setIconId] = useState<string | null>(null);
+  const [showIconPicker, setShowIconPicker] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const create = useCreateFactory();
+  const buildings = useBuildings();
+
+  // Default the suggested grid to all production building ids — those
+  // are what a factory most naturally identifies with (Smelter, Refinery,
+  // Manufacturer, …). Fall back to an empty list while buildings
+  // are still loading so the picker doesn't flicker mid-render.
+  const suggested = useMemo(
+    () => (buildings.data ?? []).map((b) => b.id),
+    [buildings.data],
+  );
 
   const validate = (n: string): string | null => {
     const t = n.trim();
@@ -30,7 +45,11 @@ export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalPro
     }
     setValidationError(null);
     create.mutate(
-      { name: name.trim(), notes: notes.trim() || undefined },
+      {
+        name: name.trim(),
+        notes: notes.trim() || undefined,
+        iconId: iconId ?? undefined,
+      },
       {
         onSuccess: (factory) => {
           onCreated?.(factory.id);
@@ -47,12 +66,12 @@ export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalPro
       role="dialog"
       aria-modal="true"
       aria-labelledby="create-factory-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-fg/30 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-fg/30 p-4 backdrop-blur-sm"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-md rounded-lg border border-border bg-bg-raised p-6 shadow-xl">
+      <div className="w-full max-w-md max-h-[90vh] overflow-auto rounded-lg border border-border bg-bg-raised p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
           <h2 id="create-factory-title" className="text-lg font-semibold text-fg">
             New factory
@@ -80,6 +99,38 @@ export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalPro
               maxLength={80}
             />
           </label>
+
+          <div>
+            <span className="text-sm font-medium text-fg">Icon (optional)</span>
+            <div className="mt-1 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowIconPicker((v) => !v)}
+                className="flex h-12 w-12 items-center justify-center rounded-md border border-border bg-bg hover:border-primary"
+                aria-label="Pick an icon for this factory"
+              >
+                {iconId ? (
+                  <Icon itemId={iconId} alt="" className="h-9 w-9" />
+                ) : (
+                  <span className="text-xs text-fg-muted">none</span>
+                )}
+              </button>
+              <p className="text-xs text-fg-muted">
+                {iconId
+                  ? "Click to pick a different glyph."
+                  : "Give this factory some character — pick from buildings, ingots, or any item."}
+              </p>
+            </div>
+            {showIconPicker && (
+              <div className="mt-3 rounded-md border border-border bg-bg p-3">
+                <IconPicker
+                  value={iconId}
+                  onChange={(next) => setIconId(next)}
+                  suggested={suggested}
+                />
+              </div>
+            )}
+          </div>
 
           <label className="block">
             <span className="text-sm font-medium text-fg">Notes (optional)</span>

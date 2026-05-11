@@ -72,7 +72,12 @@ export function LibraryTable<T>({
             {columns.map((c) => (
               <th
                 key={c.header}
-                className={`px-3 py-2 ${ALIGN_TH[c.align ?? "left"]} font-medium`}
+                // `whitespace-nowrap` keeps short column headers on one
+                // line ("Cycle (s)", "Unlocks at") rather than wrapping
+                // mid-word in narrow viewports. Long-text columns
+                // (Inputs / Outputs) wrap their cell content but the
+                // header stays as one line.
+                className={`px-3 py-2 whitespace-nowrap ${ALIGN_TH[c.align ?? "left"]} font-medium`}
                 style={c.width ? { width: c.width } : undefined}
               >
                 {c.header}

@@ -18,6 +18,11 @@ export const queryKeys = {
   playthrough: {
     list: ["playthrough", "list"] as const,
     current: ["playthrough", "current"] as const,
+    amplifierInventory: ["playthrough", "amplifier-inventory"] as const,
+  },
+  power: {
+    list: (factoryId: string) => ["power", "list", factoryId] as const,
+    balance: (factoryId: string) => ["power", "balance", factoryId] as const,
   },
   factory: {
     list: ["factory", "list"] as const,

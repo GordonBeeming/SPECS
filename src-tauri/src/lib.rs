@@ -24,7 +24,9 @@ pub fn run() {
         .init();
 
     #[cfg_attr(not(feature = "dev-mcp"), allow(unused_mut))]
-    let mut builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+    let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build());
 
     #[cfg(feature = "dev-mcp")]
     {
@@ -72,6 +74,8 @@ pub fn run() {
             features::library::commands::library_milestones,
             features::library::commands::library_belt_tiers,
             features::library::commands::library_pipe_tiers,
+            features::library::commands::library_generators,
+            features::library::commands::library_transport_vehicles,
             features::playthrough::commands::create_playthrough,
             features::playthrough::commands::list_playthroughs,
             features::playthrough::commands::open_playthrough,
@@ -81,10 +85,13 @@ pub fn run() {
             features::playthrough::commands::delete_playthrough,
             features::playthrough::commands::export_playthrough,
             features::playthrough::commands::import_playthrough,
+            features::playthrough::commands::get_amplifier_inventory,
+            features::playthrough::commands::set_amplifier_inventory,
             features::factory::commands::list_factories,
             features::factory::commands::get_factory_detail,
             features::factory::commands::create_factory,
             features::factory::commands::rename_factory,
+            features::factory::commands::set_factory_icon,
             features::factory::commands::delete_factory,
             features::factory::commands::add_factory_machine,
             features::factory::commands::update_factory_machine,

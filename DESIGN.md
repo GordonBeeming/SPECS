@@ -119,21 +119,32 @@ it. Otherwise keep it inside the slice.
 We **must not** invent icons for items and buildings. Players need to recognise
 "Iron Plate" or "Manufacturer" instantly.
 
-**v1 strategy:** bundle a community-maintained icon pack keyed by item ID
-(e.g. `Desc_IronPlate_C.png`) into `src-tauri/icons/satisfactory/`. The pack to
-ship will be picked in Phase 2 (the `library` slice). Once chosen, document
-here:
+**Pack bundled:** the 64-pixel icon set from the community-maintained
+[SatisfactoryTools](https://github.com/greeny/SatisfactoryTools) project
+(`www/assets/images/items/*.png`), one icon per item, building, and
+generator id in the v1.1 dataset.
 
-- Pack name + source URL: _TBD in Phase 2_
-- Pack version pinned: _TBD_
-- Pack licence text: _TBD_
-- Item ID → filename mapping: _TBD (script in `scripts/icons/`)_
+- **Pack name + source URL:** SatisfactoryTools icon dump — `master` branch
+  at `https://github.com/greeny/SatisfactoryTools/tree/master/www/assets/images/items`.
+- **Pack version pinned:** Vendored when the v1.1 buildout PR landed.
+  Re-fetch with `bun run scripts/fetch-icons.ts` against the same branch
+  to pull anything new (idempotent).
+- **Licence:** original PNG assets remain © Coffee Stain Studios; we bundle
+  under the Coffee Stain fan-content policy. The SatisfactoryTools project
+  itself is MIT-licensed.
+- **Item ID → filename mapping:** SF class names like `Desc_IronIngot_C`
+  map to `desc-ironingot-c_64.png` in the source repo (lowercase, `_` →
+  `-`, `_64.png` suffix). The fetch script normalises back to the SPECS
+  class-name basename (`Desc_IronIngot_C.png`) on disk so the runtime
+  `<Icon itemId>` primitive needs no mapping table.
+- **Bundle path:** `src/assets/icons/satisfactory/*.png`. Vite's
+  `import.meta.glob` picks them up at build time; nothing reaches the
+  network at runtime.
 
-The in-app About panel will credit "Game icons © Coffee Stain Studios, used
-under their fan-content guidelines".
-
-If Coffee Stain ever objects, swap to "extract from the player's local install
-on first run". The `<Icon itemId="…" />` component abstracts the source.
+The About panel credits Coffee Stain Studios + SatisfactoryTools by name.
+If Coffee Stain ever objects, swap to "extract from the player's local
+install on first run". The `<Icon itemId="…" />` component abstracts the
+source — only the glob path changes.
 
 ## Accessibility
 

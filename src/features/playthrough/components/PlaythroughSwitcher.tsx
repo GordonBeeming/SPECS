@@ -1,28 +1,51 @@
-import { useState } from "react";
-import { ChevronDown, FolderOpen, Plus, Share2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, FolderOpen, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import {
   useCurrentPlaythrough,
+  useDeletePlaythrough,
   useOpenPlaythrough,
   usePlaythroughList,
 } from "../hooks/usePlaythroughs";
 import { CreatePlaythroughModal } from "./CreatePlaythroughModal";
-import { ExportImportModal } from "./ExportImportModal";
 
+/**
+ * Header dropdown — exclusively for switching the active playthrough,
+ * creating a new one, or deleting an existing one. Per-playthrough
+ * controls (tier, amplifier supply, share/import) live on the Home
+ * surface so this menu stays focused.
+ */
 export function PlaythroughSwitcher() {
   const [open, setOpen] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
-  const [showShare, setShowShare] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const list = usePlaythroughList();
   const current = useCurrentPlaythrough();
   const openMut = useOpenPlaythrough();
+  const deleteMut = useDeletePlaythrough();
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
-  const label = current.data
-    ? `${current.data.displayName} · T${current.data.currentTier}`
-    : "No playthrough";
+  // Click-outside-to-close: a global pointerdown listener that bails on any
+  // event whose target lives outside the wrapper. Registered only while the
+  // popover is open so we're not paying for a no-op listener at all times.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (!wrapperRef.current || !target) return;
+      if (!wrapperRef.current.contains(target)) {
+        setOpen(false);
+        setConfirmDeleteId(null);
+      }
+    };
+    window.addEventListener("pointerdown", onDown);
+    return () => window.removeEventListener("pointerdown", onDown);
+  }, [open]);
+
+  const label = current.data ? current.data.displayName : "No playthrough";
 
   return (
-    <div className="relative">
+    <div className="relative" ref={wrapperRef}>
       <Button
         variant="ghost"
         onClick={() => setOpen((v) => !v)}
@@ -59,22 +82,97 @@ export function PlaythroughSwitcher() {
             )}
             {list.data?.map((p) => {
               const active = current.data?.id === p.id;
+              const isConfirming = confirmDeleteId === p.id;
               return (
-                <button
+                <div
                   key={p.id}
-                  type="button"
-                  onClick={() => {
-                    openMut.mutate(p.id, { onSuccess: () => setOpen(false) });
-                  }}
-                  className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                  className={`group flex items-center gap-1 rounded-md transition-colors ${
                     active ? "bg-primary text-white" : "text-fg hover:bg-border"
                   }`}
                 >
-                  <span className="truncate">{p.displayName}</span>
-                  {active && <span className="text-xs opacity-80">active</span>}
-                </button>
+                  <button
+                    type="button"
+                    disabled={openMut.isPending}
+                    onClick={() => {
+                      openMut.mutate(p.id, { onSuccess: () => setOpen(false) });
+                    }}
+                    className="flex flex-1 items-center justify-between px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <span className="truncate">{p.displayName}</span>
+                    {active && <span className="text-xs opacity-80">active</span>}
+                  </button>
+                  {isConfirming ? (
+                    // Two-step confirm: replaces the trash glyph with explicit
+                    // "Delete" / "Cancel" so a stray hover-click can't drop a
+                    // playthrough silently.
+                    <div className="flex items-center gap-1 pr-1">
+                      <button
+                        type="button"
+                        disabled={deleteMut.isPending}
+                        onClick={() => {
+                          deleteMut.mutate(p.id, {
+                            onSuccess: () => {
+                              setConfirmDeleteId(null);
+                            },
+                          });
+                        }}
+                        className="rounded-md bg-danger px-2 py-1 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+                        aria-label={`Confirm delete ${p.displayName}`}
+                      >
+                        Delete
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="rounded-md border border-border px-2 py-1 text-xs text-fg hover:bg-bg"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmDeleteId(p.id);
+                      }}
+                      aria-label={`Delete ${p.displayName}`}
+                      className={`mr-1 rounded p-1 opacity-0 transition-opacity hover:bg-danger/20 hover:text-danger group-hover:opacity-100 focus:opacity-100 ${
+                        active ? "text-white" : "text-fg-muted"
+                      }`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
               );
             })}
+            {openMut.isError && (
+              // Silent failures here are how a broken playthrough (e.g.
+              // refinery checksum divergence after a migration was edited
+              // in place) looked like "clicks do nothing" — surface it so
+              // the user sees what actually happened.
+              <div
+                role="alert"
+                className="mx-1 mt-1 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger"
+              >
+                Couldn't open playthrough:{" "}
+                {openMut.error instanceof Error
+                  ? openMut.error.message
+                  : String(openMut.error)}
+              </div>
+            )}
+            {deleteMut.isError && (
+              <div
+                role="alert"
+                className="mx-1 mt-1 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger"
+              >
+                Couldn't delete:{" "}
+                {deleteMut.error instanceof Error
+                  ? deleteMut.error.message
+                  : String(deleteMut.error)}
+              </div>
+            )}
           </div>
           <div className="border-t border-border pt-1">
             <button
@@ -88,23 +186,11 @@ export function PlaythroughSwitcher() {
               <Plus className="h-4 w-4" />
               New playthrough
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                setShowShare(true);
-                setOpen(false);
-              }}
-              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-fg hover:bg-border"
-            >
-              <Share2 className="h-4 w-4" />
-              Share / Import…
-            </button>
           </div>
         </div>
       )}
 
       {showCreate && <CreatePlaythroughModal onClose={() => setShowCreate(false)} />}
-      {showShare && <ExportImportModal onClose={() => setShowShare(false)} />}
     </div>
   );
 }

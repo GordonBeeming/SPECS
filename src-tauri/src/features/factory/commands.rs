@@ -10,7 +10,7 @@ use crate::shared::gamedata::GameData;
 
 use super::dto::{
     AddMachineInput, CreateFactoryInput, Factory, FactoryDetail, FactoryLedger, FactoryMachine,
-    ItemFlow, RenameFactoryInput, UpdateMachineInput,
+    ItemFlow, RenameFactoryInput, SetFactoryIconInput, UpdateMachineInput,
 };
 use super::domain::{machine_power_mw_amp, recipe_io_flows_amp};
 use super::repo;
@@ -130,6 +130,12 @@ pub fn create_factory(
     let trimmed_name = input.name.trim().to_string();
     let trimmed_notes = input.notes.as_deref().map(str::trim).map(str::to_string);
     let trimmed_color = input.color.as_deref().map(str::trim).map(str::to_string);
+    let trimmed_icon = input
+        .icon_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
     db.with(|c| {
         repo::factory_insert(
             c,
@@ -137,6 +143,7 @@ pub fn create_factory(
             &trimmed_name,
             trimmed_color.as_deref(),
             trimmed_notes.as_deref(),
+            trimmed_icon.as_deref(),
             &now,
         )
         .map_err(AppError::from)
@@ -157,6 +164,29 @@ pub fn rename_factory(
     let now = now_iso();
     let trimmed = input.name.trim().to_string();
     db.with(|c| repo::factory_rename(c, &input.id, &trimmed, &now).map_err(AppError::from))?;
+    db.with(|c| repo::factory_get(c, &input.id).map_err(AppError::from))?
+        .ok_or_else(|| AppError::NotFound(format!("factory {} not found", input.id)))
+}
+
+#[tauri::command]
+pub fn set_factory_icon(
+    active: State<ActivePlaythrough>,
+    input: SetFactoryIconInput,
+) -> AppResult<Factory> {
+    let db = require_active(&active)?;
+    let now = now_iso();
+    let trimmed = input
+        .icon_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    let affected = db.with(|c| {
+        repo::factory_set_icon(c, &input.id, trimmed.as_deref(), &now).map_err(AppError::from)
+    })?;
+    if affected == 0 {
+        return Err(AppError::NotFound(format!("factory {} not found", input.id)));
+    }
     db.with(|c| repo::factory_get(c, &input.id).map_err(AppError::from))?
         .ok_or_else(|| AppError::NotFound(format!("factory {} not found", input.id)))
 }
@@ -475,13 +505,13 @@ mod tests {
         // + 1× Constructor consuming exactly that ingot → producing Iron Plate
         // The ingot should net to 0 (produced 30 - consumed 30).
         let machines = vec![
-            machine("m1", "Build_SmelterMk1_C", "Recipe_IronIngot_C", 1, 100.0),
+            machine("m1", "Build_SmelterMk1_C", "Recipe_IngotIron_C", 1, 100.0),
             machine("m2", "Build_ConstructorMk1_C", "Recipe_IronPlate_C", 1, 100.0),
         ];
         let ledger = compose_ledger("f1", &machines, &gd());
         let ingot = ledger.flows.iter().find(|f| f.item_id == "Desc_IronIngot_C").unwrap();
         assert!((ingot.net_per_minute).abs() < 0.001, "ingot should net to 0, got {}", ingot.net_per_minute);
-        let ore = ledger.flows.iter().find(|f| f.item_id == "Desc_IronOre_C").unwrap();
+        let ore = ledger.flows.iter().find(|f| f.item_id == "Desc_OreIron_C").unwrap();
         assert!((ore.net_per_minute - (-30.0)).abs() < 0.001);
         let plate = ledger.flows.iter().find(|f| f.item_id == "Desc_IronPlate_C").unwrap();
         assert!((plate.net_per_minute - 20.0).abs() < 0.001);
@@ -495,8 +525,8 @@ mod tests {
         // total ≈ 3.2 MW (vs the old linear 4 MW). The change is
         // intentional — the linear model in Phase 4 was a placeholder.
         let machines = vec![
-            machine("m1", "Build_SmelterMk1_C", "Recipe_IronIngot_C", 1, 50.0),
-            machine("m2", "Build_SmelterMk1_C", "Recipe_IronIngot_C", 1, 50.0),
+            machine("m1", "Build_SmelterMk1_C", "Recipe_IngotIron_C", 1, 50.0),
+            machine("m2", "Build_SmelterMk1_C", "Recipe_IngotIron_C", 1, 50.0),
         ];
         let ledger = compose_ledger("f1", &machines, &gd());
         let expected = 2.0 * 4.0 * (0.5_f32).powf(1.321928);
@@ -524,10 +554,10 @@ mod tests {
     #[test]
     fn ledger_overclock_scales_both_inputs_and_outputs() {
         let machines = vec![
-            machine("m1", "Build_SmelterMk1_C", "Recipe_IronIngot_C", 1, 250.0),
+            machine("m1", "Build_SmelterMk1_C", "Recipe_IngotIron_C", 1, 250.0),
         ];
         let ledger = compose_ledger("f1", &machines, &gd());
-        let ore = ledger.flows.iter().find(|f| f.item_id == "Desc_IronOre_C").unwrap();
+        let ore = ledger.flows.iter().find(|f| f.item_id == "Desc_OreIron_C").unwrap();
         let ingot = ledger.flows.iter().find(|f| f.item_id == "Desc_IronIngot_C").unwrap();
         // 250% on a 30 ipm recipe → 75 ipm both ways.
         assert!((ore.consumed_per_minute - 75.0).abs() < 0.001);

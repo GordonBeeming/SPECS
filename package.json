@@ -11,13 +11,15 @@
     "tauri:dev": "tauri dev --config src-tauri/tauri.conf.dev.json --features dev-mcp",
     "test": "vitest",
     "test:run": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "e2e:screenshots": "playwright test"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.10",
     "@tanstack/react-query": "^5.62.7",
     "@tauri-apps/api": "^2.1.1",
     "@tauri-apps/plugin-opener": "^2.2.6",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "@xyflow/react": "^12.3.5",
     "immer": "^10.1.1",
     "lucide-react": "^0.468.0",
@@ -26,6 +28,7 @@
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/vite": "^4.0.0",
     "@tauri-apps/cli": "^2.1.0",
     "@testing-library/jest-dom": "^6.6.3",

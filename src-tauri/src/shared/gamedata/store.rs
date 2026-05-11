@@ -109,6 +109,17 @@ impl GameData {
         self.inner.file.generators.iter().find(|g| g.id == id)
     }
 
+    // Reserved for the miner-placement UI; the dataset row exists so
+    // the slice can land additively when the resource-node slice ships.
+    #[allow(dead_code)]
+    pub fn miners(&self) -> &[Miner] {
+        &self.inner.file.miners
+    }
+
+    pub fn transport_vehicles(&self) -> &[TransportVehicle] {
+        &self.inner.file.transport_vehicles
+    }
+
     // Lookup helpers — wired up for use by Phase 4+ slices (factory editor,
     // logistics planner). Quiet the dead-code warning until those land.
 

@@ -136,6 +136,35 @@ pub fn progress_set_tier(conn: &Connection, tier: i64) -> Result<()> {
     Ok(())
 }
 
+pub fn amplifier_inventory_get(conn: &Connection) -> Result<(i64, i64)> {
+    // V0005 seeds the singleton row with `INSERT OR IGNORE`, so this
+    // always finds a row; the COALESCE guard is belt-and-braces in
+    // case a future migration ever drops + recreates the table.
+    let row = conn.query_row(
+        "SELECT COALESCE(somersloop_quantity, 0), COALESCE(power_shard_quantity, 0)
+         FROM inventory_amplifier WHERE id = 1",
+        [],
+        |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+    )?;
+    Ok(row)
+}
+
+pub fn amplifier_inventory_set(
+    conn: &Connection,
+    somersloop: i64,
+    power_shard: i64,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO inventory_amplifier (id, somersloop_quantity, power_shard_quantity)
+         VALUES (1, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+             somersloop_quantity = excluded.somersloop_quantity,
+             power_shard_quantity = excluded.power_shard_quantity",
+        params![somersloop, power_shard],
+    )?;
+    Ok(())
+}
+
 /// Read the full playthrough detail by joining App DB summary with
 /// Playthrough DB meta + progress.
 pub fn detail_from(
@@ -182,6 +211,20 @@ mod tests {
             registry_touch_last_opened(c, "abc").unwrap();
             let row = registry_get(c, "abc").unwrap().unwrap();
             assert!(row.last_opened_at.is_some());
+        });
+    }
+
+    #[test]
+    fn amplifier_inventory_seed_and_round_trip() {
+        let pt = PlaythroughDb::open_in_memory().unwrap();
+        pt.with(|c| {
+            // Seeded by V0005 — both fields should be 0 by default.
+            assert_eq!(amplifier_inventory_get(c).unwrap(), (0, 0));
+            amplifier_inventory_set(c, 12, 5).unwrap();
+            assert_eq!(amplifier_inventory_get(c).unwrap(), (12, 5));
+            // Updating again replaces the existing row (no duplicate rows).
+            amplifier_inventory_set(c, 0, 3).unwrap();
+            assert_eq!(amplifier_inventory_get(c).unwrap(), (0, 3));
         });
     }
 

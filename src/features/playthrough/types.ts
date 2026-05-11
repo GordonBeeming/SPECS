@@ -23,3 +23,18 @@ export interface CreatePlaythroughInput {
   displayName: string;
   startingTier: number;
 }
+
+/**
+ * Per-playthrough amplifier inventory the player chose to track.
+ * Zeroed by default — the UI suppresses low-supply warnings when both
+ * fields are zero (interpreted as "don't bug me about supply").
+ */
+export interface AmplifierInventory {
+  somersloopQuantity: number;
+  powerShardQuantity: number;
+}
+
+export interface SetAmplifierInventoryInput {
+  somersloopQuantity: number;
+  powerShardQuantity: number;
+}

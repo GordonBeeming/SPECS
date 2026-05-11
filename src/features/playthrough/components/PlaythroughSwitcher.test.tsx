@@ -41,6 +41,11 @@ beforeEach(() => {
   vi.spyOn(playthroughApi, "list").mockResolvedValue(fixtureList);
   vi.spyOn(playthroughApi, "current").mockResolvedValue(fixtureCurrent);
   vi.spyOn(playthroughApi, "open").mockResolvedValue(fixtureCurrent);
+  vi.spyOn(playthroughApi, "setCurrentTier").mockResolvedValue({
+    ...fixtureCurrent,
+    currentTier: 6,
+  });
+  vi.spyOn(playthroughApi, "delete").mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -48,11 +53,13 @@ afterEach(() => {
 });
 
 describe("<PlaythroughSwitcher />", () => {
-  it("renders the current playthrough name and tier in the trigger", async () => {
+  it("renders the current playthrough name in the trigger", async () => {
+    // Tier display moved to the Home view; the header trigger now shows
+    // only the name so the dropdown stays focused on playthrough
+    // switching.
     renderWithProviders(<PlaythroughSwitcher />);
     await waitFor(() => {
-      // "Iron Run · T4"
-      expect(screen.getByRole("button", { name: /iron run/i })).toHaveTextContent(/T4/);
+      expect(screen.getByRole("button", { name: /iron run/i })).toBeInTheDocument();
     });
   });
 
@@ -63,16 +70,33 @@ describe("<PlaythroughSwitcher />", () => {
       // The popover is a plain interactive surface (not a WAI-ARIA menu),
       // so target rows by their button label instead of role=menuitem.
       expect(screen.getByRole("button", { name: /iron run.*active/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /speedrun/i })).toBeInTheDocument();
+      // Anchor to exact match so we don't collide with the trash button's
+      // "Delete Speedrun" aria-label.
+      expect(screen.getByRole("button", { name: "Speedrun" })).toBeInTheDocument();
     });
   });
 
   it("opens a different playthrough on click", async () => {
     renderWithProviders(<PlaythroughSwitcher />);
     fireEvent.click(await screen.findByRole("button", { name: /iron run/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /speedrun/i }));
+    // The row's open button matches "Speedrun" exactly; the trash button
+    // sibling lives under aria-label "Delete Speedrun", so we anchor with
+    // an exact-text match to avoid hitting the delete affordance.
+    fireEvent.click(await screen.findByRole("button", { name: "Speedrun" }));
     await waitFor(() => {
       expect(playthroughApi.open).toHaveBeenCalledWith("def");
+    });
+  });
+
+  it("two-step deletes a playthrough from the row trash button", async () => {
+    renderWithProviders(<PlaythroughSwitcher />);
+    fireEvent.click(await screen.findByRole("button", { name: /iron run/i }));
+    // First click on the per-row trash → confirmation reveal.
+    fireEvent.click(await screen.findByLabelText(/delete speedrun/i));
+    // Then the explicit Delete button actually invokes the API.
+    fireEvent.click(await screen.findByLabelText(/confirm delete speedrun/i));
+    await waitFor(() => {
+      expect(playthroughApi.delete).toHaveBeenCalledWith("def");
     });
   });
 

@@ -11,7 +11,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use super::types::GameDataFile;
 
 /// Bundled dataset — compiled into the binary so prod doesn't touch the FS.
-pub const BUNDLED_JSON: &str = include_str!("../../../game-data/v0.1.json");
+pub const BUNDLED_JSON: &str = include_str!("../../../game-data/v1.1.json");
 
 /// Parse and validate the bundled dataset.
 pub fn load_bundled() -> Result<GameDataFile> {
@@ -149,6 +149,63 @@ mod tests {
         assert_eq!(by_mark[&4], 480);
         assert_eq!(by_mark[&5], 780);
         assert_eq!(by_mark[&6], 1200);
+    }
+
+    #[test]
+    fn bundled_dataset_has_alt_recipes_for_alts_ui() {
+        // v0.1 had zero alts which meant the Alts checklist UI rendered an
+        // empty list. v1.1 ships the satisfactorytools alt set; pin a
+        // small floor so a future converter regression that drops them is
+        // a test failure, not a silent UX regression.
+        let data = load_bundled().unwrap();
+        let alts: Vec<_> = data.recipes.iter().filter(|r| r.is_alt).collect();
+        assert!(
+            alts.len() >= 30,
+            "expected at least 30 alt recipes; got {}",
+            alts.len()
+        );
+    }
+
+    #[test]
+    fn bundled_dataset_has_amp_buildings() {
+        // The Phase-8 amp_slots_for_building helper has hard-coded 4-slot
+        // overrides for Manufacturer / Blender / Hadron Collider / Quantum
+        // Encoder. The amp UI is unusable if any of those buildings is
+        // missing from the dataset.
+        let data = load_bundled().unwrap();
+        let ids: std::collections::HashSet<&str> =
+            data.buildings.iter().map(|b| b.id.as_str()).collect();
+        for needed in [
+            "Build_ManufacturerMk1_C",
+            "Build_Blender_C",
+            "Build_HadronCollider_C",
+            "Build_QuantumEncoder_C",
+        ] {
+            assert!(ids.contains(needed), "missing amp building {}", needed);
+        }
+    }
+
+    #[test]
+    fn bundled_dataset_has_full_tier_range_and_miners() {
+        let data = load_bundled().unwrap();
+        let tiers: std::collections::HashSet<u8> =
+            data.milestones.iter().map(|m| m.tier).collect();
+        for t in 0u8..=9 {
+            assert!(tiers.contains(&t), "tier {} milestone missing", t);
+        }
+        assert_eq!(
+            data.miners.len(),
+            3,
+            "Miner Mk1/Mk2/Mk3 all expected in v1.1"
+        );
+        assert!(
+            data.transport_vehicles.len() >= 3,
+            "Tractor/Truck/Drone all expected"
+        );
+        assert!(
+            data.generators.iter().any(|g| g.id.contains("GeoThermal")),
+            "Geothermal generator missing"
+        );
     }
 
     #[test]

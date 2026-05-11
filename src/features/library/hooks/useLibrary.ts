@@ -64,3 +64,19 @@ export function usePipeTiers() {
     ...STATIC,
   });
 }
+
+export function useGenerators() {
+  return useQuery({
+    queryKey: ["library", "generators"] as const,
+    queryFn: libraryApi.generators,
+    ...STATIC,
+  });
+}
+
+export function useTransportVehicles() {
+  return useQuery({
+    queryKey: ["library", "transport-vehicles"] as const,
+    queryFn: libraryApi.transportVehicles,
+    ...STATIC,
+  });
+}

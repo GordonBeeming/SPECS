@@ -1,3 +1,4 @@
+import { Icon } from "@/shared/ui/Icon";
 import type { FactoryLedger } from "../types";
 
 interface FactoryLedgerTableProps {
@@ -31,7 +32,12 @@ export function FactoryLedgerTable({ ledger, itemNames }: FactoryLedgerTableProp
             const deficit = flow.netPerMinute < -0.001;
             return (
               <tr key={flow.itemId} className="hover:bg-border/30">
-                <td className="px-3 py-2">{name}</td>
+                <td className="px-3 py-2">
+                  <span className="inline-flex items-center gap-2">
+                    <Icon itemId={flow.itemId} alt={name} className="h-5 w-5" />
+                    {name}
+                  </span>
+                </td>
                 <td className="px-3 py-2 text-right tabular-nums">
                   {flow.producedPerMinute > 0 ? flow.producedPerMinute.toFixed(1) : "—"}
                 </td>

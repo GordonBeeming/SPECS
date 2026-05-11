@@ -8,6 +8,12 @@ export interface Factory {
   worldX: number;
   worldY: number;
   color?: string;
+  /**
+   * Optional game-data class id used as the factory's visual glyph
+   * (e.g. `Build_ManufacturerMk1_C`). `undefined` falls back to the
+   * lucide `<Factory>` icon.
+   */
+  iconId?: string;
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -55,6 +61,13 @@ export interface CreateFactoryInput {
   name: string;
   notes?: string;
   color?: string;
+  iconId?: string;
+}
+
+export interface SetFactoryIconInput {
+  id: string;
+  /** `null` clears the icon back to the lucide fallback. */
+  iconId: string | null;
 }
 
 export interface RenameFactoryInput {

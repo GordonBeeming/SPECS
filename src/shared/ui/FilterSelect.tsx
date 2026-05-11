@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Combobox,
   ComboboxButton,
@@ -7,12 +7,18 @@ import {
   ComboboxOptions,
 } from "@headlessui/react";
 import { Check, ChevronDown, X } from "lucide-react";
+import { Icon } from "./Icon";
 
 export interface FilterOption {
   value: string;
   label: string;
   /** Optional secondary text rendered to the right of the label. */
   hint?: string;
+  /**
+   * Optional game-data icon id (`Desc_*_C` / `Build_*_C`). When set, the
+   * row shows the matching satisfactorytools icon next to the label.
+   */
+  iconId?: string;
 }
 
 interface BaseProps {
@@ -49,6 +55,27 @@ export type FilterSelectProps = SingleProps | MultiProps;
  */
 export function FilterSelect(props: FilterSelectProps) {
   const [query, setQuery] = useState("");
+  // Forwarded onto the chevron `<ComboboxButton>` so the input's
+  // `onClick` can re-route to it. Headless UI's `immediate` prop only
+  // opens on focus; clicking an already-focused input doesn't fire
+  // focus, so without this the user has to click the chevron each
+  // time. With the redirect, clicking anywhere on the input chrome
+  // toggles the listbox like a native `<select>`.
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  // Headless UI's `immediate` prop opens on focus, but if the user
+  // clicks an already-focused input the dropdown stays closed because
+  // focus doesn't fire again. Forward a click on the input chrome to
+  // the chevron `<ComboboxButton>` only when it's currently closed,
+  // so a single click always opens — and clicking the chevron itself
+  // still toggles closed without us re-opening.
+  const openIfClosed = () => {
+    requestAnimationFrame(() => {
+      const btn = buttonRef.current;
+      if (!btn) return;
+      if (btn.getAttribute("aria-expanded") === "true") return;
+      btn.click();
+    });
+  };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -72,6 +99,7 @@ export function FilterSelect(props: FilterSelectProps) {
     return (
       <Combobox
         multiple
+        immediate
         value={props.value}
         onChange={(next: string[]) => props.onChange(next)}
         disabled={props.disabled}
@@ -88,9 +116,13 @@ export function FilterSelect(props: FilterSelectProps) {
             }
             placeholder={props.placeholder ?? "Type to filter…"}
             onChange={(e) => setQuery(e.target.value)}
+            onClick={openIfClosed}
             className={baseInputClass}
           />
-          <ComboboxButton className="absolute inset-y-0 right-0 flex items-center pr-2 text-fg-muted">
+          <ComboboxButton
+            ref={buttonRef}
+            className="absolute inset-y-0 right-0 flex items-center pr-2 text-fg-muted"
+          >
             <ChevronDown className="h-4 w-4" aria-hidden="true" />
           </ComboboxButton>
           <DropdownPanel filtered={filtered} value={new Set(props.value)} multiple />
@@ -104,6 +136,7 @@ export function FilterSelect(props: FilterSelectProps) {
 
   return (
     <Combobox
+      immediate
       value={props.value}
       onChange={(next: string | null) => props.onChange(next)}
       disabled={props.disabled}
@@ -114,6 +147,7 @@ export function FilterSelect(props: FilterSelectProps) {
           displayValue={() => selectedLabel}
           placeholder={props.placeholder ?? "Type to filter…"}
           onChange={(e) => setQuery(e.target.value)}
+          onClick={openIfClosed}
           className={baseInputClass}
         />
         <div className="absolute inset-y-0 right-0 flex items-center pr-1 text-fg-muted">
@@ -132,7 +166,7 @@ export function FilterSelect(props: FilterSelectProps) {
               <X className="h-3.5 w-3.5" />
             </button>
           )}
-          <ComboboxButton className="flex items-center pr-1.5">
+          <ComboboxButton ref={buttonRef} className="flex items-center pr-1.5">
             <ChevronDown className="h-4 w-4" aria-hidden="true" />
           </ComboboxButton>
         </div>
@@ -151,7 +185,14 @@ interface DropdownPanelProps {
 function DropdownPanel({ filtered, value, multiple }: DropdownPanelProps) {
   return (
     <ComboboxOptions
-      className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border border-border bg-bg-raised py-1 shadow-lg empty:hidden"
+      // `min-w-full max-w-[28rem]` lets the panel grow wider than the
+      // input when the longest option needs the room (recipe names like
+      // "Reinforced Iron Plate" or generator hints like
+      // "0.20 /min + 240 Water" don't truncate). Capped at 28rem so a
+      // wild filter result can't push it across the whole pane.
+      // `whitespace-nowrap` on the option content (set in the option
+      // markup below) keeps each row on a single line.
+      className="absolute z-50 mt-1 max-h-60 min-w-full max-w-[28rem] overflow-auto rounded-md border border-border bg-bg-raised py-1 shadow-lg empty:hidden"
       modal={false}
     >
       {filtered.length === 0 ? (
@@ -162,7 +203,7 @@ function DropdownPanel({ filtered, value, multiple }: DropdownPanelProps) {
             key={option.value}
             value={option.value}
             className={({ active }) =>
-              `flex cursor-pointer items-center justify-between px-3 py-1.5 text-sm ${
+              `flex cursor-pointer items-center justify-between gap-3 whitespace-nowrap px-3 py-1.5 text-sm ${
                 active ? "bg-primary text-white" : "text-fg"
               }`
             }
@@ -171,8 +212,13 @@ function DropdownPanel({ filtered, value, multiple }: DropdownPanelProps) {
               const selected = value.has(option.value);
               return (
                 <>
-                  <span className="flex-1 truncate">{option.label}</span>
-                  <div className="ml-3 flex items-center gap-2">
+                  <div className="flex flex-1 items-center gap-2">
+                    {option.iconId && (
+                      <Icon itemId={option.iconId} alt="" className="h-5 w-5 shrink-0" />
+                    )}
+                    <span>{option.label}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
                     {option.hint && (
                       <span className="text-xs opacity-70">{option.hint}</span>
                     )}

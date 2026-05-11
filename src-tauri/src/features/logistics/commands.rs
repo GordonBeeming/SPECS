@@ -242,7 +242,7 @@ pub fn plan_logistics(
     })?;
     let unlocked_tier: u8 = current_tier.clamp(0, u8::MAX as i64) as u8;
 
-    let plans = if item.is_fluid {
+    let mut plans = if item.is_fluid {
         plan_pipes(
             input.items_per_minute,
             game_data.pipe_tiers(),
@@ -255,7 +255,23 @@ pub fn plan_logistics(
             unlocked_tier,
         )
     };
-    Ok(plans)
+    // Vehicle plans need a distance to compute cycle-time throughput.
+    // When the link is local enough that the player didn't bother
+    // entering a distance, belts/pipes are always the right answer and
+    // we skip the vehicle pass entirely.
+    if let Some(distance_m) = input.distance_m {
+        plans.extend(super::domain::plan_vehicles(
+            input.items_per_minute,
+            distance_m,
+            game_data.transport_vehicles(),
+            item.is_fluid,
+            unlocked_tier,
+        ));
+    }
+    // The same finaliser belt/pipe plans use — ranks the merged list and
+    // keeps an unlocked option in the head when the cap would otherwise
+    // drop them all.
+    Ok(super::domain::finalise_plans_public(plans))
 }
 
 #[cfg(test)]

@@ -84,4 +84,8 @@ export interface TransportPlan {
   minUnlockTier: number;
   /** True if any segment's unlock tier is above the playthrough's tier. */
   locked: boolean;
+  /** Vehicle plans only — id of the picked vehicle (Build_Truck_C, …). */
+  vehicleId?: string;
+  /** Drone plans only — batteries/min the player needs to supply at the launchpad. */
+  batteryPerMinute?: number;
 }

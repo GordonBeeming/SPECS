@@ -9,6 +9,11 @@ pub struct Factory {
     pub world_y: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    /// Player-chosen game-data class id used as the factory's visual
+    /// glyph (e.g. `Build_ManufacturerMk1_C`). `None` falls back to the
+    /// brand `<Factory>` lucide icon on the React side.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
     pub created_at: String,
@@ -71,6 +76,8 @@ pub struct CreateFactoryInput {
     pub notes: Option<String>,
     #[serde(default)]
     pub color: Option<String>,
+    #[serde(default)]
+    pub icon_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -78,6 +85,15 @@ pub struct CreateFactoryInput {
 pub struct RenameFactoryInput {
     pub id: String,
     pub name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetFactoryIconInput {
+    pub id: String,
+    /// `None` clears the icon (back to the brand fallback).
+    #[serde(default)]
+    pub icon_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
