@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   BookOpen,
   Factory as FactoryIcon,
+  Info,
   LayoutDashboard,
   Moon,
   Network,
@@ -9,6 +10,7 @@ import {
   Sun,
   TrainTrack,
 } from "lucide-react";
+import { AboutModal } from "@/features/about/components/AboutModal";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { useThemeMode } from "@/shared/theme/useThemeMode";
@@ -34,6 +36,7 @@ const NAV: ReadonlyArray<{ id: Route; label: string; Icon: typeof BookOpen }> = 
 export function AppShell() {
   const { mode, toggle } = useThemeMode();
   const [route, setRoute] = useState<Route>("factories");
+  const [showAbout, setShowAbout] = useState(false);
 
   return (
     <div className="flex h-full flex-col">
@@ -47,11 +50,15 @@ export function AppShell() {
         <div className="flex items-center gap-3">
           <PlaythroughSwitcher />
           <HealthBadge />
+          <Button variant="ghost" onClick={() => setShowAbout(true)} aria-label="About">
+            <Info className="h-4 w-4" />
+          </Button>
           <Button variant="ghost" onClick={toggle} aria-label="Toggle theme">
             {mode === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
         </div>
       </header>
+      {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
 
       <div className="flex flex-1 overflow-hidden">
         <nav
