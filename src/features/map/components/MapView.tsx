@@ -929,38 +929,71 @@ function FactoryPopover({ factoryId, hasPower, onEdit, onEditPower, onClose }: F
         </button>
       </div>
 
-      {detail.data && ledger && ledger.flows.length > 0 && (
-        <ul className="mt-3 max-h-40 space-y-1 overflow-auto text-[11px]">
-          {ledger.flows.slice(0, 8).map((flow) => (
-            <li
-              key={flow.itemId}
-              className="flex items-center justify-between gap-2"
-            >
-              <span className="flex min-w-0 items-center gap-1.5">
-                <Icon itemId={flow.itemId} alt="" className="h-3.5 w-3.5" />
-                <span className="truncate">{flow.itemName}</span>
-              </span>
-              <span
-                className={`tabular-nums ${
-                  flow.netPerMinute > 0.001
-                    ? "text-success"
-                    : flow.netPerMinute < -0.001
-                      ? "text-danger"
-                      : "text-fg-muted"
-                }`}
+      {(() => {
+        if (!detail.data || !ledger) return null;
+        // Only surface real ins/outs. Intermediates that net to zero
+        // (e.g. an item produced by one machine in the factory and
+        // fully consumed by another machine in the same factory) are
+        // noise here — they're internal to the factory.
+        const meaningful = ledger.flows.filter(
+          (f) => Math.abs(f.netPerMinute) > 0.001,
+        );
+        if (meaningful.length === 0) return null;
+        const inputs = meaningful.filter((f) => f.netPerMinute < 0);
+        const outputs = meaningful.filter((f) => f.netPerMinute > 0);
+        return (
+          <ul className="mt-3 max-h-44 space-y-1 overflow-auto text-[11px]">
+            {outputs.map((flow) => (
+              <li
+                key={`out-${flow.itemId}`}
+                className="flex items-center justify-between gap-2"
               >
-                {flow.netPerMinute > 0 ? "+" : ""}
-                {flow.netPerMinute.toFixed(1)}/min
-              </span>
-            </li>
-          ))}
-          {ledger.flows.length > 8 && (
-            <li className="pt-1 text-center text-fg-muted">
-              + {ledger.flows.length - 8} more
-            </li>
-          )}
-        </ul>
-      )}
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <Icon itemId={flow.itemId} alt="" className="h-3.5 w-3.5" />
+                  <span className="truncate">{flow.itemName}</span>
+                </span>
+                <span className="tabular-nums text-success">
+                  +{flow.netPerMinute.toFixed(1)}/min
+                </span>
+              </li>
+            ))}
+            {inputs.map((flow) => {
+              const need = -flow.netPerMinute;
+              const fromNodes = flow.fromNodesPerMinute ?? 0;
+              // Coverage from bound resource nodes — surfaces here
+              // so the user can tell at a glance whether the input
+              // is fully covered by claimed supply or still needs an
+              // upstream factory to ship it in. Lays groundwork for
+              // splitting an input pool across multiple factories
+              // later.
+              const covered = Math.min(fromNodes, need);
+              const shortfall = Math.max(0, need - fromNodes);
+              return (
+                <li
+                  key={`in-${flow.itemId}`}
+                  className="flex items-center justify-between gap-2"
+                >
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <Icon itemId={flow.itemId} alt="" className="h-3.5 w-3.5" />
+                    <span className="truncate">{flow.itemName}</span>
+                  </span>
+                  <span className="flex items-center gap-1 tabular-nums">
+                    <span className="text-danger">-{need.toFixed(1)}/min</span>
+                    {fromNodes > 0 && (
+                      <span
+                        className="rounded-full bg-primary/10 px-1.5 text-[10px] font-medium text-primary"
+                        title={`From bound nodes: ${fromNodes.toFixed(1)}/min · still needed: ${shortfall.toFixed(1)}/min`}
+                      >
+                        {covered.toFixed(0)}/{need.toFixed(0)}
+                      </span>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        );
+      })()}
 
       <div className="mt-3 flex items-center justify-end gap-2">
         {hasPower && onEditPower && (
