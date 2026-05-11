@@ -37,6 +37,7 @@ import { ResourcesView } from "@/features/resources/components/ResourcesView";
 import { MapView } from "@/features/map/components/MapView";
 import { PlannerView } from "@/features/planner/components/PlannerView";
 import { useNavStore } from "@/shared/nav-store";
+import { ErrorBoundary } from "@/shared/ui/ErrorBoundary";
 import { useUndoStore } from "@/shared/undo/store";
 
 type Route =
@@ -231,17 +232,22 @@ export function AppShell() {
         </nav>
 
         <main className="flex-1 overflow-auto p-6">
-          {route === "home" && <HomeView goTo={(r) => setRoute(r)} />}
-          {route === "network" && <NetworkView />}
-          {route === "factories" && <FactoryListView />}
-          {route === "logistics" && <LogisticsListView />}
-          {route === "trains" && <TrainRoutesView />}
-          {route === "power" && <PowerView />}
-          {route === "alts" && <AltsView />}
-          {route === "resources" && <ResourcesView />}
-          {route === "map" && <MapView />}
-          {route === "planner" && <PlannerView />}
-          {route === "library" && <LibraryView />}
+          {/* Per-route boundary keyed on the route id so a re-mount on
+              tab switch resets a previous crash, and a crash in one
+              tab can't blank the shell. */}
+          <ErrorBoundary key={route} label={`The ${route} tab`}>
+            {route === "home" && <HomeView goTo={(r) => setRoute(r)} />}
+            {route === "network" && <NetworkView />}
+            {route === "factories" && <FactoryListView />}
+            {route === "logistics" && <LogisticsListView />}
+            {route === "trains" && <TrainRoutesView />}
+            {route === "power" && <PowerView />}
+            {route === "alts" && <AltsView />}
+            {route === "resources" && <ResourcesView />}
+            {route === "map" && <MapView />}
+            {route === "planner" && <PlannerView />}
+            {route === "library" && <LibraryView />}
+          </ErrorBoundary>
         </main>
       </div>
     </div>

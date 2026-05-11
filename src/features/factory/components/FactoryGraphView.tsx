@@ -10,8 +10,17 @@ import {
   useNodesState,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import dagre from "dagre";
+// dagre ships as CJS — `import * as` keeps the namespace shape stable
+// whether Vite pre-bundles it as default or named exports.
+import * as dagreNs from "dagre";
 import { Trash2 } from "lucide-react";
+
+// Handle either binding shape Vite hands us — pre-bundled CJS modules
+// surface either as default or as namespace-with-default depending on
+// the optimisation pass.
+const dagre: typeof import("dagre") =
+  (dagreNs as unknown as { default?: typeof import("dagre") }).default ??
+  (dagreNs as unknown as typeof import("dagre"));
 
 import { Icon } from "@/shared/ui/Icon";
 import { useRecipes } from "@/features/library/hooks/useLibrary";
@@ -100,19 +109,34 @@ const nodeTypes = { machine: MachineNode };
  * override it once the user drags.
  */
 function autoLayout(machines: FactoryMachine[]): Map<string, { x: number; y: number }> {
-  const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: "LR", nodesep: 40, ranksep: 80 });
-  g.setDefaultEdgeLabel(() => ({}));
-  for (const m of machines) {
-    g.setNode(m.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+  // dagre is a CJS dep — if its interop binding goes sideways under a
+  // particular bundler config the `graphlib` access throws. Fall back
+  // to a deterministic grid so the page never blanks.
+  try {
+    const g = new dagre.graphlib.Graph();
+    g.setGraph({ rankdir: "LR", nodesep: 40, ranksep: 80 });
+    g.setDefaultEdgeLabel(() => ({}));
+    for (const m of machines) {
+      g.setNode(m.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+    }
+    dagre.layout(g);
+    const out = new Map<string, { x: number; y: number }>();
+    for (const m of machines) {
+      const node = g.node(m.id);
+      if (!node) continue;
+      out.set(m.id, { x: node.x - NODE_WIDTH / 2, y: node.y - NODE_HEIGHT / 2 });
+    }
+    return out;
+  } catch (err) {
+    console.warn("dagre layout failed, falling back to grid:", err);
+    const out = new Map<string, { x: number; y: number }>();
+    machines.forEach((m, i) => {
+      const col = i % 4;
+      const row = Math.floor(i / 4);
+      out.set(m.id, { x: col * (NODE_WIDTH + 40), y: row * (NODE_HEIGHT + 40) });
+    });
+    return out;
   }
-  dagre.layout(g);
-  const out = new Map<string, { x: number; y: number }>();
-  for (const m of machines) {
-    const { x, y } = g.node(m.id);
-    out.set(m.id, { x: x - NODE_WIDTH / 2, y: y - NODE_HEIGHT / 2 });
-  }
-  return out;
 }
 
 function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }: FactoryGraphViewProps) {
