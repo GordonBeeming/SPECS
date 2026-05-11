@@ -41,6 +41,13 @@ export function PlannerView() {
     const standardTier = new Map<string, number>();
     const altTier = new Map<string, number>();
     for (const r of recipes.data) {
+      // Skip Unpackage_* recipes when computing the "tier" of an item.
+      // They're inverse-utility recipes (you only "make" Crude Oil by
+      // unpackaging Packaged Oil), all carry unlockTier=0, and using
+      // them otherwise drags Empty Canister / Alumina Solution / etc.
+      // back to Tier 0 because Unpackage recipes also output the
+      // empty canister as a byproduct.
+      if (r.id.startsWith("Recipe_Unpackage")) continue;
       const bucket = r.isAlt ? altTier : standardTier;
       for (const o of r.outputs) {
         const cur = bucket.get(o.itemId);
