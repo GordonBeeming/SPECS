@@ -155,15 +155,23 @@ fn structurally_viable_for_item(
 /// this stage must produce per minute. Returns the chosen stage and
 /// folds raw demand into `raw_demand` so the caller can compare
 /// against `available_supply` at the end.
+/// Phase 1: walk the recipe graph leaves-first, accumulating total
+/// demand per item across every dependency path. The same item showing
+/// up twice (e.g. Iron Rod is both a direct Rotor input AND a Screw
+/// input on the way to Rotor) gets its demand summed into one entry
+/// instead of producing two separate stages — that was the duplicate-
+/// stage bug in the earlier `size_stage` recursion.
 #[allow(clippy::too_many_arguments)]
-fn size_stage(
+fn collect_demands(
     item_id: &str,
     demand_ipm: f32,
     unlocked: &HashSet<String>,
     available_supply: &HashMap<String, f32>,
     game_data: &GameData,
-    stages: &mut Vec<ChainStage>,
     raw_demand: &mut HashMap<String, f32>,
+    item_demands: &mut HashMap<String, f32>,
+    item_recipes: &mut HashMap<String, String>,
+    visit_order: &mut Vec<String>,
     supply_cache: &mut HashMap<String, bool>,
     struct_cache: &mut HashMap<String, bool>,
     visiting: &mut HashSet<String>,
@@ -178,6 +186,16 @@ fn size_stage(
         });
     }
     visiting.insert(item_id.to_string());
+
+    // Fold the additional demand into this item's running total
+    // *before* recursing — if the same item appears again deeper in
+    // the chain, all its demand lands on a single stage.
+    *item_demands.entry(item_id.to_string()).or_insert(0.0) += demand_ipm;
+
+    // Recipe pick is memoised per item — once the first visit pins
+    // a recipe, all subsequent visits inherit it so we don't oscillate
+    // between alts on different paths.
+    let picked_recipe_id = item_recipes.get(item_id).cloned();
 
     let all_unlocked: Vec<&Recipe> = game_data
         .recipes_producing(item_id)
@@ -231,22 +249,72 @@ fn size_stage(
         });
     }
 
-    let recipe = pick_recipe(item_id, &candidates).ok_or_else(|| PlannerError::NoRecipeForTarget {
-        item_id: item_id.to_string(),
-    })?;
+    let recipe = if let Some(rid) = picked_recipe_id.as_deref() {
+        game_data
+            .recipe(rid)
+            .ok_or_else(|| PlannerError::NoRecipeForTarget {
+                item_id: item_id.to_string(),
+            })?
+    } else {
+        let r = pick_recipe(item_id, &candidates).ok_or_else(|| {
+            PlannerError::NoRecipeForTarget {
+                item_id: item_id.to_string(),
+            }
+        })?;
+        item_recipes.insert(item_id.to_string(), r.id.clone());
+        r
+    };
     let per_machine = recipe_output_rate(recipe, item_id).expect("candidate filter guarantees output");
 
-    // Greedy clock choice — overclock only if needed. machine_count =
-    // ceil(demand / per_machine_at_100); clock = demand / (count ×
-    // per_machine) × 100. Caps at 250% via the count bump above so we
-    // stay inside the in-game range.
+    // Recurse into upstream demands — the upstream demand from THIS
+    // visit only is `recipe_input.per_minute × (demand_ipm /
+    // per_machine_output_rate)`. The recipient call sums it into
+    // `item_demands` to deduplicate across paths.
+    let runs_for_delta = demand_ipm / per_machine;
+    let input_demands: Vec<(String, f32)> = recipe
+        .inputs
+        .iter()
+        .map(|io| (io.item_id.clone(), io.per_minute * runs_for_delta))
+        .collect();
+    for (input_item, input_ipm) in input_demands {
+        collect_demands(
+            &input_item,
+            input_ipm,
+            unlocked,
+            available_supply,
+            game_data,
+            raw_demand,
+            item_demands,
+            item_recipes,
+            visit_order,
+            supply_cache,
+            struct_cache,
+            visiting,
+        )?;
+    }
+
+    // Record first-visit order leaves-first so the eventual stage
+    // list reads as "build these in order". Subsequent re-visits skip
+    // re-appending; they only contribute to demand accumulation.
+    if !visit_order.iter().any(|x| x == item_id) {
+        visit_order.push(item_id.to_string());
+    }
+    visiting.remove(item_id);
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_stage(
+    item_id: &str,
+    demand_ipm: f32,
+    recipe: &Recipe,
+    game_data: &GameData,
+) -> ChainStage {
+    let per_machine = recipe_output_rate(recipe, item_id).expect("recipe must produce target");
+    // Greedy clock choice — overclock only if needed.
     let count_f = (demand_ipm / per_machine).ceil().max(1.0);
     let mut machine_count = count_f as i64;
     let mut clock = demand_ipm / (machine_count as f32 * per_machine) * 100.0;
-    // Clock can land below 1% if demand is tiny; clamp + recompute
-    // count if so. This is rare (factory of size 1 demanding < 1% of
-    // per-machine throughput) but keeps the plan inside the game's
-    // validation envelope.
     if clock < 1.0 {
         clock = 1.0;
     }
@@ -255,19 +323,21 @@ fn size_stage(
         clock = demand_ipm / (machine_count as f32 * per_machine) * 100.0;
     }
 
-    let scale = (machine_count as f32 * clock / 100.0) * (1.0 / per_machine) * per_machine;
-    // `scale` is the achieved output rate which should ≈ demand_ipm
-    // by construction; recipe inputs scale by `scale / per_machine`.
-    let runs_per_min = scale / per_machine;
+    // Total recipe runs/min across the bank: each machine at 100%
+    // clock runs the recipe N times/min where N = 60/cycle_seconds.
+    // `per_minute` on a RecipeIo already encodes that for one
+    // machine at 100% clock, so multiplying by the bank's
+    // effective-clock factor gives the right total flow.
+    let scaler = machine_count as f32 * clock / 100.0;
     let inputs: Vec<RecipeFlow> = recipe
         .inputs
         .iter()
-        .map(|io| flow_for(io.item_id.clone(), io.per_minute * runs_per_min, game_data))
+        .map(|io| flow_for(io.item_id.clone(), io.per_minute * scaler, game_data))
         .collect();
     let outputs: Vec<RecipeFlow> = recipe
         .outputs
         .iter()
-        .map(|io| flow_for(io.item_id.clone(), io.per_minute * runs_per_min, game_data))
+        .map(|io| flow_for(io.item_id.clone(), io.per_minute * scaler, game_data))
         .collect();
 
     let building_name = game_data
@@ -279,25 +349,7 @@ fn size_stage(
         .map(|b| b.power_mw * machine_count as f32 * (clock / 100.0).powi(2))
         .unwrap_or(0.0);
 
-    // Recurse into upstream demands BEFORE pushing this stage so the
-    // final stage order is leaves-first → target-last, mirroring how
-    // a player would build factories one tier at a time.
-    for inp in &inputs {
-        size_stage(
-            &inp.item_id,
-            inp.per_minute,
-            unlocked,
-            available_supply,
-            game_data,
-            stages,
-            raw_demand,
-            supply_cache,
-            struct_cache,
-            visiting,
-        )?;
-    }
-
-    stages.push(ChainStage {
+    ChainStage {
         recipe_id: recipe.id.clone(),
         recipe_name: recipe.name.clone(),
         building_id: recipe.building_id.clone(),
@@ -310,9 +362,7 @@ fn size_stage(
         outputs,
         is_alt: recipe.is_alt,
         power_mw,
-    });
-    visiting.remove(item_id);
-    Ok(())
+    }
 }
 
 fn flow_for(item_id: String, per_minute: f32, game_data: &GameData) -> RecipeFlow {
@@ -352,19 +402,23 @@ pub fn derive_chain(
             item_id: target_item_id.to_string(),
         });
     }
-    let mut stages: Vec<ChainStage> = Vec::new();
     let mut raw_demand: HashMap<String, f32> = HashMap::new();
+    let mut item_demands: HashMap<String, f32> = HashMap::new();
+    let mut item_recipes: HashMap<String, String> = HashMap::new();
+    let mut visit_order: Vec<String> = Vec::new();
     let mut supply_cache: HashMap<String, bool> = HashMap::new();
     let mut struct_cache: HashMap<String, bool> = HashMap::new();
     let mut visiting: HashSet<String> = HashSet::new();
-    size_stage(
+    collect_demands(
         target_item_id,
         target_ipm,
         unlocked_alts,
         available_supply,
         game_data,
-        &mut stages,
         &mut raw_demand,
+        &mut item_demands,
+        &mut item_recipes,
+        &mut visit_order,
         &mut supply_cache,
         &mut struct_cache,
         &mut visiting,
@@ -383,6 +437,24 @@ pub fn derive_chain(
     if !missing.is_empty() {
         return Err(PlannerError::Insufficient { missing });
     }
+
+    // Phase 2: build one ChainStage per visited item in leaves-first
+    // order, sizing each on its accumulated demand. The dedup in
+    // phase 1 means Iron Rod shows up exactly once even when both
+    // Rotor and Screw need it.
+    let stages: Vec<ChainStage> = visit_order
+        .iter()
+        .map(|item_id| {
+            let demand = *item_demands.get(item_id).unwrap_or(&0.0);
+            let recipe_id = item_recipes
+                .get(item_id)
+                .expect("collect_demands records a recipe per visited item");
+            let recipe = game_data
+                .recipe(recipe_id)
+                .expect("recipe id came from gamedata");
+            build_stage(item_id, demand, recipe, game_data)
+        })
+        .collect();
 
     let total_machines = stages.iter().map(|s| s.machine_count).sum();
     let total_power_mw = stages.iter().map(|s| s.power_mw).sum();
@@ -487,6 +559,47 @@ mod tests {
             derive_chain("Desc_DefinitelyNotAThing_C", 30.0, &unlocked(), &HashMap::new(), &gd)
                 .unwrap_err();
         assert!(matches!(err, PlannerError::UnknownTarget { .. }));
+    }
+
+    #[test]
+    fn rotor_at_60_per_min_produces_correct_rates_with_no_duplicates() {
+        // Regression for the planner-output bug: previously the chain
+        // contained Iron Ingot + Iron Rod twice (Rotor needs Rod
+        // directly AND through Screw), and the rate math collapsed
+        // every output to a fraction of demand (e.g. Rotor showed
+        // 15/min when 60/min was requested).
+        let gd = GameData::from_bundled().unwrap();
+        let mut supply = HashMap::new();
+        supply.insert("Desc_OreIron_C".into(), 100000.0);
+        let plan = derive_chain("Desc_Rotor_C", 60.0, &unlocked(), &supply, &gd).unwrap();
+
+        // No duplicate items in the stage list — the demand for each
+        // intermediate gets summed onto a single stage.
+        let mut seen: HashSet<&str> = HashSet::new();
+        for s in &plan.stages {
+            assert!(
+                seen.insert(s.output_item_id.as_str()),
+                "duplicate stage for {}",
+                s.output_item_id,
+            );
+        }
+
+        // Target stage hits the requested rate exactly.
+        let target = plan
+            .stages
+            .iter()
+            .find(|s| s.output_item_id == "Desc_Rotor_C")
+            .expect("rotor stage present");
+        let rotor_out = target
+            .outputs
+            .iter()
+            .find(|o| o.item_id == "Desc_Rotor_C")
+            .unwrap();
+        assert!(
+            (rotor_out.per_minute - 60.0).abs() < 0.05,
+            "expected rotor output ≈ 60/min, got {}",
+            rotor_out.per_minute,
+        );
     }
 
     #[test]
