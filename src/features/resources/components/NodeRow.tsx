@@ -3,12 +3,15 @@ import { Check, Pencil, Plus, X } from "lucide-react";
 
 import { Button } from "@/shared/ui/Button";
 
+import { nodeDisplayLabel } from "../display";
 import { useClearNodeClaim, useSetNodeClaim } from "../hooks/useResources";
 import type { NodeKind, ResourceNodeRow } from "../types";
 
 interface NodeRowProps {
   row: ResourceNodeRow;
   factories: { id: string; name: string }[];
+  /** Position within the (resource, purity) bucket for a friendly `#N` label. */
+  index: number;
 }
 
 /**
@@ -17,19 +20,20 @@ interface NodeRowProps {
  * still letting the user tweak miner mark + clock + bound factory
  * without a popover.
  */
-export function NodeRow({ row, factories }: NodeRowProps) {
+export function NodeRow({ row, factories, index }: NodeRowProps) {
   const [editing, setEditing] = useState(false);
+  const label = nodeDisplayLabel(row, index);
 
   return (
     <li className="flex flex-col gap-2 px-5 py-2 text-sm">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <code
-            className="truncate font-mono text-[11px] text-fg-muted"
-            title={row.id}
+          <span
+            className="truncate text-[12px] tabular-nums text-fg"
+            title={`Catalog id: ${row.id}`}
           >
-            {row.id}
-          </code>
+            {label}
+          </span>
           {row.claim ? (
             <ClaimChip row={row} factories={factories} />
           ) : (

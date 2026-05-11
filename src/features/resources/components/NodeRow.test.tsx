@@ -60,20 +60,20 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("<NodeRow />", () => {
   it("renders unclaimed nodes with a claim button (no chip)", () => {
-    renderWithProviders(<NodeRow row={unclaimed} factories={[]} />);
+    renderWithProviders(<NodeRow row={unclaimed} factories={[]} index={0} />);
     expect(screen.getByText("unclaimed")).toBeInTheDocument();
     expect(screen.getByLabelText("Claim node")).toBeInTheDocument();
   });
 
   it("renders claimed nodes with miner mark + clock + ipm chips", () => {
-    renderWithProviders(<NodeRow row={claimedMk2} factories={[]} />);
+    renderWithProviders(<NodeRow row={claimedMk2} factories={[]} index={0} />);
     expect(screen.getByText("Mk2")).toBeInTheDocument();
     expect(screen.getByText("100%")).toBeInTheDocument();
     expect(screen.getByText("240 ipm")).toBeInTheDocument();
   });
 
   it("one-click claim sends sensible defaults (Mk1, 100% clock, no factory)", async () => {
-    renderWithProviders(<NodeRow row={unclaimed} factories={[]} />);
+    renderWithProviders(<NodeRow row={unclaimed} factories={[]} index={0} />);
     fireEvent.click(screen.getByLabelText("Claim node"));
     await waitFor(() =>
       expect(resourcesApi.setClaim).toHaveBeenCalledWith({
@@ -90,6 +90,7 @@ describe("<NodeRow />", () => {
     renderWithProviders(
       <NodeRow
         row={claimedMk2}
+        index={0}
         factories={[
           { id: "F1", name: "Iron Plant" },
           { id: "F2", name: "Steel Plant" },
@@ -110,7 +111,7 @@ describe("<NodeRow />", () => {
       resourceItemName: "Water",
       kind: "fracking_well",
     };
-    renderWithProviders(<NodeRow row={well} factories={[]} />);
+    renderWithProviders(<NodeRow row={well} factories={[]} index={0} />);
     fireEvent.click(screen.getByLabelText("Claim node"));
     return waitFor(() =>
       expect(resourcesApi.setClaim).toHaveBeenCalledWith(

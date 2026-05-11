@@ -12,6 +12,7 @@ import { Icon } from "@/shared/ui/Icon";
 
 import { plannerApi } from "../api";
 import type { ChainPlan, DeriveChainResult, PlannerError } from "../types";
+import { ClaimMissingModal } from "./ClaimMissingModal";
 
 export function PlannerView() {
   const playthrough = useCurrentPlaythrough();
@@ -175,7 +176,18 @@ export function PlannerView() {
       </Card>
 
       {result?.kind === "err" && (
-        <PlannerErrorPanel error={result.error} items={items.data ?? []} />
+        <PlannerErrorPanel
+          error={result.error}
+          items={items.data ?? []}
+          nodes={nodes.data ?? []}
+          onAfterClaim={async () => {
+            await nodes.refetch();
+            // Auto-rederive so the player sees the chain unlock as soon
+            // as their newly-claimed supply covers the gap, without a
+            // second manual "Derive" click.
+            await derive();
+          }}
+        />
       )}
 
       {result?.kind === "ok" && (
@@ -195,35 +207,78 @@ export function PlannerView() {
 function PlannerErrorPanel({
   error,
   items,
+  nodes,
+  onAfterClaim,
 }: {
   error: PlannerError;
   items: { id: string; name: string }[];
+  nodes: import("@/features/resources/types").ResourceNodeRow[];
+  onAfterClaim: () => void;
 }) {
+  const [claimingFor, setClaimingFor] = useState<{
+    id: string;
+    name: string;
+    ipm: number;
+  } | null>(null);
   if (error.kind === "insufficient") {
     return (
-      <Card>
-        <h2 className="text-base font-semibold text-danger">
-          Insufficient supply
-        </h2>
-        <p className="mt-1 text-sm text-fg-muted">
-          The chain needs more raw supply than you've claimed. Visit
-          Resources and claim more nodes for:
-        </p>
-        <ul className="mt-3 space-y-1 text-sm">
-          {Object.entries(error.missing).map(([id, ipm]) => {
-            const name = items.find((i) => i.id === id)?.name ?? id;
-            return (
-              <li key={id} className="flex items-center gap-2">
-                <Icon itemId={id} alt={name} className="h-4 w-4" />
-                <span className="font-medium">{name}</span>
-                <span className="text-fg-muted">
-                  needs {Math.ceil(ipm)} more ipm
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      </Card>
+      <>
+        <Card>
+          <h2 className="text-base font-semibold text-danger">
+            Insufficient supply
+          </h2>
+          <p className="mt-1 text-sm text-fg-muted">
+            The chain needs more raw supply than you've claimed. Claim more
+            nodes inline — no need to leave the planner:
+          </p>
+          <ul className="mt-3 space-y-2 text-sm">
+            {Object.entries(error.missing).map(([id, ipm]) => {
+              const name = items.find((i) => i.id === id)?.name ?? id;
+              const unclaimedCount = nodes.filter(
+                (n) => n.resourceItemId === id && !n.claim,
+              ).length;
+              return (
+                <li
+                  key={id}
+                  className="flex items-center justify-between gap-2 rounded-md border border-border bg-bg/40 px-3 py-2"
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Icon itemId={id} alt={name} className="h-4 w-4" />
+                    <span className="font-medium">{name}</span>
+                    <span className="text-xs text-fg-muted">
+                      needs {Math.ceil(ipm)} more ipm
+                    </span>
+                  </div>
+                  {unclaimedCount > 0 ? (
+                    <Button
+                      onClick={() =>
+                        setClaimingFor({ id, name, ipm })
+                      }
+                      className="px-3 py-1 text-xs"
+                    >
+                      Claim a node ({unclaimedCount} left)
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-fg-muted">
+                      none unclaimed
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+        {claimingFor && (
+          <ClaimMissingModal
+            resourceItemId={claimingFor.id}
+            resourceItemName={claimingFor.name}
+            shortfallIpm={claimingFor.ipm}
+            nodes={nodes}
+            onClose={() => setClaimingFor(null)}
+            onClaimed={onAfterClaim}
+          />
+        )}
+      </>
     );
   }
   return (

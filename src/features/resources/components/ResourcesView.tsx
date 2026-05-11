@@ -242,8 +242,8 @@ function PurityBucket({ purity, rows, factories }: PurityBucketProps) {
         </span>
       </div>
       <ul className="flex flex-col divide-y divide-border">
-        {rows.map((row) => (
-          <NodeRow key={row.id} row={row} factories={factories} />
+        {rows.map((row, i) => (
+          <NodeRow key={row.id} row={row} factories={factories} index={i} />
         ))}
       </ul>
     </div>
