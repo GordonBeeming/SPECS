@@ -24,7 +24,9 @@ pub fn run() {
         .init();
 
     #[cfg_attr(not(feature = "dev-mcp"), allow(unused_mut))]
-    let mut builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+    let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build());
 
     #[cfg(feature = "dev-mcp")]
     {

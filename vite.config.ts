@@ -36,5 +36,8 @@ export default defineConfig(async () => ({
     globals: true,
     setupFiles: ["./src/shared/testing/setup.ts"],
     css: false,
+    // Playwright owns the `tests/e2e/` tree — Vitest must not try to
+    // load those specs (it'd error on the @playwright/test import).
+    exclude: ["node_modules", "dist", "tests/e2e/**"],
   },
 }));

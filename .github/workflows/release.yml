@@ -147,6 +147,12 @@ jobs:
           APPLE_ID: ${{ vars.APPLE_ID }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          # tauri-plugin-updater signing — tauri-action picks the
+          # private key + password up automatically and stamps a
+          # detached signature next to each bundle. Skips silently
+          # when the secret is absent so PRs from forks still build.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'SPECS ${{ github.ref_name }}'
@@ -167,6 +173,95 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.platform.args }}
+
+  # ---------------------------------------------------------------------------
+  # Updater manifest — assembles `latest.json` from the per-platform
+  # `.sig` files tauri-action stamped onto the draft release. The
+  # tauri-plugin-updater on the desktop client hits this URL to learn
+  # the current version + checks the detached signature against the
+  # pubkey baked into tauri.conf.json. Skips silently if
+  # TAURI_SIGNING_PRIVATE_KEY isn't configured (forks).
+  # ---------------------------------------------------------------------------
+
+  updater-manifest:
+    name: Generate updater manifest
+    needs: bundle
+    runs-on: ubuntu-latest
+    if: ${{ vars.PUBLISH_UPDATER != 'false' }}
+    permissions:
+      contents: write
+    steps:
+      - name: Skip when signing key missing
+        id: gate
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY}" ]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY not set — skipping updater manifest"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Build latest.json from release signatures
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          PUBDATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          OWNER_REPO="${{ github.repository }}"
+          # `gh release view` returns the assets attached to the draft.
+          # tauri-action names the per-platform updater payloads:
+          #   - macOS:    *.app.tar.gz   + *.app.tar.gz.sig
+          #   - Windows:  *-setup.nsis.zip + .sig  (or *.msi.zip + .sig)
+          #   - Linux:    *.AppImage.tar.gz + .sig
+          ASSETS_JSON="$(gh release view "${TAG}" --repo "${OWNER_REPO}" --json assets --jq .assets)"
+
+          pair_for() {
+            local pattern="$1"
+            local sig_url url sig
+            url="$(echo "$ASSETS_JSON" | jq -r --arg p "$pattern" '.[] | select(.name | test($p)) | select(.name | endswith(".sig") | not) | .url' | head -n1)"
+            sig_url="$(echo "$ASSETS_JSON" | jq -r --arg p "$pattern" '.[] | select(.name | test($p)) | select(.name | endswith(".sig")) | .url' | head -n1)"
+            if [ -z "$url" ] || [ -z "$sig_url" ]; then
+              echo ""
+              return 0
+            fi
+            sig="$(gh release download "${TAG}" --repo "${OWNER_REPO}" -p "*$(basename "${sig_url}")" -O - 2>/dev/null || true)"
+            jq -n --arg url "$url" --arg sig "$sig" '{url: $url, signature: $sig}'
+          }
+
+          DARWIN_AARCH64="$(pair_for 'aarch64.*\\.app\\.tar\\.gz$')"
+          DARWIN_X86_64="$(pair_for 'x64.*\\.app\\.tar\\.gz$')"
+          LINUX_X86_64="$(pair_for 'amd64.*\\.AppImage\\.tar\\.gz$')"
+          WINDOWS_X86_64="$(pair_for 'x64.*-setup\\.nsis\\.zip$')"
+
+          jq -n \
+            --arg version "$VERSION" \
+            --arg pubdate "$PUBDATE" \
+            --argjson darwin_aarch64 "${DARWIN_AARCH64:-null}" \
+            --argjson darwin_x86_64 "${DARWIN_X86_64:-null}" \
+            --argjson linux_x86_64 "${LINUX_X86_64:-null}" \
+            --argjson windows_x86_64 "${WINDOWS_X86_64:-null}" \
+            '{
+              version: $version,
+              notes: "See release notes on GitHub.",
+              pub_date: $pubdate,
+              platforms: ({
+                "darwin-aarch64": $darwin_aarch64,
+                "darwin-x86_64": $darwin_x86_64,
+                "linux-x86_64": $linux_x86_64,
+                "windows-x86_64": $windows_x86_64
+              } | with_entries(select(.value != null)))
+            }' > latest.json
+          cat latest.json
+          gh release upload "${TAG}" --repo "${OWNER_REPO}" latest.json --clobber
 
   # ---------------------------------------------------------------------------
   # Distribution channels — fan out after every bundle artifact lands.
