@@ -410,6 +410,7 @@ pub fn compose_ledger(
                 .item(&item_id)
                 .map(|i| (i.name.clone(), i.is_fluid))
                 .unwrap_or_else(|| (item_id.clone(), false));
+            let from_nodes = *node_supply.get(&item_id).unwrap_or(&0.0);
             ItemFlow {
                 item_id,
                 item_name: name,
@@ -417,6 +418,7 @@ pub fn compose_ledger(
                 produced_per_minute: p,
                 consumed_per_minute: c,
                 net_per_minute: p - c,
+                from_nodes_per_minute: from_nodes,
             }
         })
         .collect();
