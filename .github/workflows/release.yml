@@ -11,21 +11,26 @@ name: Release
 #   automatically after a successful release (vista pattern)
 # - winget (`microsoft/winget-pkgs`): Windows manifest updated via
 #   `wingetcreate` after a successful release (copilot_here pattern;
-#   first manifest submission is manual — see packaging/SETUP.md)
+#   first manifest submission is manual via `wingetcreate new`)
 #
 # macOS signing follows the vista pattern — base64-encoded p12 into a
 # fresh temporary keychain so login.keychain on the runner stays
 # untouched. Tauri's bundler picks up the certificate via the
 # APPLE_SIGNING_IDENTITY env var and notarises through `tauri-action`.
 #
-# Required secrets (Settings → Secrets and variables → Actions). All
-# optional — the workflow skips its dependent steps when missing:
+# Required config (Settings → Secrets and variables → Actions). All
+# optional — the workflow skips its dependent steps when missing.
 #
-#   APPLE_CERTIFICATE          base64 .p12 with "Developer ID Application"
-#   APPLE_CERTIFICATE_PASSWORD password for the .p12
+# Variables (non-sensitive; appear in logs):
 #   APPLE_SIGNING_IDENTITY     "Developer ID Application: Gordon Beeming (TEAM)"
 #   APPLE_ID                   Apple Developer account email
 #   APPLE_TEAM_ID              10-char Apple Team ID
+#   PUBLISH_HOMEBREW           set to "false" on forks to skip tap update
+#   PUBLISH_WINGET             set to "false" on forks to skip winget submit
+#
+# Secrets:
+#   APPLE_CERTIFICATE          base64 .p12 with "Developer ID Application"
+#   APPLE_CERTIFICATE_PASSWORD password for the .p12
 #   APPLE_PASSWORD             app-specific password for notarytool
 #   HOMEBREW_TAP_DEPLOY_KEY    SSH key with write to gordonbeeming/homebrew-tap
 #   WINGET_PAT                 PAT with `public_repo` for fork of microsoft/winget-pkgs
@@ -135,9 +140,9 @@ jobs:
           NODE_ENV: production
           # tauri-action picks these up automatically when present;
           # mac signing + notarisation skip silently when they're empty.
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ vars.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
@@ -349,8 +354,8 @@ jobs:
           }
           $url = "https://github.com/${{ github.repository }}/releases/download/$tag/$msiName"
 
-          # First submission must be manual (`wingetcreate new`) — see
-          # packaging/SETUP.md. Subsequent releases use `update`.
+          # First submission must be manual (`wingetcreate new` against
+          # the v0.1.0 MSI URL). Subsequent releases use `update`.
           .\wingetcreate.exe update GordonBeeming.SPECS `
             --version $version `
             --urls $url `
