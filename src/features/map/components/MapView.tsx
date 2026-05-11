@@ -931,16 +931,23 @@ function FactoryPopover({ factoryId, hasPower, onEdit, onEditPower, onClose }: F
 
       {(() => {
         if (!detail.data || !ledger) return null;
-        // Only surface real ins/outs. Intermediates that net to zero
-        // (e.g. an item produced by one machine in the factory and
-        // fully consumed by another machine in the same factory) are
-        // noise here — they're internal to the factory.
+        // Keep ALL of: net-positive (factory output), net-negative
+        // (factory input), and any item with non-zero supply coming
+        // in from bound nodes (so a node the user wired up to this
+        // factory still shows even if no machine here consumes it
+        // yet — without it the bound resource silently disappears).
+        // Intermediates that produce-and-consume internally (net 0,
+        // no node supply) still get filtered — they're noise.
         const meaningful = ledger.flows.filter(
-          (f) => Math.abs(f.netPerMinute) > 0.001,
+          (f) =>
+            Math.abs(f.netPerMinute) > 0.001 ||
+            (f.fromNodesPerMinute ?? 0) > 0.001,
         );
         if (meaningful.length === 0) return null;
-        const inputs = meaningful.filter((f) => f.netPerMinute < 0);
-        const outputs = meaningful.filter((f) => f.netPerMinute > 0);
+        const inputs = meaningful.filter(
+          (f) => f.netPerMinute < -0.001 || (f.fromNodesPerMinute ?? 0) > 0.001,
+        );
+        const outputs = meaningful.filter((f) => f.netPerMinute > 0.001);
         return (
           <ul className="mt-3 max-h-44 space-y-1 overflow-auto text-[11px]">
             {outputs.map((flow) => (
