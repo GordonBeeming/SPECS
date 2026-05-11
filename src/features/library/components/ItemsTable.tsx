@@ -1,9 +1,10 @@
+import { useMemo } from "react";
 import { Icon } from "@/shared/ui/Icon";
-import { useItems } from "../hooks/useLibrary";
+import { useItems, useRecipes } from "../hooks/useLibrary";
 import type { Item } from "../types";
 import { LibraryTable, type Column } from "./LibraryTable";
 
-const columns: Column<Item>[] = [
+const columns: Column<Item & { _tier: number }>[] = [
   {
     header: "",
     cell: (i) => <Icon itemId={i.id} alt={i.name} className="h-6 w-6" />,
@@ -17,14 +18,41 @@ const columns: Column<Item>[] = [
 
 export function ItemsTable() {
   const { data, isPending, isError, error } = useItems();
+  const recipes = useRecipes();
+  // Items don't carry a tier directly; derive from the earliest
+  // standard (non-alt, non-Unpackage) recipe producing each item.
+  // Raw resources (no producing recipe) sort to Tier 0.
+  const rows = useMemo(() => {
+    if (!data) return undefined;
+    const tierByItem = new Map<string, number>();
+    for (const r of recipes.data ?? []) {
+      if (r.isAlt) continue;
+      if (r.id.startsWith("Recipe_Unpackage")) continue;
+      for (const o of r.outputs) {
+        const cur = tierByItem.get(o.itemId);
+        if (cur === undefined || r.unlockTier < cur) {
+          tierByItem.set(o.itemId, r.unlockTier);
+        }
+      }
+    }
+    return [...data]
+      .map((i) => ({ ...i, _tier: tierByItem.get(i.id) ?? 0 }))
+      .sort((a, b) =>
+        a._tier === b._tier
+          ? a.name.localeCompare(b.name)
+          : a._tier - b._tier,
+      );
+  }, [data, recipes.data]);
+
   return (
     <LibraryTable
-      rows={data}
+      rows={rows}
       isPending={isPending}
       isError={isError}
       error={error}
       columns={columns}
       rowKey={(r) => r.id}
+      groupKey={(r) => `Tier ${r._tier}`}
     />
   );
 }

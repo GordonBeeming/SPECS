@@ -13,7 +13,7 @@ import "@xyflow/react/dist/style.css";
 // dagre ships as CJS — `import * as` keeps the namespace shape stable
 // whether Vite pre-bundles it as default or named exports.
 import * as dagreNs from "dagre";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil } from "lucide-react";
 
 // Handle either binding shape Vite hands us — pre-bundled CJS modules
 // surface either as default or as namespace-with-default depending on
@@ -23,6 +23,7 @@ const dagre: typeof import("dagre") =
   (dagreNs as unknown as typeof import("dagre"));
 
 import { Icon } from "@/shared/ui/Icon";
+import { ConfirmDeleteButton } from "@/shared/ui/ConfirmDeleteButton";
 import { useRecipes } from "@/features/library/hooks/useLibrary";
 import { factoryApi } from "../api";
 import { useRemoveMachine } from "../hooks/useFactories";
@@ -80,14 +81,7 @@ function MachineNode({ data }: { data: MachineNodeData }) {
           >
             <Pencil className="h-3 w-3" />
           </button>
-          <button
-            type="button"
-            onClick={onRemove}
-            aria-label="Remove machine"
-            className="rounded p-1 text-fg-muted hover:bg-danger/20 hover:text-danger"
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
+          <ConfirmDeleteButton onConfirm={onRemove} label="Remove machine" />
         </div>
       </div>
       <div className="mt-1 text-fg-muted">{buildingName}</div>
@@ -186,11 +180,10 @@ function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }
           buildingName: buildingNames.get(m.buildingId) ?? m.buildingId,
           recipeName,
           onEdit: () => editRef.current(m.id),
-          onRemove: () => {
-            if (confirm(`Remove this ${recipeName} row?`)) {
-              removeRef.current(m.id);
-            }
-          },
+          // Two-click confirm lives in MachineNode itself (Tauri 2
+          // suppresses window.confirm so the dialog never showed) —
+          // just hand the actual mutation through.
+          onRemove: () => removeRef.current(m.id),
         },
       };
     });

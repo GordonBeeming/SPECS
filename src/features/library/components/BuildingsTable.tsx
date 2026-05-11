@@ -18,14 +18,22 @@ const columns: Column<Building>[] = [
 
 export function BuildingsTable() {
   const { data, isPending, isError, error } = useBuildings();
+  const rows = data
+    ? [...data].sort((a, b) =>
+        a.unlockTier === b.unlockTier
+          ? a.name.localeCompare(b.name)
+          : a.unlockTier - b.unlockTier,
+      )
+    : undefined;
   return (
     <LibraryTable
-      rows={data}
+      rows={rows}
       isPending={isPending}
       isError={isError}
       error={error}
       columns={columns}
       rowKey={(r) => r.id}
+      groupKey={(r) => `Tier ${r.unlockTier}`}
     />
   );
 }

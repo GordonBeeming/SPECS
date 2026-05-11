@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { ArrowRight, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, Pencil, Plus } from "lucide-react";
+import { ConfirmDeleteButton } from "@/shared/ui/ConfirmDeleteButton";
 
 import { useFactoryList } from "@/features/factory/hooks/useFactories";
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
@@ -85,11 +86,7 @@ export function TrainRoutesView() {
                 key={route.id}
                 route={route}
                 onEdit={() => setEditingId(route.id)}
-                onDelete={() => {
-                  if (confirm(`Delete route "${route.name}"? This detaches any links carried by it.`)) {
-                    deleteMut.mutate(route.id);
-                  }
-                }}
+                onDelete={() => deleteMut.mutate(route.id)}
                 factoryName={factoryName}
               />
             ))}
@@ -146,14 +143,7 @@ function RouteRow({ route, onEdit, onDelete }: RouteRowProps) {
       >
         <Pencil className="h-3.5 w-3.5" />
       </button>
-      <button
-        type="button"
-        onClick={onDelete}
-        aria-label={`Delete ${route.name}`}
-        className="rounded-md p-1.5 text-fg-muted hover:bg-danger/20 hover:text-danger"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
+      <ConfirmDeleteButton onConfirm={onDelete} label={`Delete ${route.name}`} />
     </li>
   );
 }

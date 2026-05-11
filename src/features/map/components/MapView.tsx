@@ -8,6 +8,8 @@ import {
 
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { useFactoryDetail, useFactoryList } from "@/features/factory/hooks/useFactories";
+import { useRecipes } from "@/features/library/hooks/useLibrary";
+import { traceRawDemand } from "@/features/factory/traceRaw";
 import { useLogisticsLinks } from "@/features/logistics/hooks/useLogistics";
 import { useAllPowerGens } from "@/features/power/hooks/usePower";
 import {
@@ -920,8 +922,31 @@ interface FactoryPopoverProps {
 
 function FactoryPopover({ factoryId, hasPower, onEdit, onEditPower, onClose }: FactoryPopoverProps) {
   const detail = useFactoryDetail(factoryId);
+  const recipes = useRecipes();
   const f = detail.data?.factory;
   const ledger = detail.data?.ledger;
+
+  // Roll the factory's deficit inputs back through the recipe graph
+  // so the popover can show 'this factory ultimately needs X Iron
+  // Ore / min' instead of stopping at the direct recipe inputs. Net
+  // demand only — inputs covered by bound nodes already are
+  // subtracted out so the trace shows what's still missing at the
+  // raw end.
+  const rawTrace = useMemo(() => {
+    if (!ledger || !recipes.data) return {};
+    const deficits = ledger.flows
+      .filter((flow) => {
+        const need = -flow.netPerMinute;
+        const fromNodes = flow.fromNodesPerMinute ?? 0;
+        return need - fromNodes > 0.001;
+      })
+      .map((flow) => ({
+        itemId: flow.itemId,
+        ratePerMin: -flow.netPerMinute - (flow.fromNodesPerMinute ?? 0),
+      }));
+    if (deficits.length === 0) return {};
+    return traceRawDemand(deficits, recipes.data);
+  }, [ledger, recipes.data]);
   return (
     <Card className="w-[320px] p-3">
       <div className="flex items-start justify-between gap-2">
@@ -1033,6 +1058,34 @@ function FactoryPopover({ factoryId, hasPower, onEdit, onEditPower, onClose }: F
           </ul>
         );
       })()}
+
+      {Object.keys(rawTrace).length > 0 && (
+        <div className="mt-3 border-t border-border/40 pt-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
+            Traces to raw
+          </div>
+          <ul className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px]">
+            {Object.entries(rawTrace)
+              .sort(([, a], [, b]) => b - a)
+              .map(([id, ipm]) => (
+                <li
+                  key={id}
+                  className="flex items-center justify-between gap-2 tabular-nums"
+                >
+                  <span className="flex min-w-0 items-center gap-1">
+                    <Icon
+                      itemId={markerIconId(id)}
+                      alt=""
+                      className="h-3 w-3"
+                    />
+                    <span className="truncate">{id.replace(/^Desc_/, "").replace(/_C$/, "")}</span>
+                  </span>
+                  <span className="text-fg-muted">{Math.ceil(ipm)}/min</span>
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
 
       <div className="mt-3 flex items-center justify-end gap-2">
         {hasPower && onEditPower && (

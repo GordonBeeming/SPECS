@@ -121,6 +121,7 @@ export function NewFactoryPanel({ onClose, onApplied }: NewFactoryPanelProps) {
       setApplied(r.factoryIds);
       await factories.refetch();
       onApplied();
+      onClose();
     } finally {
       setApplyPending(false);
     }
@@ -183,6 +184,11 @@ export function NewFactoryPanel({ onClose, onApplied }: NewFactoryPanelProps) {
       setApplied([f.id]);
       await factories.refetch();
       onApplied();
+      // Close the wizard automatically — the user can now see the
+      // pin and start dragging supply onto it. Re-opening 'New
+      // factory' from the toolbar is one click; keeping the panel
+      // up just covers the map.
+      onClose();
     } catch (e) {
       setSingleError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -213,6 +219,7 @@ export function NewFactoryPanel({ onClose, onApplied }: NewFactoryPanelProps) {
         setApplied(a.factoryIds);
         await factories.refetch();
         onApplied();
+        onClose();
       }
     } finally {
       setApplyPending(false);

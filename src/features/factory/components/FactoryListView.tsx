@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Factory as FactoryGlyph, Plus, Trash2 } from "lucide-react";
+import { Factory as FactoryGlyph, Plus } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
+import { ConfirmDeleteButton } from "@/shared/ui/ConfirmDeleteButton";
 import { Icon } from "@/shared/ui/Icon";
 import { useNavStore } from "@/shared/nav-store";
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
@@ -108,13 +109,11 @@ export function FactoryListView() {
               active={selected === f.id}
               onSelect={() => setSelected(f.id)}
               onDelete={() => {
-                if (confirm(`Delete factory "${f.name}"? This removes all its machines.`)) {
-                  deleteMut.mutate(f.id, {
-                    onSuccess: () => {
-                      if (selected === f.id) setSelected(null);
-                    },
-                  });
-                }
+                deleteMut.mutate(f.id, {
+                  onSuccess: () => {
+                    if (selected === f.id) setSelected(null);
+                  },
+                });
               }}
             />
           )) ?? null}
@@ -172,14 +171,9 @@ function FactoryRow({ factory, active, onSelect, onDelete }: FactoryRowProps) {
           {factory.machineCount} {factory.machineCount === 1 ? "machine" : "machines"}
         </span>
       </button>
-      <button
-        type="button"
-        onClick={onDelete}
-        aria-label={`Delete ${factory.name}`}
-        className="mr-1 rounded-md p-1.5 text-fg-muted hover:bg-danger/20 hover:text-danger"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
+      <span className="mr-1">
+        <ConfirmDeleteButton onConfirm={onDelete} label={`Delete ${factory.name}`} />
+      </span>
     </li>
   );
 }

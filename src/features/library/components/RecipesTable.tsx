@@ -76,14 +76,31 @@ export function RecipesTable() {
     { header: "Unlocks at", cell: (r) => <TierBadge unlockTier={r.unlockTier} />, align: "right" },
   ];
 
+  // Sort non-alts by their unlock tier; alts go into a dedicated
+  // 'Alts (Hard Drives)' bucket at the bottom because their
+  // dataset-level unlockTier=0 means 'available after Hard Drive
+  // analysis', not 'available at T0'.
+  const sorted = recipes
+    ? [...recipes].sort((a, b) => {
+        if (a.isAlt !== b.isAlt) return a.isAlt ? 1 : -1;
+        if (!a.isAlt) {
+          return a.unlockTier === b.unlockTier
+            ? a.name.localeCompare(b.name)
+            : a.unlockTier - b.unlockTier;
+        }
+        return a.name.localeCompare(b.name);
+      })
+    : undefined;
+
   return (
     <LibraryTable
-      rows={recipes}
+      rows={sorted}
       isPending={isPending}
       isError={isError}
       error={error}
       columns={columns}
       rowKey={(r) => r.id}
+      groupKey={(r) => (r.isAlt ? "Alts (Hard Drives)" : `Tier ${r.unlockTier}`)}
     />
   );
 }
