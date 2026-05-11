@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { queryKeys } from "@/shared/query/keys";
+import { useUndoStore } from "@/shared/undo/store";
 
 import { altsApi } from "../api";
 import type { ToggleAltRecipeInput } from "../types";
@@ -35,7 +36,6 @@ export function useToggleAlt() {
     client.invalidateQueries({ queryKey: queryKeys.alts.list });
   return useMutation({
     mutationFn: async (input: ToggleAltRecipeInput) => {
-      const { useUndoStore } = await import("@/shared/undo/store");
       await useUndoStore.getState().push({
         apply: async () => {
           await altsApi.toggle(input);

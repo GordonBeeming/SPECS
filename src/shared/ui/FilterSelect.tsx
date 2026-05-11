@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Combobox,
   ComboboxButton,
@@ -55,6 +55,27 @@ export type FilterSelectProps = SingleProps | MultiProps;
  */
 export function FilterSelect(props: FilterSelectProps) {
   const [query, setQuery] = useState("");
+  // Forwarded onto the chevron `<ComboboxButton>` so the input's
+  // `onClick` can re-route to it. Headless UI's `immediate` prop only
+  // opens on focus; clicking an already-focused input doesn't fire
+  // focus, so without this the user has to click the chevron each
+  // time. With the redirect, clicking anywhere on the input chrome
+  // toggles the listbox like a native `<select>`.
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  // Headless UI's `immediate` prop opens on focus, but if the user
+  // clicks an already-focused input the dropdown stays closed because
+  // focus doesn't fire again. Forward a click on the input chrome to
+  // the chevron `<ComboboxButton>` only when it's currently closed,
+  // so a single click always opens — and clicking the chevron itself
+  // still toggles closed without us re-opening.
+  const openIfClosed = () => {
+    requestAnimationFrame(() => {
+      const btn = buttonRef.current;
+      if (!btn) return;
+      if (btn.getAttribute("aria-expanded") === "true") return;
+      btn.click();
+    });
+  };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -78,6 +99,7 @@ export function FilterSelect(props: FilterSelectProps) {
     return (
       <Combobox
         multiple
+        immediate
         value={props.value}
         onChange={(next: string[]) => props.onChange(next)}
         disabled={props.disabled}
@@ -94,9 +116,13 @@ export function FilterSelect(props: FilterSelectProps) {
             }
             placeholder={props.placeholder ?? "Type to filter…"}
             onChange={(e) => setQuery(e.target.value)}
+            onClick={openIfClosed}
             className={baseInputClass}
           />
-          <ComboboxButton className="absolute inset-y-0 right-0 flex items-center pr-2 text-fg-muted">
+          <ComboboxButton
+            ref={buttonRef}
+            className="absolute inset-y-0 right-0 flex items-center pr-2 text-fg-muted"
+          >
             <ChevronDown className="h-4 w-4" aria-hidden="true" />
           </ComboboxButton>
           <DropdownPanel filtered={filtered} value={new Set(props.value)} multiple />
@@ -110,6 +136,7 @@ export function FilterSelect(props: FilterSelectProps) {
 
   return (
     <Combobox
+      immediate
       value={props.value}
       onChange={(next: string | null) => props.onChange(next)}
       disabled={props.disabled}
@@ -120,6 +147,7 @@ export function FilterSelect(props: FilterSelectProps) {
           displayValue={() => selectedLabel}
           placeholder={props.placeholder ?? "Type to filter…"}
           onChange={(e) => setQuery(e.target.value)}
+          onClick={openIfClosed}
           className={baseInputClass}
         />
         <div className="absolute inset-y-0 right-0 flex items-center pr-1 text-fg-muted">
@@ -138,7 +166,7 @@ export function FilterSelect(props: FilterSelectProps) {
               <X className="h-3.5 w-3.5" />
             </button>
           )}
-          <ComboboxButton className="flex items-center pr-1.5">
+          <ComboboxButton ref={buttonRef} className="flex items-center pr-1.5">
             <ChevronDown className="h-4 w-4" aria-hidden="true" />
           </ComboboxButton>
         </div>

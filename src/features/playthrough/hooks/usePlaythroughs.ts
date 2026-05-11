@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/shared/query/keys";
+import { useUndoStore } from "@/shared/undo/store";
 import { playthroughApi } from "../api";
 import type { CreatePlaythroughInput, SetAmplifierInventoryInput } from "../types";
 
@@ -58,7 +59,6 @@ export function useSetCurrentTier() {
         client.getQueryData<{ currentTier: number } | null>(
           queryKeys.playthrough.current,
         )?.currentTier ?? 0;
-      const { useUndoStore } = await import("@/shared/undo/store");
       await useUndoStore.getState().push({
         apply: async () => {
           await playthroughApi.setCurrentTier(tier);

@@ -57,10 +57,6 @@ export function AboutModal({ onClose }: AboutModalProps) {
             <dd className="text-fg">FSL-1.1-MIT (see LICENSE)</dd>
           </div>
           <div className="flex justify-between gap-3">
-            <dt className="text-fg-muted">Architecture</dt>
-            <dd className="text-fg">Vertical Slice (see <code>docs/vsa/</code>)</dd>
-          </div>
-          <div className="flex justify-between gap-3">
             <dt className="text-fg-muted">Build</dt>
             <dd className="text-fg tabular-nums">
               {isDevBuild ? (
@@ -85,8 +81,8 @@ export function AboutModal({ onClose }: AboutModalProps) {
         <h3 className="mt-5 text-sm font-semibold text-fg">Credits</h3>
         <ul className="mt-2 space-y-2 text-xs text-fg-muted">
           <li>
-            <strong className="text-fg">Game data, recipes, and alt list</strong>{" "}
-            converted from the community-maintained{" "}
+            <strong className="text-fg">Game data + icons</strong> from the
+            community-maintained{" "}
             <a
               href="https://github.com/greeny/SatisfactoryTools"
               target="_blank"
@@ -95,29 +91,8 @@ export function AboutModal({ onClose }: AboutModalProps) {
             >
               SatisfactoryTools
             </a>{" "}
-            dump. See <code>scripts/convert-game-data.ts</code> for the
-            mapping. v1.1: 130 items, 211 recipes (88 alts), 18 production
-            buildings, all Tier 0–9 milestones.
-          </li>
-          <li>
-            <strong className="text-fg">UI chrome icons</strong> from{" "}
-            <a
-              href="https://lucide.dev"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary underline"
-            >
-              Lucide
-            </a>
-            .{" "}
-            <strong className="text-fg">Game item & building icons</strong>{" "}
-            bundled from the SatisfactoryTools icon set under the Coffee Stain
-            Studios fan-content policy — original assets remain © Coffee
-            Stain Studios.
-          </li>
-          <li>
-            <strong className="text-fg">Built with</strong> Tauri 2,
-            React 19, Rust, SQLite, TanStack Query, Tailwind v4, React Flow.
+            dataset, bundled under the Coffee Stain Studios fan-content
+            policy. Original assets remain © Coffee Stain Studios.
           </li>
           <li>
             <strong className="text-fg">Satisfactory</strong> is © Coffee

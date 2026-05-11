@@ -48,6 +48,7 @@ pub fn machine_multiplier(count: i64, clock_pct: f32) -> f32 {
 /// (`base_power_mw × clock_fraction × count`). Used by older callers
 /// that don't yet care about overclocking; the amplified version with
 /// the wiki's exponent-1.321928 curve lives in `machine_power_mw_amp`.
+#[allow(dead_code)]
 pub fn machine_power_mw(base_power_mw: f32, count: i64, clock_pct: f32) -> f32 {
     if base_power_mw <= 0.0 || count <= 0 || clock_pct <= 0.0 {
         return 0.0;
@@ -104,6 +105,7 @@ pub fn somersloop_output_factor(amp_filled: u8, amp_total_slots: u8) -> f32 {
 /// Returns `(item_id, ipm)` pairs for each side.
 ///
 /// Multiplied through by `machine_multiplier(count, clock_pct)`.
+#[allow(dead_code)]
 pub fn recipe_io_flows(
     recipe: &Recipe,
     count: i64,

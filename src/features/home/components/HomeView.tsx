@@ -264,7 +264,12 @@ function ActiveHome({ goTo }: HomeViewProps) {
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
       {/* Hero ----------------------------------------------------------- */}
-      <section className="relative overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 via-bg-raised to-accent/5 p-6 sm:p-8">
+      {/* `overflow-visible` (the default) on the active hero so the
+          TierPicker popover can extend below the card's bottom edge.
+          The empty-state hero keeps `overflow-hidden` because of the
+          floating icon constellation behind the welcome text — that
+          one doesn't host any popovers. */}
+      <section className="relative rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 via-bg-raised to-accent/5 p-6 sm:p-8">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <div className="text-xs font-medium uppercase tracking-wider text-fg-muted">
@@ -695,10 +700,14 @@ function TierPicker({
           <ChevronDown className="h-4 w-4 opacity-80" />
         </button>
         {open && (
+          // Anchored to the right edge of the badge button so the
+          // popover hugs the badge instead of floating loose to the
+          // left. Width matches the badge plus a little — 5 columns of
+          // tiny tier chips fit comfortably and feel attached.
           <div
             role="listbox"
             aria-label="Tier"
-            className="absolute right-0 z-30 mt-2 grid w-44 grid-cols-5 gap-1 rounded-md border border-border bg-bg-raised p-2 shadow-lg"
+            className="absolute right-0 top-full z-30 mt-2 grid w-[180px] grid-cols-5 gap-1 rounded-md border border-border bg-bg-raised p-1.5 shadow-lg"
           >
             {TIERS.map((t) => {
               const isCurrent = t === tier;
@@ -707,7 +716,7 @@ function TierPicker({
                   key={t}
                   type="button"
                   onClick={() => pick(t)}
-                  className={`rounded px-2 py-1.5 text-sm font-semibold tabular-nums ${
+                  className={`flex h-8 items-center justify-center rounded text-sm font-semibold tabular-nums ${
                     isCurrent
                       ? "bg-primary text-white"
                       : "text-fg hover:bg-border"
