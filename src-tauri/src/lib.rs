@@ -118,6 +118,8 @@ pub fn run() {
             features::power::commands::update_power_gen,
             features::power::commands::remove_power_gen,
             features::power::commands::factory_power_balance,
+            features::power::commands::list_all_power_gens,
+            features::power::commands::set_power_gen_position,
             features::alts::commands::list_unlocked_alt_recipes,
             features::alts::commands::toggle_alt_recipe,
             features::resource_nodes::commands::list_resource_nodes,

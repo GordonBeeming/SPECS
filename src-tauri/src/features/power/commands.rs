@@ -15,7 +15,8 @@ use crate::shared::gamedata::GameData;
 
 use super::domain::{generator_fuel_flows, generator_power_mw};
 use super::dto::{
-    CreatePowerGenInput, FactoryPowerBalance, PowerFuelFlow, PowerGen, UpdatePowerGenInput,
+    CreatePowerGenInput, FactoryPowerBalance, PowerFuelFlow, PowerGen, SetPowerGenPositionInput,
+    UpdatePowerGenInput,
 };
 use super::repo;
 
@@ -154,6 +155,32 @@ pub fn update_power_gen(
     })?;
     if affected == 0 {
         return Err(AppError::NotFound(format!("power generator {} not found", input.id)));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_all_power_gens(active: State<ActivePlaythrough>) -> AppResult<Vec<PowerGen>> {
+    let db = require_active(&active)?;
+    db.with(|c| repo::power_gens_all(c).map_err(AppError::from))
+}
+
+#[tauri::command]
+pub fn set_power_gen_position(
+    active: State<ActivePlaythrough>,
+    input: SetPowerGenPositionInput,
+) -> AppResult<()> {
+    if !input.world_x.is_finite() || !input.world_y.is_finite() {
+        return Err(AppError::Invalid("position coords must be finite".into()));
+    }
+    let db = require_active(&active)?;
+    let now = now_iso();
+    let affected = db.with(|c| {
+        repo::power_gen_set_position(c, &input.id, input.world_x, input.world_y, &now)
+            .map_err(AppError::from)
+    })?;
+    if affected == 0 {
+        return Err(AppError::NotFound(format!("power gen {} not found", input.id)));
     }
     Ok(())
 }

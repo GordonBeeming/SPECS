@@ -21,6 +21,16 @@ export function usePowerGens(factoryId: string | null) {
   });
 }
 
+export function useAllPowerGens() {
+  const playthrough = useCurrentPlaythrough();
+  const ptId = playthrough.data?.id ?? null;
+  return useQuery({
+    queryKey: ["power", "list-all", ptId] as const,
+    queryFn: () => powerApi.listAll(),
+    enabled: !!playthrough.data,
+  });
+}
+
 export function usePowerBalance(factoryId: string | null) {
   const playthrough = useCurrentPlaythrough();
   const ptId = playthrough.data?.id ?? null;

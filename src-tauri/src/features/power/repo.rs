@@ -56,7 +56,8 @@ pub fn power_gen_delete(conn: &Connection, id: &str) -> Result<usize> {
 pub fn power_gens_for_factory(conn: &Connection, factory_id: &str) -> Result<Vec<PowerGen>> {
     let mut stmt = conn.prepare(
         "SELECT id, factory_id, generator_id, fuel_item_id, count,
-                clock_pct_x100, notes, created_at, updated_at
+                clock_pct_x100, notes, world_x, world_y,
+                created_at, updated_at
          FROM power_gen
          WHERE factory_id = ?
          ORDER BY created_at ASC, id ASC",
@@ -71,13 +72,57 @@ pub fn power_gens_for_factory(conn: &Connection, factory_id: &str) -> Result<Vec
             count: r.get(4)?,
             clock_pct: clock_pct_from_x100(clock_x100),
             notes: r.get(6)?,
-            created_at: r.get(7)?,
-            updated_at: r.get(8)?,
+            world_x: r.get(7)?,
+            world_y: r.get(8)?,
+            created_at: r.get(9)?,
+            updated_at: r.get(10)?,
         })
     })?;
     let mut out = Vec::new();
     for r in rows { out.push(r?); }
     Ok(out)
+}
+
+pub fn power_gens_all(conn: &Connection) -> Result<Vec<PowerGen>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, factory_id, generator_id, fuel_item_id, count,
+                clock_pct_x100, notes, world_x, world_y,
+                created_at, updated_at
+         FROM power_gen
+         ORDER BY created_at ASC, id ASC",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        let clock_x100: i64 = r.get(5)?;
+        Ok(PowerGen {
+            id: r.get(0)?,
+            factory_id: r.get(1)?,
+            generator_id: r.get(2)?,
+            fuel_item_id: r.get(3)?,
+            count: r.get(4)?,
+            clock_pct: clock_pct_from_x100(clock_x100),
+            notes: r.get(6)?,
+            world_x: r.get(7)?,
+            world_y: r.get(8)?,
+            created_at: r.get(9)?,
+            updated_at: r.get(10)?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for r in rows { out.push(r?); }
+    Ok(out)
+}
+
+pub fn power_gen_set_position(
+    conn: &Connection,
+    id: &str,
+    world_x: f64,
+    world_y: f64,
+    now: &str,
+) -> Result<usize> {
+    Ok(conn.execute(
+        "UPDATE power_gen SET world_x = ?, world_y = ?, updated_at = ? WHERE id = ?",
+        params![world_x, world_y, now, id],
+    )?)
 }
 
 #[cfg(test)]
