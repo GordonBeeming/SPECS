@@ -502,19 +502,15 @@ export function MapView() {
                       boundNodes={boundNodes}
                       upstreamFactories={upstreamFactories}
                       allFactories={factories.data ?? []}
-                      onDetachNode={(nodeId, prev) => {
-                        // Reuse setClaim's existing undo flow but
-                        // strip the factoryId — keeps the node
-                        // claimed (with its miner + clock) but
-                        // unbound from this factory.
-                        if (!prev.claim) return;
-                        void setClaim.mutateAsync({
-                          nodeId,
-                          minerId: prev.claim.minerId ?? null,
-                          clockPct: prev.claim.clockPct,
-                          factoryId: null,
-                          notes: prev.claim.notes ?? null,
-                        });
+                      onDetachNode={(nodeId) => {
+                        // Full release: the node goes back to
+                        // "unclaimed" state so it reappears in the
+                        // default map view (which hides claimed
+                        // nodes). Otherwise the marker would just
+                        // disappear after detach — confusing when
+                        // the user expects the node to be ready
+                        // for a new binding.
+                        void clearClaim.mutateAsync(nodeId);
                       }}
                     />
                   )}
