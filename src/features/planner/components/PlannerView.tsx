@@ -30,32 +30,43 @@ export function PlannerView() {
 
   // Only items that are produced (not raw-only) — the planner can't
   // chain "give me iron ore" because miners aren't recipes. Group by
-  // the earliest unlock tier of any recipe that produces the item so
-  // the picker reads "T1 stuff at the top, T8 stuff at the bottom".
+  // the earliest *standard* unlock tier so Aluminum Ingot reads as
+  // T7 (Aluminum Production milestone) rather than T0 (the
+  // Classic-Battery-style alt recipes ship with unlockTier=0 in the
+  // dataset because alts unlock via Hard Drive analysis, not the
+  // tier system — using their tier here puts every late-game item
+  // under "Tier 0" which is exactly the bug we just hit).
   const targetOptions = useMemo(() => {
     if (!items.data || !recipes.data) return [];
-    const earliestTier = new Map<string, number>();
+    const standardTier = new Map<string, number>();
+    const altTier = new Map<string, number>();
     for (const r of recipes.data) {
+      const bucket = r.isAlt ? altTier : standardTier;
       for (const o of r.outputs) {
-        const cur = earliestTier.get(o.itemId);
+        const cur = bucket.get(o.itemId);
         if (cur === undefined || r.unlockTier < cur) {
-          earliestTier.set(o.itemId, r.unlockTier);
+          bucket.set(o.itemId, r.unlockTier);
         }
       }
     }
+    // Effective tier: prefer the standard recipe's tier; only fall
+    // back to the alt if there's no standard recipe at all for this
+    // item.
+    const effectiveTier = (itemId: string): number | undefined =>
+      standardTier.get(itemId) ?? altTier.get(itemId);
     const eligible = items.data.filter(
-      (i) => i.category !== "raw" && earliestTier.has(i.id),
+      (i) => i.category !== "raw" && effectiveTier(i.id) !== undefined,
     );
     eligible.sort((a, b) => {
-      const at = earliestTier.get(a.id) ?? 99;
-      const bt = earliestTier.get(b.id) ?? 99;
+      const at = effectiveTier(a.id) ?? 99;
+      const bt = effectiveTier(b.id) ?? 99;
       return at === bt ? a.name.localeCompare(b.name) : at - bt;
     });
     return eligible.map((i) => ({
       value: i.id,
       label: i.name,
       iconId: i.id,
-      group: `Tier ${earliestTier.get(i.id) ?? "?"}`,
+      group: `Tier ${effectiveTier(i.id) ?? "?"}`,
     }));
   }, [items.data, recipes.data]);
 
