@@ -22,6 +22,8 @@ const dagre: typeof import("dagre") =
   (dagreNs as unknown as { default?: typeof import("dagre") }).default ??
   (dagreNs as unknown as typeof import("dagre"));
 
+import { useQueryClient } from "@tanstack/react-query";
+
 import { Icon } from "@/shared/ui/Icon";
 import { ConfirmDeleteButton } from "@/shared/ui/ConfirmDeleteButton";
 import { useRecipes } from "@/features/library/hooks/useLibrary";
@@ -224,11 +226,26 @@ function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }
   }, [machines, recipes.data]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, , onEdgesChange] = useEdgesState(initialEdges);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
   useEffect(() => {
     setNodes(initialNodes);
   }, [initialNodes, setNodes]);
+
+  // useEdgesState only seeds on first mount, so without this the
+  // edge set is frozen at the recipes.data === undefined snapshot
+  // (empty array). Re-derive whenever the recipe-driven dependency
+  // graph changes — covers both the initial load and add/remove
+  // machine paths.
+  useEffect(() => {
+    setEdges(initialEdges);
+  }, [initialEdges, setEdges]);
+
+  // After a drag-save, mark the factory.layout cache stale so any
+  // subsequent re-render (e.g. add/remove machine triggers a
+  // refetch and rehydrates from `layouts`) reads the freshly-saved
+  // coordinates instead of stomping them back to a cached value.
+  const queryClient = useQueryClient();
 
   const editingMachine = machines.find((m) => m.id === editingId) ?? null;
 
@@ -242,11 +259,21 @@ function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }
         nodeTypes={nodeTypes}
         fitView
         onNodeDragStop={(_, node) => {
-          void factoryApi.setMachineLayout({
-            machineId: node.id,
-            x: node.position.x,
-            y: node.position.y,
-          });
+          void factoryApi
+            .setMachineLayout({
+              machineId: node.id,
+              x: node.position.x,
+              y: node.position.y,
+            })
+            .then(() => {
+              // useMachineLayouts is the rehydration source on
+              // factory-detail re-renders — without this any
+              // subsequent add/remove machine would refetch the
+              // pre-drag layout and visually snap the node back.
+              queryClient.invalidateQueries({
+                queryKey: ["factory", "machine-layouts", factoryId],
+              });
+            });
         }}
       >
         <Background />

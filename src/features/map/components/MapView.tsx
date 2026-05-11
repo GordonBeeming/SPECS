@@ -624,6 +624,11 @@ export function MapView() {
           {selectedNode && (
             <div className="absolute bottom-3 left-3 z-20">
               <NodePopover
+                // key={selectedNode.id} forces a remount when the
+                // selection changes — without it the previous node's
+                // minerId / clockPct / factoryId stay in form state
+                // and would be saved onto the freshly-picked node.
+                key={selectedNode.id}
                 node={selectedNode}
                 factories={factories.data ?? []}
                 onClaim={(input) => {

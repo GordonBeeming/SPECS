@@ -40,6 +40,20 @@ export function useSetNodeClaim() {
       // raced by a stale react-query cache. Mirror of the `setCurrentTier`
       // pattern in usePlaythroughs.ts.
       let prev: ResourceNodeRow | undefined;
+      // The undo store reads `label` eagerly at push() time, so we
+      // can't derive it from `prev` (which is captured inside apply).
+      // Probe the cache up-front: if a claim row exists for this node
+      // right now, we're updating; otherwise it's a fresh claim. The
+      // probe is best-effort — a missed cache just falls back to the
+      // 'Claim node' label, which is harmless in the undo log.
+      // The list query key includes the active playthrough id
+      // (`[...resources.list, ptId]`), so do a prefix match — first
+      // hit wins, the user only has one playthrough loaded at a time.
+      const cached = client
+        .getQueriesData<ResourceNodeRow[]>({ queryKey: queryKeys.resources.list })
+        .map(([, data]) => data)
+        .find((d): d is ResourceNodeRow[] => Array.isArray(d));
+      const wasClaimed = cached?.find((n) => n.id === input.nodeId)?.claim != null;
       await useUndoStore.getState().push({
         apply: async () => {
           const list = await resourcesApi.list();
@@ -61,7 +75,7 @@ export function useSetNodeClaim() {
           }
           invalidate(client);
         },
-        label: prev?.claim ? "Update node claim" : "Claim node",
+        label: wasClaimed ? "Update node claim" : "Claim node",
       });
     },
   });

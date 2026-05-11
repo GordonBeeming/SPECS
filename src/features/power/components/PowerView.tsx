@@ -190,6 +190,10 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
   // fires the mutation. Auto-disarms after 3 s so a stale primed
   // row can't accidentally delete on the next click.
   const [armedDeleteId, setArmedDeleteId] = useState<string | null>(null);
+  // Per-row delete error string. Tauri 2 also suppresses window.alert()
+  // so surfacing mutation errors via alert() is invisible — render them
+  // inline on the row instead.
+  const [deleteError, setDeleteError] = useState<{ id: string; message: string } | null>(null);
   const armForDelete = (id: string) => {
     setArmedDeleteId(id);
     window.setTimeout(() => {
@@ -301,18 +305,16 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
                             <button
                               type="button"
                               onClick={() => {
-                                remove.mutate(g.id, {
+                                const rowId = g.id;
+                                setDeleteError(null);
+                                remove.mutate(rowId, {
                                   onError: (err) => {
-                                    // Surface mutation errors instead of
-                                    // swallowing them silently — the
-                                    // earlier "delete does nothing" report
-                                    // was a missing error path.
                                     console.error("remove power_gen failed", err);
-                                    alert(
-                                      `Delete failed: ${
-                                        err instanceof Error ? err.message : String(err)
-                                      }`,
-                                    );
+                                    setDeleteError({
+                                      id: rowId,
+                                      message:
+                                        err instanceof Error ? err.message : String(err),
+                                    });
                                   },
                                 });
                                 setArmedDeleteId(null);
@@ -335,6 +337,14 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
                             </button>
                           )}
                         </div>
+                        {deleteError?.id === g.id && (
+                          <div
+                            role="alert"
+                            className="mt-1 text-right text-[11px] text-danger"
+                          >
+                            Delete failed: {deleteError.message}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );

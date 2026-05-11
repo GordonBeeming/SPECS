@@ -53,7 +53,26 @@ export class ErrorBoundary extends Component<Props, State> {
       ``,
       info?.componentStack ?? "(no component stack)",
     ].join("\n");
-    void navigator.clipboard.writeText(text).catch(() => {});
+    // navigator.clipboard is gated on a secure context — missing in some
+    // Tauri webview configurations and on plain http: in dev. Fall back
+    // to a hidden-textarea + execCommand path so the error UI never
+    // crashes while reporting a crash.
+    const writeViaApi = navigator.clipboard?.writeText?.bind(navigator.clipboard);
+    const promise = writeViaApi ? writeViaApi(text) : Promise.reject(new Error("no clipboard API"));
+    promise.catch(() => {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch {
+        // Last-ditch: leave the trace on screen; user can select + copy.
+      }
+    });
   };
 
   render(): ReactNode {

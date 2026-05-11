@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 
 interface ConfirmDeleteButtonProps {
@@ -30,12 +30,30 @@ export function ConfirmDeleteButton({
   disabled,
 }: ConfirmDeleteButtonProps) {
   const [armed, setArmed] = useState(false);
+  // Track the disarm timeout so re-arming or unmounting cancels the
+  // pending callback. Without this, setArmed(false) can fire after
+  // unmount (React 18 warns about state updates on unmounted
+  // components) or stomp on a fresh arm if the user re-clicks within
+  // the 3s window.
+  const disarmTimerRef = useRef<number | null>(null);
+
+  const clearDisarmTimer = () => {
+    if (disarmTimerRef.current != null) {
+      window.clearTimeout(disarmTimerRef.current);
+      disarmTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return clearDisarmTimer;
+  }, []);
 
   if (armed) {
     return (
       <button
         type="button"
         onClick={() => {
+          clearDisarmTimer();
           onConfirm();
           setArmed(false);
         }}
@@ -53,8 +71,12 @@ export function ConfirmDeleteButton({
     <button
       type="button"
       onClick={() => {
+        clearDisarmTimer();
         setArmed(true);
-        window.setTimeout(() => setArmed(false), timeoutMs);
+        disarmTimerRef.current = window.setTimeout(() => {
+          disarmTimerRef.current = null;
+          setArmed(false);
+        }, timeoutMs);
       }}
       disabled={disabled}
       aria-label={label}
