@@ -23,11 +23,23 @@ import mapAsset from "@/assets/map/satisfactory-map.webp";
 import { pctToWorld, worldToPct } from "../transform";
 import type { ResourceNodeRow } from "@/features/resources/types";
 
-const PURITY_COLOURS = {
-  Pure: "#facc15",
-  Normal: "#94a3b8",
-  Impure: "#b45309",
+const PURITY_GLOW = {
+  Pure: "0 0 0 2px rgba(250, 204, 21, 0.95), 0 0 12px 3px rgba(250, 204, 21, 0.55)",
+  Normal: "0 0 0 2px rgba(203, 213, 225, 0.95), 0 0 10px 2px rgba(203, 213, 225, 0.45)",
+  Impure: "0 0 0 2px rgba(180, 83, 9, 0.95), 0 0 8px 2px rgba(180, 83, 9, 0.45)",
 } as const;
+
+/**
+ * Resource icons aren't always the same as the item icon for the
+ * extracted thing (Geysers in particular don't have a bundled item
+ * icon since they aren't a craftable). Map the catalog's
+ * `resourceItemId` to whatever icon best represents the node on the
+ * map.
+ */
+function markerIconId(resourceItemId: string): string {
+  if (resourceItemId === "Desc_Geyser_C") return "Build_GeneratorGeoThermal_C";
+  return resourceItemId;
+}
 
 const MAP_W = 2048;
 const MAP_H = 1981;
@@ -165,29 +177,52 @@ export function MapView() {
                   {visibleNodes.map((node) => {
                     const { xPct, yPct } = worldToPct(node.x, node.y);
                     const selected = selectedNodeId === node.id;
-                    const size = node.claim ? 14 : 10;
+                    const size = 24;
+                    const tooltip = `${node.resourceItemName} · ${node.purity}${
+                      node.claim
+                        ? ` · ${node.itemsPerMinute.toFixed(0)} ipm`
+                        : " · click to claim"
+                    }`;
                     return (
                       <button
                         type="button"
                         key={node.id}
-                        className="specs-map-marker absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-black/40 transition-transform hover:scale-125"
+                        aria-label={tooltip}
+                        title={tooltip}
+                        className="specs-map-marker absolute -translate-x-1/2 -translate-y-1/2 inline-flex items-center justify-center rounded-full bg-bg-raised transition-transform hover:scale-125"
                         style={{
                           left: `${xPct * MAP_W}px`,
                           top: `${yPct * MAP_H}px`,
                           width: size,
                           height: size,
-                          background:
-                            PURITY_COLOURS[node.purity as keyof typeof PURITY_COLOURS],
-                          opacity: node.claim ? 1 : 0.6,
-                          outline: selected ? "2px solid var(--color-primary)" : undefined,
-                          outlineOffset: 2,
+                          // The purity glow doubles as a ring so each
+                          // node still reads as "Pure / Normal /
+                          // Impure" at a glance even with the icon
+                          // taking the centre. Unclaimed gets the
+                          // glow at 70% opacity to keep claimed
+                          // nodes visually dominant when both layers
+                          // are visible.
+                          boxShadow:
+                            PURITY_GLOW[node.purity as keyof typeof PURITY_GLOW],
+                          opacity: node.claim ? 1 : 0.78,
+                          outline: selected
+                            ? "2px solid var(--color-primary)"
+                            : undefined,
+                          outlineOffset: 3,
                         }}
-                        title={`${node.resourceItemName} · ${node.purity}${node.claim ? ` · ${node.itemsPerMinute.toFixed(0)} ipm` : ""}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelectedNodeId(node.id === selectedNodeId ? null : node.id);
+                          setSelectedNodeId(
+                            node.id === selectedNodeId ? null : node.id,
+                          );
                         }}
-                      />
+                      >
+                        <Icon
+                          itemId={markerIconId(node.resourceItemId)}
+                          alt=""
+                          className="h-4 w-4"
+                        />
+                      </button>
                     );
                   })}
 
