@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   Controls,
@@ -13,7 +13,7 @@ import "@xyflow/react/dist/style.css";
 // dagre ships as CJS — `import * as` keeps the namespace shape stable
 // whether Vite pre-bundles it as default or named exports.
 import * as dagreNs from "dagre";
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 
 // Handle either binding shape Vite hands us — pre-bundled CJS modules
 // surface either as default or as namespace-with-default depending on
@@ -28,6 +28,7 @@ import { factoryApi } from "../api";
 import { useRemoveMachine } from "../hooks/useFactories";
 import type { FactoryMachine } from "../types";
 import { ampSlotsForBuilding } from "../ampRules";
+import { EditMachineModal } from "./EditMachineModal";
 
 interface FactoryGraphViewProps {
   factoryId: string;
@@ -47,13 +48,14 @@ type MachineNodeData = {
   machine: FactoryMachine;
   buildingName: string;
   recipeName: string;
+  onEdit: () => void;
   onRemove: () => void;
 } & Record<string, unknown>;
 
 type FlowNode = Node<MachineNodeData, "machine">;
 
 function MachineNode({ data }: { data: MachineNodeData }) {
-  const { machine, buildingName, recipeName, onRemove } = data;
+  const { machine, buildingName, recipeName, onEdit, onRemove } = data;
   const slots = ampSlotsForBuilding(machine.buildingId);
   const amp =
     machine.useSomersloop && machine.somersloopSlotsFilled > 0
@@ -69,14 +71,24 @@ function MachineNode({ data }: { data: MachineNodeData }) {
           <Icon itemId={machine.buildingId} alt={buildingName} className="h-5 w-5" />
           <span className="truncate font-medium text-fg">{recipeName}</span>
         </div>
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label="Remove machine"
-          className="rounded p-1 text-fg-muted hover:bg-danger/20 hover:text-danger"
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label="Edit machine"
+            className="rounded p-1 text-fg-muted hover:bg-border hover:text-fg"
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label="Remove machine"
+            className="rounded p-1 text-fg-muted hover:bg-danger/20 hover:text-danger"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </div>
       </div>
       <div className="mt-1 text-fg-muted">{buildingName}</div>
       <div className="mt-2 grid grid-cols-3 gap-1 tabular-nums">
@@ -142,6 +154,7 @@ function autoLayout(machines: FactoryMachine[]): Map<string, { x: number; y: num
 function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }: FactoryGraphViewProps) {
   const recipes = useRecipes();
   const removeMachine = useRemoveMachine(factoryId);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // The mutation object's reference changes every render, but
   // `mutate` is what we actually need inside the node's onRemove
@@ -152,6 +165,10 @@ function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }
   useEffect(() => {
     removeRef.current = removeMachine.mutate;
   }, [removeMachine.mutate]);
+  const editRef = useRef<(id: string) => void>(() => {});
+  useEffect(() => {
+    editRef.current = (id) => setEditingId(id);
+  });
 
   const computedLayout = useMemo(() => autoLayout(machines), [machines]);
 
@@ -168,6 +185,7 @@ function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }
           machine: m,
           buildingName: buildingNames.get(m.buildingId) ?? m.buildingId,
           recipeName,
+          onEdit: () => editRef.current(m.id),
           onRemove: () => {
             if (confirm(`Remove this ${recipeName} row?`)) {
               removeRef.current(m.id);
@@ -219,6 +237,8 @@ function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }
     setNodes(initialNodes);
   }, [initialNodes, setNodes]);
 
+  const editingMachine = machines.find((m) => m.id === editingId) ?? null;
+
   return (
     <div className="h-[560px] w-full rounded-md border border-border">
       <ReactFlow
@@ -239,6 +259,15 @@ function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }
         <Background />
         <Controls />
       </ReactFlow>
+      {editingMachine && (
+        <EditMachineModal
+          factoryId={factoryId}
+          machine={editingMachine}
+          recipeName={recipeNames.get(editingMachine.recipeId) ?? editingMachine.recipeId}
+          buildingName={buildingNames.get(editingMachine.buildingId) ?? editingMachine.buildingId}
+          onClose={() => setEditingId(null)}
+        />
+      )}
     </div>
   );
 }

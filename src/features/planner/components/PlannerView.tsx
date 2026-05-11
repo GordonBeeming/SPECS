@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 
-import { useItems } from "@/features/library/hooks/useLibrary";
+import { useItems, useRecipes } from "@/features/library/hooks/useLibrary";
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { useFactoryList } from "@/features/factory/hooks/useFactories";
 import { useResourceNodes } from "@/features/resources/hooks/useResources";
@@ -16,6 +16,7 @@ import type { ChainPlan, DeriveChainResult, PlannerError } from "../types";
 export function PlannerView() {
   const playthrough = useCurrentPlaythrough();
   const items = useItems();
+  const recipes = useRecipes();
   const factories = useFactoryList();
   const nodes = useResourceNodes();
 
@@ -28,13 +29,35 @@ export function PlannerView() {
   const [applied, setApplied] = useState<string[] | null>(null);
 
   // Only items that are produced (not raw-only) — the planner can't
-  // chain "give me iron ore" because miners aren't recipes.
+  // chain "give me iron ore" because miners aren't recipes. Group by
+  // the earliest unlock tier of any recipe that produces the item so
+  // the picker reads "T1 stuff at the top, T8 stuff at the bottom".
   const targetOptions = useMemo(() => {
-    if (!items.data) return [];
-    return items.data
-      .filter((i) => i.category !== "raw")
-      .map((i) => ({ value: i.id, label: i.name, iconId: i.id }));
-  }, [items.data]);
+    if (!items.data || !recipes.data) return [];
+    const earliestTier = new Map<string, number>();
+    for (const r of recipes.data) {
+      for (const o of r.outputs) {
+        const cur = earliestTier.get(o.itemId);
+        if (cur === undefined || r.unlockTier < cur) {
+          earliestTier.set(o.itemId, r.unlockTier);
+        }
+      }
+    }
+    const eligible = items.data.filter(
+      (i) => i.category !== "raw" && earliestTier.has(i.id),
+    );
+    eligible.sort((a, b) => {
+      const at = earliestTier.get(a.id) ?? 99;
+      const bt = earliestTier.get(b.id) ?? 99;
+      return at === bt ? a.name.localeCompare(b.name) : at - bt;
+    });
+    return eligible.map((i) => ({
+      value: i.id,
+      label: i.name,
+      iconId: i.id,
+      group: `Tier ${earliestTier.get(i.id) ?? "?"}`,
+    }));
+  }, [items.data, recipes.data]);
 
   if (!playthrough.data) {
     return (

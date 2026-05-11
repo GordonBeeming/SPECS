@@ -19,6 +19,13 @@ export interface FilterOption {
    * row shows the matching satisfactorytools icon next to the label.
    */
   iconId?: string;
+  /**
+   * Optional group label — rows sharing the same `group` are rendered
+   * together under a sticky header. Caller is responsible for ordering
+   * the options (the dropdown renders them in the order provided).
+   * Empty / undefined groups render without a header.
+   */
+  group?: string;
 }
 
 interface BaseProps {
@@ -198,42 +205,50 @@ function DropdownPanel({ filtered, value, multiple }: DropdownPanelProps) {
       {filtered.length === 0 ? (
         <div className="px-3 py-2 text-sm text-fg-muted">No matches.</div>
       ) : (
-        filtered.map((option) => (
-          <ComboboxOption
-            key={option.value}
-            value={option.value}
-            className={({ active }) =>
-              `flex cursor-pointer items-center justify-between gap-3 whitespace-nowrap px-3 py-1.5 text-sm ${
-                active ? "bg-primary text-white" : "text-fg"
-              }`
-            }
-          >
-            {() => {
-              const selected = value.has(option.value);
-              return (
-                <>
-                  <div className="flex flex-1 items-center gap-2">
-                    {option.iconId && (
-                      <Icon itemId={option.iconId} alt="" className="h-5 w-5 shrink-0" />
-                    )}
-                    <span>{option.label}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {option.hint && (
-                      <span className="text-xs opacity-70">{option.hint}</span>
-                    )}
-                    {(selected || multiple) && (
-                      <Check
-                        className={`h-3.5 w-3.5 ${selected ? "" : "opacity-0"}`}
-                        aria-hidden="true"
-                      />
-                    )}
-                  </div>
-                </>
-              );
-            }}
-          </ComboboxOption>
-        ))
+        // Walk options in caller-provided order and emit a sticky
+        // header whenever the `group` changes. Header rows are pure
+        // markup (not ComboboxOption) so the keyboard focus skips
+        // them and selection logic stays unchanged.
+        filtered.map((option, idx) => {
+          const prev = idx > 0 ? filtered[idx - 1].group : undefined;
+          const showHeader = option.group && option.group !== prev;
+          const selected = value.has(option.value);
+          return (
+            <div key={option.value}>
+              {showHeader && (
+                <div className="sticky top-0 z-10 bg-bg-raised/95 px-3 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-fg-muted backdrop-blur">
+                  {option.group}
+                </div>
+              )}
+              <ComboboxOption
+                value={option.value}
+                className={({ active }) =>
+                  `flex cursor-pointer items-center justify-between gap-3 whitespace-nowrap px-3 py-1.5 text-sm ${
+                    active ? "bg-primary text-white" : "text-fg"
+                  }`
+                }
+              >
+                <div className="flex flex-1 items-center gap-2">
+                  {option.iconId && (
+                    <Icon itemId={option.iconId} alt="" className="h-5 w-5 shrink-0" />
+                  )}
+                  <span>{option.label}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {option.hint && (
+                    <span className="text-xs opacity-70">{option.hint}</span>
+                  )}
+                  {(selected || multiple) && (
+                    <Check
+                      className={`h-3.5 w-3.5 ${selected ? "" : "opacity-0"}`}
+                      aria-hidden="true"
+                    />
+                  )}
+                </div>
+              </ComboboxOption>
+            </div>
+          );
+        })
       )}
     </ComboboxOptions>
   );

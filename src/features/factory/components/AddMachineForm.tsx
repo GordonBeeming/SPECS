@@ -122,15 +122,26 @@ export function AddMachineForm({ factoryId, onSubmitted }: AddMachineFormProps) 
             placeholder="Type to filter recipes…"
             value={recipeId || null}
             onChange={(next) => setRecipeId(next ?? "")}
-            options={eligibleRecipes.map((r) => ({
-              value: r.id,
-              label: r.name + (r.isAlt ? " (alt)" : ""),
-              hint: buildingsById.get(r.buildingId)?.name,
-              // The recipe's primary output is what the player thinks of
-              // as "this row" — show that item's icon next to the name so
-              // the picker reads visually like the in-game build menu.
-              iconId: r.outputs[0]?.itemId,
-            }))}
+            // Sort recipes by unlock tier then name so the dropdown
+            // reads "earliest unlock first" with a tier header per
+            // group. The bare tier-cap filter above kept higher-tier
+            // recipes out entirely; this just orders what's left.
+            options={[...eligibleRecipes]
+              .sort((a, b) =>
+                a.unlockTier === b.unlockTier
+                  ? a.name.localeCompare(b.name)
+                  : a.unlockTier - b.unlockTier,
+              )
+              .map((r) => ({
+                value: r.id,
+                label: r.name + (r.isAlt ? " (alt)" : ""),
+                hint: buildingsById.get(r.buildingId)?.name,
+                // The recipe's primary output is what the player thinks of
+                // as "this row" — show that item's icon next to the name so
+                // the picker reads visually like the in-game build menu.
+                iconId: r.outputs[0]?.itemId,
+                group: `Tier ${r.unlockTier}`,
+              }))}
           />
         </div>
       </label>
