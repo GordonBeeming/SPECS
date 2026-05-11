@@ -108,6 +108,16 @@ pub struct SetFactoryIconInput {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SetFactoryPositionInput {
+    pub id: String,
+    /// In-game world coordinates. The map view writes these straight
+    /// from drag events — no rounding here, the SQL column is REAL.
+    pub world_x: f64,
+    pub world_y: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AddMachineInput {
     pub factory_id: String,
     pub building_id: String,

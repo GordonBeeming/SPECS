@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   BookOpen,
+  Compass,
   Factory as FactoryIcon,
   FlaskConical,
   Info,
@@ -32,6 +33,7 @@ import {
 } from "@/features/playthrough/hooks/usePlaythroughs";
 import { PowerView } from "@/features/power/components/PowerView";
 import { ResourcesView } from "@/features/resources/components/ResourcesView";
+import { MapView } from "@/features/map/components/MapView";
 import { useUndoStore } from "@/shared/undo/store";
 
 type Route =
@@ -43,10 +45,12 @@ type Route =
   | "network"
   | "library"
   | "alts"
-  | "resources";
+  | "resources"
+  | "map";
 
 const NAV: ReadonlyArray<{ id: Route; label: string; Icon: typeof BookOpen }> = [
   { id: "home", label: "Home", Icon: LayoutDashboard },
+  { id: "map", label: "Map", Icon: Compass },
   { id: "network", label: "Network", Icon: Share2 },
   { id: "resources", label: "Resources", Icon: MapPin },
   { id: "factories", label: "Factories", Icon: FactoryIcon },
@@ -212,6 +216,7 @@ export function AppShell() {
           {route === "power" && <PowerView />}
           {route === "alts" && <AltsView />}
           {route === "resources" && <ResourcesView />}
+          {route === "map" && <MapView />}
           {route === "library" && <LibraryView />}
         </main>
       </div>

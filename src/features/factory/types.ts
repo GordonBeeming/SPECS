@@ -72,6 +72,12 @@ export interface SetFactoryIconInput {
   iconId: string | null;
 }
 
+export interface SetFactoryPositionInput {
+  id: string;
+  worldX: number;
+  worldY: number;
+}
+
 export interface RenameFactoryInput {
   id: string;
   name: string;

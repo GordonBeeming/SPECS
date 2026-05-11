@@ -52,6 +52,20 @@ pub fn factory_set_icon(
     .map_err(anyhow::Error::from)
 }
 
+pub fn factory_set_position(
+    conn: &Connection,
+    id: &str,
+    world_x: f64,
+    world_y: f64,
+    now: &str,
+) -> Result<usize> {
+    conn.execute(
+        "UPDATE factory SET world_x = ?, world_y = ?, updated_at = ? WHERE id = ?",
+        params![world_x, world_y, now, id],
+    )
+    .map_err(anyhow::Error::from)
+}
+
 pub fn factory_delete(conn: &Connection, id: &str) -> Result<()> {
     conn.execute("DELETE FROM factory WHERE id = ?", [id])?;
     Ok(())

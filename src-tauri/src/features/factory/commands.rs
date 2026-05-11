@@ -9,7 +9,7 @@ use crate::shared::error::{AppError, AppResult};
 use crate::shared::gamedata::GameData;
 
 use super::dto::{
-    AddMachineInput, CreateFactoryInput, Factory, FactoryDetail, FactoryLedger, FactoryMachine,
+    AddMachineInput, CreateFactoryInput, Factory, FactoryDetail, FactoryLedger, FactoryMachine, SetFactoryPositionInput,
     ItemFlow, RenameFactoryInput, SetFactoryIconInput, UpdateMachineInput,
 };
 use super::domain::{machine_power_mw_amp, recipe_io_flows_amp};
@@ -164,6 +164,29 @@ pub fn rename_factory(
     let now = now_iso();
     let trimmed = input.name.trim().to_string();
     db.with(|c| repo::factory_rename(c, &input.id, &trimmed, &now).map_err(AppError::from))?;
+    db.with(|c| repo::factory_get(c, &input.id).map_err(AppError::from))?
+        .ok_or_else(|| AppError::NotFound(format!("factory {} not found", input.id)))
+}
+
+#[tauri::command]
+pub fn set_factory_position(
+    active: State<ActivePlaythrough>,
+    input: SetFactoryPositionInput,
+) -> AppResult<Factory> {
+    if !input.world_x.is_finite() || !input.world_y.is_finite() {
+        return Err(AppError::Invalid(
+            "world coordinates must be finite numbers".into(),
+        ));
+    }
+    let db = require_active(&active)?;
+    let now = now_iso();
+    let affected = db.with(|c| {
+        repo::factory_set_position(c, &input.id, input.world_x, input.world_y, &now)
+            .map_err(AppError::from)
+    })?;
+    if affected == 0 {
+        return Err(AppError::NotFound(format!("factory {} not found", input.id)));
+    }
     db.with(|c| repo::factory_get(c, &input.id).map_err(AppError::from))?
         .ok_or_else(|| AppError::NotFound(format!("factory {} not found", input.id)))
 }
