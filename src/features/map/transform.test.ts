@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { pctToWorld, WORLD_BOUNDS, worldDistance, worldToPct } from "./transform";
 
 describe("map transform", () => {
-  it("maps top-left world bound to the image's top-left corner", () => {
+  it("maps the world's western edge to the image's left edge", () => {
     const { xPct, yPct } = worldToPct(WORLD_BOUNDS.xMin, WORLD_BOUNDS.yMin);
     expect(xPct).toBeCloseTo(0, 5);
     expect(yPct).toBeCloseTo(0, 5);
   });
 
-  it("maps bottom-right world bound to the image's bottom-right corner", () => {
+  it("maps the world's eastern edge to the image's right edge", () => {
     const { xPct, yPct } = worldToPct(WORLD_BOUNDS.xMax, WORLD_BOUNDS.yMax);
     expect(xPct).toBeCloseTo(1, 5);
     expect(yPct).toBeCloseTo(1, 5);
