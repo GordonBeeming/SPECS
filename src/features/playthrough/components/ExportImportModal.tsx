@@ -37,10 +37,13 @@ export function ExportImportModal({ onClose }: ExportImportModalProps) {
 
   const onExport = (e: FormEvent) => {
     e.preventDefault();
+    // Clear stale success / error UI on every submit so the modal
+    // never shows a "succeeded" banner from a previous attempt.
+    setExportError(null);
+    setExportResult(null);
     const dest = exportPath.trim();
     if (!dest) return setExportError("Destination path is required.");
     if (!dest.endsWith(".specsdb")) return setExportError("Path must end in .specsdb.");
-    setExportError(null);
     exportMut.mutate(dest, {
       onSuccess: (saved) => setExportResult(saved),
       onError: (err) =>
@@ -50,13 +53,14 @@ export function ExportImportModal({ onClose }: ExportImportModalProps) {
 
   const onImport = (e: FormEvent) => {
     e.preventDefault();
+    setImportError(null);
+    setImportResult(null);
     const src = importPath.trim();
     const name = importName.trim();
     if (!src) return setImportError("Source path is required.");
     if (!src.endsWith(".specsdb"))
       return setImportError("Source path must end in .specsdb.");
     if (!name) return setImportError("Display name is required.");
-    setImportError(null);
     importMut.mutate(
       { sourcePath: src, displayName: name },
       {
@@ -104,13 +108,17 @@ export function ExportImportModal({ onClose }: ExportImportModalProps) {
           </h3>
           {playthrough.data ? (
             <form onSubmit={onExport} className="space-y-2">
-              <input
-                type="text"
-                value={exportPath}
-                onChange={(e) => setExportPath(e.target.value)}
-                placeholder="/absolute/path/to/destination.specsdb"
-                className="h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-fg outline-none focus:border-primary"
-              />
+              <label className="block">
+                <span className="sr-only">Export destination path</span>
+                <input
+                  type="text"
+                  value={exportPath}
+                  onChange={(e) => setExportPath(e.target.value)}
+                  placeholder="/absolute/path/to/destination.specsdb"
+                  aria-label="Export destination path"
+                  className="h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-fg outline-none focus:border-primary"
+                />
+              </label>
               <div className="flex justify-end gap-2">
                 <Button type="submit" disabled={exportMut.isPending}>
                   {exportMut.isPending ? "Exporting…" : "Export"}
@@ -137,21 +145,29 @@ export function ExportImportModal({ onClose }: ExportImportModalProps) {
             <Upload className="h-4 w-4" /> Import a playthrough
           </h3>
           <form onSubmit={onImport} className="space-y-2">
-            <input
-              type="text"
-              value={importPath}
-              onChange={(e) => setImportPath(e.target.value)}
-              placeholder="/absolute/path/to/source.specsdb"
-              className="h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-fg outline-none focus:border-primary"
-            />
-            <input
-              type="text"
-              value={importName}
-              onChange={(e) => setImportName(e.target.value)}
-              placeholder="Display name (e.g. Friend's Iron Run)"
-              maxLength={80}
-              className="h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-fg outline-none focus:border-primary"
-            />
+            <label className="block">
+              <span className="sr-only">Import source path</span>
+              <input
+                type="text"
+                value={importPath}
+                onChange={(e) => setImportPath(e.target.value)}
+                placeholder="/absolute/path/to/source.specsdb"
+                aria-label="Import source path"
+                className="h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-fg outline-none focus:border-primary"
+              />
+            </label>
+            <label className="block">
+              <span className="sr-only">Display name for imported playthrough</span>
+              <input
+                type="text"
+                value={importName}
+                onChange={(e) => setImportName(e.target.value)}
+                placeholder="Display name (e.g. Friend's Iron Run)"
+                aria-label="Display name for imported playthrough"
+                maxLength={80}
+                className="h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-fg outline-none focus:border-primary"
+              />
+            </label>
             <div className="flex justify-end gap-2">
               <Button type="submit" disabled={importMut.isPending}>
                 {importMut.isPending ? "Importing…" : "Import"}
