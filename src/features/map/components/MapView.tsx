@@ -136,6 +136,29 @@ export function MapView() {
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedFactoryId, setSelectedFactoryId] = useState<string | null>(null);
+  // Active drag-to-link state: the node being dragged + the current
+  // cursor position (in MAP_W/MAP_H pixel space) so we can draw a
+  // ghost line. `linkHoverFactoryId` is set by FactoryPin mouseenter
+  // while linking so dropping over a pin commits the bind.
+  const [linkingNode, setLinkingNode] = useState<{
+    nodeId: string;
+    fromX: number;
+    fromY: number;
+  } | null>(null);
+  const [linkCursor, setLinkCursor] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  const [linkHoverFactoryId, setLinkHoverFactoryId] = useState<string | null>(
+    null,
+  );
+  // The mouseup handler reads the latest hover target *imperatively*
+  // — by the time it fires React's state hasn't necessarily flushed
+  // through, so a ref shadows the state for the read path while the
+  // state still drives the highlight render.
+  const linkHoverFactoryIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    linkHoverFactoryIdRef.current = linkHoverFactoryId;
+  }, [linkHoverFactoryId]);
   // Power-gen selection — the popover that consumes it lands in a
   // follow-up commit; for now setting it just clears the other
   // selection types so click handlers behave predictably.
@@ -389,11 +412,74 @@ export function MapView() {
                             : undefined,
                           outlineOffset: 3,
                         }}
-                        onClick={(e) => {
+                        onMouseDown={(e) => {
+                          e.preventDefault();
                           e.stopPropagation();
-                          setSelectedNodeId(
-                            node.id === selectedNodeId ? null : node.id,
-                          );
+                          // Anchor in map-pixel space so the ghost line
+                          // starts exactly at the node centre.
+                          const fromX = xPct * MAP_W;
+                          const fromY = yPct * MAP_H;
+                          const startClientX = e.clientX;
+                          const startClientY = e.clientY;
+                          let armed = false;
+                          const onMove = (ev: MouseEvent) => {
+                            if (
+                              !armed &&
+                              Math.hypot(
+                                ev.clientX - startClientX,
+                                ev.clientY - startClientY,
+                              ) >= CLICK_THRESHOLD_PX
+                            ) {
+                              armed = true;
+                              setLinkingNode({ nodeId: node.id, fromX, fromY });
+                            }
+                            if (!armed) return;
+                            // Convert screen delta back to map-pixel
+                            // space via the current zoom scale.
+                            const scale = wrapRef.current?.state.scale ?? 1;
+                            setLinkCursor({
+                              x: fromX + (ev.clientX - startClientX) / scale,
+                              y: fromY + (ev.clientY - startClientY) / scale,
+                            });
+                          };
+                          const onUp = () => {
+                            window.removeEventListener("mousemove", onMove);
+                            window.removeEventListener("mouseup", onUp);
+                            if (!armed) {
+                              // Plain click — fall through to existing
+                              // popover behaviour.
+                              setSelectedNodeId(
+                                node.id === selectedNodeId ? null : node.id,
+                              );
+                              return;
+                            }
+                            const targetFactoryId = linkHoverFactoryIdRef.current;
+                            setLinkingNode(null);
+                            setLinkCursor(null);
+                            setLinkHoverFactoryId(null);
+                            if (targetFactoryId) {
+                              // Bind the node to that factory (default
+                              // miner + 100% clock if unclaimed). Keeps
+                              // the existing claim's miner/clock if the
+                              // node was already claimed.
+                              const existing = node.claim;
+                              void setClaim.mutateAsync({
+                                nodeId: node.id,
+                                minerId:
+                                  existing?.minerId ??
+                                  (node.kind === "fracking_well"
+                                    ? "Build_FrackingSmasher_C"
+                                    : node.kind === "geyser"
+                                      ? null
+                                      : "Build_MinerMk1_C"),
+                                clockPct: existing?.clockPct ?? 100,
+                                factoryId: targetFactoryId,
+                                notes: existing?.notes ?? null,
+                              });
+                            }
+                          };
+                          window.addEventListener("mousemove", onMove);
+                          window.addEventListener("mouseup", onUp);
                         }}
                       >
                         <Icon
@@ -443,6 +529,7 @@ export function MapView() {
                         factory={f}
                         hasPower={hasPower}
                         dragging={dragging === f.id}
+                        linkHover={linkHoverFactoryId === f.id}
                         onDragStart={() => setDragging(f.id)}
                         onDragEnd={(pt) => {
                           setDragging(null);
@@ -459,6 +546,13 @@ export function MapView() {
                           setSelectedPowerGenId(null);
                           setSelectedFactoryId(f.id);
                         }}
+                        onLinkHoverEnter={() => {
+                          if (linkingNode) setLinkHoverFactoryId(f.id);
+                        }}
+                        onLinkHoverLeave={() => {
+                          if (linkHoverFactoryId === f.id)
+                            setLinkHoverFactoryId(null);
+                        }}
                         currentScale={() => wrapRef.current?.state.scale ?? 1}
                       />
                     );
@@ -469,6 +563,29 @@ export function MapView() {
                       it owns any power_gen rows so the player can
                       tell which factories include power gear at a
                       glance. */}
+
+                  {/* Ghost line while drag-to-linking a node onto a
+                      factory. Pointer-events disabled so it doesn't
+                      intercept the drop hit-test. */}
+                  {linkingNode && linkCursor && (
+                    <svg
+                      className="pointer-events-none absolute inset-0"
+                      width={MAP_W}
+                      height={MAP_H}
+                      viewBox={`0 0 ${MAP_W} ${MAP_H}`}
+                    >
+                      <line
+                        x1={linkingNode.fromX}
+                        y1={linkingNode.fromY}
+                        x2={linkCursor.x}
+                        y2={linkCursor.y}
+                        stroke={linkHoverFactoryId ? "var(--color-success)" : "var(--color-primary)"}
+                        strokeWidth={3}
+                        strokeOpacity={0.85}
+                        strokeDasharray="8 4"
+                      />
+                    </svg>
+                  )}
                 </div>
               </TransformComponent>
             </TransformWrapper>
@@ -500,7 +617,7 @@ export function MapView() {
           )}
 
           {selectedFactoryId && (
-            <div className="absolute bottom-3 left-3 z-20">
+            <div className="absolute bottom-3 right-3 z-20">
               <FactoryPopover
                 factoryId={selectedFactoryId}
                 hasPower={(powerGens.data ?? []).some(
