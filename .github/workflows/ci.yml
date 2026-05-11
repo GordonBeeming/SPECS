@@ -1,0 +1,73 @@
+name: CI
+
+# Build + test on every push and PR. Bundle workflow lives in
+# `release.yml` and only fires on tag pushes.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel in-flight runs when a branch gets a new push — saves ~2/3
+# of the runner-minutes on rapid iteration without losing the last
+# pass.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux tauri deps
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: cargo check
+        working-directory: src-tauri
+        run: cargo check --no-default-features
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test --lib --no-default-features
+      # cargo clippy intentionally not enforced yet — there are
+      # ~10 pre-existing advisory warnings (too_many_arguments,
+      # manual_str_repeat) that deserve a focused cleanup PR rather
+      # than blocking the CI rollout. Run it advisory-only.
+      - name: cargo clippy (advisory)
+        working-directory: src-tauri
+        continue-on-error: true
+        run: cargo clippy --no-default-features --tests
+
+  frontend:
+    name: TS + Vitest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install deps
+        run: bun install --frozen-lockfile
+      - name: Type check
+        run: bun run typecheck
+      - name: Run tests
+        run: bun run test:run
