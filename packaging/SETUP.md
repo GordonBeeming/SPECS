@@ -73,13 +73,24 @@ Setup:
 
 1. **Fork** <https://github.com/microsoft/winget-pkgs> on the GitHub
    account that will own the PAT.
-2. **PAT** with `public_repo` scope. Settings → Developer settings →
-   Personal access tokens → Fine-grained tokens. Restrict to the
-   forked repo only. Save as `WINGET_PAT` repo secret.
-3. **First submission** — locally:
+2. **PAT** for that account. Two routes:
+   - **Classic PAT** (simpler): scope = `public_repo`. Settings →
+     Developer settings → Personal access tokens → Tokens (classic).
+   - **Fine-grained PAT** (recommended): restricted to the
+     `winget-pkgs` fork only, with permissions
+     `Contents: Read and write` and `Pull requests: Read and write`.
+     Fine-grained tokens don't accept the legacy `public_repo` scope
+     name — pick the per-repo permissions instead.
+
+   Save the resulting token as `WINGET_PAT` in this repo's secrets.
+3. **First submission** — locally. Replace the URL with the actual
+   MSI asset name from the v0.1.0 GitHub Release (Tauri's bundler
+   keys filenames off `productName` from `tauri.conf.json` —
+   currently `S.P.E.C.S` — so the asset arrives as
+   `S.P.E.C.S_0.1.0_x64_en-US.msi`):
    ```sh
    wingetcreate new \
-     --urls https://github.com/GordonBeeming/SPECS/releases/download/v0.1.0/SPECS_0.1.0_x64_en-US.msi \
+     --urls "https://github.com/GordonBeeming/SPECS/releases/download/v0.1.0/S.P.E.C.S_0.1.0_x64_en-US.msi" \
      --token $WINGET_PAT \
      --submit
    ```

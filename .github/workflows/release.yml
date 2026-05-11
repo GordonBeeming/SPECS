@@ -67,7 +67,7 @@ jobs:
             target: ''
             args: ''
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Install Linux tauri deps
         if: matrix.platform.os == 'ubuntu-latest'
@@ -99,15 +99,21 @@ jobs:
         run: bun install --frozen-lockfile
 
       # Import the Apple Developer ID into a fresh keychain (vista
-      # pattern). Skipped when the secret isn't set so the workflow
-      # still produces an unsigned mac bundle for testing.
+      # pattern). Gated on the secret being non-empty so the workflow
+      # still produces an unsigned mac bundle for forks. Checks
+      # `secrets.*` directly rather than via an `env` mapping so the
+      # condition reads against the secret reference, not a value
+      # introduced by this same step.
       - name: Import Apple signing certificate
-        if: startsWith(matrix.platform.os, 'macos') && env.APPLE_CERTIFICATE != ''
+        if: startsWith(matrix.platform.os, 'macos') && secrets.APPLE_CERTIFICATE != ''
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
-          echo "${APPLE_CERTIFICATE}" | base64 --decode > certificate.p12
+          # macOS ships BSD `base64` (`-D` to decode); GNU's `--decode`
+          # isn't recognised. Both BSDs and GNU accept `-d`, which
+          # keeps the script portable if this ever runs on Linux.
+          echo "${APPLE_CERTIFICATE}" | base64 -d > certificate.p12
           KEYCHAIN_PATH="${RUNNER_TEMP}/signing.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -hex 16)"
           security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
@@ -187,21 +193,38 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
           # The bundle job creates a draft release; assets land async.
-          # Poll for the universal/arm64/x86_64 DMGs (tauri-action names
-          # them `SPECS_${VERSION}_*.dmg`).
+          # Tauri's bundler keys filenames off `productName` from
+          # `tauri.conf.json` — currently `S.P.E.C.S` — so the DMGs
+          # arrive as `S.P.E.C.S_${VERSION}_aarch64.dmg` etc. Match by
+          # the architecture suffix only so a future productName tweak
+          # doesn't silently break this poll.
+          ARM64_NAME=""
+          X64_NAME=""
           for i in {1..30}; do
-            ARM64_URL=$(gh release view "${TAG}" --json assets \
-              --jq ".assets[] | select(.name | endswith(\"aarch64.dmg\")) | .url" || true)
-            X64_URL=$(gh release view "${TAG}" --json assets \
-              --jq ".assets[] | select(.name | endswith(\"x64.dmg\")) | .url" || true)
-            if [ -n "${ARM64_URL}" ] && [ -n "${X64_URL}" ]; then break; fi
+            ARM64_NAME=$(gh release view "${TAG}" --json assets \
+              --jq '.assets[] | select(.name | endswith("aarch64.dmg")) | .name' \
+              | head -n1 || true)
+            X64_NAME=$(gh release view "${TAG}" --json assets \
+              --jq '.assets[] | select(.name | endswith("x64.dmg")) | .name' \
+              | head -n1 || true)
+            if [ -n "${ARM64_NAME}" ] && [ -n "${X64_NAME}" ]; then break; fi
             echo "Waiting for DMGs to land on release ${TAG} (attempt ${i})"
             sleep 10
           done
-          curl -sSL "${ARM64_URL}" -o specs-arm64.dmg
-          curl -sSL "${X64_URL}" -o specs-x64.dmg
-          echo "arm64_sha=$(shasum -a 256 specs-arm64.dmg | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-          echo "x64_sha=$(shasum -a 256 specs-x64.dmg | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          # Fail fast rather than computing a SHA over an empty file.
+          if [ -z "${ARM64_NAME}" ] || [ -z "${X64_NAME}" ]; then
+            echo "::error::DMG assets never appeared on release ${TAG}; aborting tap update"
+            exit 1
+          fi
+          # `gh release download` handles auth + draft access correctly
+          # — `gh release view --json assets` returns API URLs that
+          # `curl` can't follow without a token, and draft asset URLs
+          # are gated on the bot's auth in the first place.
+          gh release download "${TAG}" -p "${ARM64_NAME}" -p "${X64_NAME}"
+          echo "arm64_sha=$(shasum -a 256 "${ARM64_NAME}" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "x64_sha=$(shasum -a 256 "${X64_NAME}" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "arm64_name=${ARM64_NAME}" >> "$GITHUB_OUTPUT"
+          echo "x64_name=${X64_NAME}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Push updated cask to homebrew-tap
@@ -213,22 +236,27 @@ jobs:
           mkdir -p ~/.ssh
           echo "${HOMEBREW_TAP_DEPLOY_KEY}" > ~/.ssh/homebrew_tap_key
           chmod 600 ~/.ssh/homebrew_tap_key
+          # Pin GitHub's host key explicitly via known_hosts. Don't pair
+          # with `StrictHostKeyChecking=no` — that would defeat the
+          # pin and silently accept a man-in-the-middle host key swap.
           ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-          export GIT_SSH_COMMAND="ssh -i ~/.ssh/homebrew_tap_key -o StrictHostKeyChecking=no"
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/homebrew_tap_key"
 
           git clone git@github.com:GordonBeeming/homebrew-tap.git /tmp/homebrew-tap
           mkdir -p /tmp/homebrew-tap/Casks
 
+          ARM64_NAME="${{ steps.sha.outputs.arm64_name }}"
+          X64_NAME="${{ steps.sha.outputs.x64_name }}"
           cat > /tmp/homebrew-tap/Casks/specs.rb << CASK_EOF
           cask "specs" do
             version "${VERSION}"
 
             on_arm do
-              url "https://github.com/GordonBeeming/SPECS/releases/download/v#{version}/SPECS_#{version}_aarch64.dmg"
+              url "https://github.com/GordonBeeming/SPECS/releases/download/v#{version}/${ARM64_NAME}"
               sha256 "${{ steps.sha.outputs.arm64_sha }}"
             end
             on_intel do
-              url "https://github.com/GordonBeeming/SPECS/releases/download/v#{version}/SPECS_#{version}_x64.dmg"
+              url "https://github.com/GordonBeeming/SPECS/releases/download/v#{version}/${X64_NAME}"
               sha256 "${{ steps.sha.outputs.x64_sha }}"
             end
 
@@ -300,13 +328,26 @@ jobs:
         if: steps.gate.outputs.skip != 'true'
         shell: pwsh
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WINGET_PAT: ${{ secrets.WINGET_PAT }}
         run: |
           iwr https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
           $tag = "${{ github.ref_name }}"
           $version = $tag -replace '^v', ''
-          # tauri-action's MSI naming is `SPECS_${version}_x64_en-US.msi`.
-          $url = "https://github.com/${{ github.repository }}/releases/download/$tag/SPECS_${version}_x64_en-US.msi"
+
+          # Tauri's bundler keys MSI filenames off `productName` from
+          # `tauri.conf.json` (currently `S.P.E.C.S`), so the asset
+          # arrives as `S.P.E.C.S_${version}_x64_en-US.msi`. Resolve
+          # the actual asset name dynamically so a future productName
+          # tweak doesn't break the URL.
+          $msiName = gh release view $tag --json assets `
+            --jq '.assets[] | select(.name | endswith("x64_en-US.msi")) | .name' `
+            | Select-Object -First 1
+          if (-not $msiName) {
+            Write-Error "MSI asset never appeared on release $tag"
+            exit 1
+          }
+          $url = "https://github.com/${{ github.repository }}/releases/download/$tag/$msiName"
 
           # First submission must be manual (`wingetcreate new`) — see
           # packaging/SETUP.md. Subsequent releases use `update`.
