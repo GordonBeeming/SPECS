@@ -585,6 +585,8 @@ export function MapView() {
 
 interface FactoryPinProps {
   factory: { id: string; name: string; worldX: number; worldY: number; iconId?: string };
+  /** True if this factory has any power_gen rows — surfaces a ⚡ corner badge so power-bearing factories read distinctly. */
+  hasPower?: boolean;
   dragging: boolean;
   onDragStart: () => void;
   onDragEnd: (pt: { x: number; y: number }) => void;
@@ -717,103 +719,7 @@ function InputLinesLayer({
   );
 }
 
-interface PowerGenPinProps {
-  gen: { id: string; worldX?: number | null; worldY?: number | null; generatorId: string };
-  name: string;
-  parentName: string;
-  dragging: boolean;
-  onDragStart: () => void;
-  onDragEnd: (pt: { x: number; y: number }) => void;
-  onClick: () => void;
-  currentScale: () => number;
-}
-
-function PowerGenPin({
-  gen,
-  name,
-  dragging: _dragging,
-  onDragStart,
-  onDragEnd,
-  onClick,
-  currentScale,
-}: PowerGenPinProps) {
-  const wx = gen.worldX ?? 0;
-  const wy = gen.worldY ?? 0;
-  const { xPct, yPct } = worldToPct(wx, wy);
-  const startRef = useRef<{
-    x: number;
-    y: number;
-    clientX: number;
-    clientY: number;
-    moved: boolean;
-  } | null>(null);
-  const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
-
-  const baseX = xPct * MAP_W;
-  const baseY = yPct * MAP_H;
-  const px = hoverPos?.x ?? baseX;
-  const py = hoverPos?.y ?? baseY;
-
-  return (
-    <button
-      type="button"
-      className="specs-map-pin absolute -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-md border-2 border-warning bg-bg-raised/95 px-2 py-1 text-[11px] font-medium text-fg shadow-sm hover:bg-bg-raised active:cursor-grabbing"
-      style={{ left: `${px}px`, top: `${py}px` }}
-      title={`${name} — click for details, drag to move`}
-      onMouseDown={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        startRef.current = {
-          x: baseX,
-          y: baseY,
-          clientX: e.clientX,
-          clientY: e.clientY,
-          moved: false,
-        };
-        const onMove = (ev: MouseEvent) => {
-          const s = startRef.current;
-          if (!s) return;
-          const dxScreen = ev.clientX - s.clientX;
-          const dyScreen = ev.clientY - s.clientY;
-          if (!s.moved && Math.hypot(dxScreen, dyScreen) >= CLICK_THRESHOLD_PX) {
-            s.moved = true;
-            onDragStart();
-          }
-          if (s.moved) {
-            const scale = currentScale();
-            setHoverPos({ x: s.x + dxScreen / scale, y: s.y + dyScreen / scale });
-          }
-        };
-        const onUp = (ev: MouseEvent) => {
-          const s = startRef.current;
-          window.removeEventListener("mousemove", onMove);
-          window.removeEventListener("mouseup", onUp);
-          startRef.current = null;
-          if (!s) return;
-          if (!s.moved) {
-            setHoverPos(null);
-            onClick();
-            return;
-          }
-          const scale = currentScale();
-          const dx = (ev.clientX - s.clientX) / scale;
-          const dy = (ev.clientY - s.clientY) / scale;
-          setHoverPos(null);
-          onDragEnd({ x: s.x + dx, y: s.y + dy });
-        };
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup", onUp);
-      }}
-    >
-      <span className="inline-flex items-center gap-1">
-        <Zap className="h-3.5 w-3.5 text-warning" />
-        {name}
-      </span>
-    </button>
-  );
-}
-
-function FactoryPin({ factory, onDragStart, onDragEnd, onClick, currentScale }: FactoryPinProps) {
+function FactoryPin({ factory, hasPower, onDragStart, onDragEnd, onClick, currentScale }: FactoryPinProps) {
   const { xPct, yPct } = worldToPct(factory.worldX, factory.worldY);
   const startRef = useRef<{
     x: number;
