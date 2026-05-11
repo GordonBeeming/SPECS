@@ -36,6 +36,7 @@ import { PowerView } from "@/features/power/components/PowerView";
 import { ResourcesView } from "@/features/resources/components/ResourcesView";
 import { MapView } from "@/features/map/components/MapView";
 import { PlannerView } from "@/features/planner/components/PlannerView";
+import { useNavStore } from "@/shared/nav-store";
 import { useUndoStore } from "@/shared/undo/store";
 
 type Route =
@@ -65,6 +66,11 @@ const NAV: ReadonlyArray<{ id: Route; label: string; Icon: typeof BookOpen }> = 
   { id: "library", label: "Library", Icon: BookOpen },
 ];
 
+const ROUTE_IDS = new Set<string>(NAV.map((n) => n.id));
+function isRoute(s: string): s is Route {
+  return ROUTE_IDS.has(s);
+}
+
 export function AppShell() {
   const { mode, toggle } = useThemeMode();
   const [route, setRoute] = useState<Route>("home");
@@ -79,6 +85,19 @@ export function AppShell() {
   const list = usePlaythroughList();
   const openMut = useOpenPlaythrough();
   const [autoOpenAttempted, setAutoOpenAttempted] = useState(false);
+  const takePendingRoute = useNavStore((s) => s.takePendingRoute);
+  const pendingRoute = useNavStore((s) => s.pendingRoute);
+
+  // Cross-slice deep linking: the Network view's "open in graph" button
+  // pushes "factories" through the nav store. AppShell owns route
+  // state, so we read + clear here whenever a new pendingRoute lands.
+  useEffect(() => {
+    if (!pendingRoute) return;
+    const next = takePendingRoute();
+    if (next && isRoute(next)) {
+      setRoute(next);
+    }
+  }, [pendingRoute, takePendingRoute]);
 
   // First-paint convenience: if nothing is open but a previous run
   // touched at least one playthrough, auto-select the most-recently-

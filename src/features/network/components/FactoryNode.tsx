@@ -16,9 +16,15 @@ import type { FactoryNodeData } from "../types";
  * the factory's outgoing/incoming logistics_links — see `NetworkView`
  * for the assembly.
  */
-export function FactoryNode({ data }: NodeProps & { data: FactoryNodeData }) {
+export function FactoryNode({ data, id }: NodeProps & { data: FactoryNodeData }) {
+  const selectFactory = useNavStore((s) => s.selectFactory);
+  const goTo = useNavStore((s) => s.goTo);
+  const openInGraph = () => {
+    selectFactory(id);
+    goTo("factories");
+  };
   return (
-    <div className="rounded-lg border border-border bg-bg-raised px-3 py-2 shadow-sm">
+    <div className="group rounded-lg border border-border bg-bg-raised px-3 py-2 shadow-sm">
       <Handle type="target" position={Position.Left} className="!bg-primary" />
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -33,6 +39,15 @@ export function FactoryNode({ data }: NodeProps & { data: FactoryNodeData }) {
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={openInGraph}
+            aria-label="Open factory graph"
+            title="Open factory graph"
+            className="inline-flex h-5 w-5 items-center justify-center rounded-full text-fg-muted opacity-0 transition-opacity hover:bg-border hover:text-fg group-hover:opacity-100"
+          >
+            <ExternalLink className="h-3 w-3" />
+          </button>
           {data.hasDeficit && (
             <span
               role="status"
