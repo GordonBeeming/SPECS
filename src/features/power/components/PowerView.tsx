@@ -200,34 +200,43 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (armedDeleteId === g.id) {
-                                remove.mutate(g.id);
+                          {armedDeleteId === g.id ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                remove.mutate(g.id, {
+                                  onError: (err) => {
+                                    // Surface mutation errors instead of
+                                    // swallowing them silently — the
+                                    // earlier "delete does nothing" report
+                                    // was a missing error path.
+                                    console.error("remove power_gen failed", err);
+                                    alert(
+                                      `Delete failed: ${
+                                        err instanceof Error ? err.message : String(err)
+                                      }`,
+                                    );
+                                  },
+                                });
                                 setArmedDeleteId(null);
-                              } else {
-                                armForDelete(g.id);
-                              }
-                            }}
-                            aria-label={
-                              armedDeleteId === g.id
-                                ? "Click again to confirm delete"
-                                : "Remove generator"
-                            }
-                            title={
-                              armedDeleteId === g.id
-                                ? "Click again to confirm"
-                                : "Remove generator"
-                            }
-                            className={`rounded-md p-1.5 ${
-                              armedDeleteId === g.id
-                                ? "bg-danger/20 text-danger"
-                                : "text-fg-muted hover:bg-danger/20 hover:text-danger"
-                            }`}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                              }}
+                              aria-label="Click to confirm delete"
+                              className="inline-flex items-center gap-1 rounded-md bg-danger px-2 py-1 text-xs font-medium text-white hover:opacity-90"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Confirm
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => armForDelete(g.id)}
+                              aria-label="Remove generator"
+                              title="Click to delete (confirms next click)"
+                              className="rounded-md p-1.5 text-fg-muted hover:bg-danger/20 hover:text-danger"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
