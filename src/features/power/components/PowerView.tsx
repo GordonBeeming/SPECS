@@ -35,34 +35,45 @@ export function PowerView() {
 
   const factoryList = factories.data ?? [];
   const activeId = selectedFactoryId ?? factoryList[0]?.id ?? null;
+  const activeFactory = factoryList.find((f) => f.id === activeId) ?? null;
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-fg">Power</h1>
-          <p className="text-xs text-fg-muted">
-            {playthrough.data.displayName} · T{playthrough.data.currentTier}
-          </p>
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-warning/10">
+              <Zap className="h-5 w-5 text-warning" />
+            </span>
+            <div className="min-w-0">
+              <h1 className="text-lg font-semibold text-primary">
+                Power · {activeFactory?.name ?? "(no factory)"}
+              </h1>
+              <p className="text-xs text-fg-muted">
+                Configuring generators for this factory. Switch using
+                the picker on the right.
+              </p>
+            </div>
+          </div>
+          {factoryList.length > 0 && (
+            <label className="flex items-center gap-2 text-xs text-fg-muted">
+              <span>Factory</span>
+              <select
+                aria-label="Factory"
+                value={activeId ?? ""}
+                onChange={(e) => setSelectedFactoryId(e.target.value || null)}
+                className="h-9 min-w-[12rem] rounded-md border border-border bg-bg px-2 text-sm text-fg outline-none focus:border-primary"
+              >
+                {factoryList.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
-        {factoryList.length > 1 && (
-          <label className="text-xs text-fg-muted">
-            <span className="mr-2">Factory</span>
-            <select
-              aria-label="Factory"
-              value={activeId ?? ""}
-              onChange={(e) => setSelectedFactoryId(e.target.value || null)}
-              className="h-8 rounded border border-border bg-bg px-2 text-sm text-fg outline-none focus:border-primary"
-            >
-              {factoryList.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-      </header>
+      </Card>
 
       {factoryList.length === 0 ? (
         <Card>
