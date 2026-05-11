@@ -41,7 +41,7 @@
       "endpoints": [
         "https://github.com/GordonBeeming/SPECS/releases/latest/download/latest.json"
       ],
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZGRTlCODIxMjJDRjc5MEMKUldRTWVjOGlJYmpwLzh5RmJ4TitmaE5TNVR4L2d4UXhwVUhJalI3aWhxSDJiRy9ZK3hoRGhJbEYK",
       "dialog": true
     }
   }
