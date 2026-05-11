@@ -1,8 +1,13 @@
+import { Icon } from "@/shared/ui/Icon";
 import { useItems } from "../hooks/useLibrary";
 import type { Item } from "../types";
 import { LibraryTable, type Column } from "./LibraryTable";
 
 const columns: Column<Item>[] = [
+  {
+    header: "",
+    cell: (i) => <Icon itemId={i.id} alt={i.name} className="h-6 w-6" />,
+  },
   { header: "Name", cell: (i) => i.name },
   { header: "Category", cell: (i) => i.category },
   { header: "Stack", cell: (i) => (i.isFluid ? "—" : i.stackSize.toLocaleString()), align: "right" },

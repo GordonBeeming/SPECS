@@ -39,7 +39,7 @@ function plan(overrides: Partial<TransportPlan> = {}): TransportPlan {
 
 describe("<TransportPlanPicker />", () => {
   it("shows an empty-state hint when no plans are returned", () => {
-    render(<TransportPlanPicker plans={[]} selectedJson={null} onPick={() => {}} />);
+    renderWithProviders(<TransportPlanPicker plans={[]} selectedJson={null} onPick={() => {}} />);
     expect(screen.getByText(/No viable plans/i)).toBeInTheDocument();
   });
 
@@ -55,14 +55,14 @@ describe("<TransportPlanPicker />", () => {
       minUnlockTier: 9,
       locked: true,
     });
-    render(<TransportPlanPicker plans={[single, mixed]} selectedJson={null} onPick={() => {}} />);
+    renderWithProviders(<TransportPlanPicker plans={[single, mixed]} selectedJson={null} onPick={() => {}} />);
     expect(screen.getByText("1× Mk1 belts")).toBeInTheDocument();
     expect(screen.getByText("1× Mk6 + 1× Mk1 belts")).toBeInTheDocument();
   });
 
   it("disables locked plans and tags them with the required tier", () => {
     const locked = plan({ locked: true, minUnlockTier: 9 });
-    render(<TransportPlanPicker plans={[locked]} selectedJson={null} onPick={() => {}} />);
+    renderWithProviders(<TransportPlanPicker plans={[locked]} selectedJson={null} onPick={() => {}} />);
     const radio = screen.getByRole("radio");
     expect(radio).toBeDisabled();
     expect(screen.getByText(/Tier 9/)).toBeInTheDocument();

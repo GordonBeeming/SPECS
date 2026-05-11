@@ -63,12 +63,22 @@ export function AboutModal({ onClose }: AboutModalProps) {
         <h3 className="mt-5 text-sm font-semibold text-fg">Credits</h3>
         <ul className="mt-2 space-y-2 text-xs text-fg-muted">
           <li>
-            <strong className="text-fg">Game data & item names</strong> from
-            community Satisfactory wikis. Bundled JSON is a Tier 0–2 fixture
-            for now; the full 1.1 dataset lands in a later milestone.
+            <strong className="text-fg">Game data, recipes, and alt list</strong>{" "}
+            converted from the community-maintained{" "}
+            <a
+              href="https://github.com/greeny/SatisfactoryTools"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline"
+            >
+              SatisfactoryTools
+            </a>{" "}
+            dump. See <code>scripts/convert-game-data.ts</code> for the
+            mapping. v1.1: 130 items, 211 recipes (88 alts), 18 production
+            buildings, all Tier 0–9 milestones.
           </li>
           <li>
-            <strong className="text-fg">Icons</strong> from{" "}
+            <strong className="text-fg">UI chrome icons</strong> from{" "}
             <a
               href="https://lucide.dev"
               target="_blank"
@@ -77,9 +87,11 @@ export function AboutModal({ onClose }: AboutModalProps) {
             >
               Lucide
             </a>
-            . Game-specific icons (Iron Plate, Constructor, etc.) will land
-            in a future PR — credited under Coffee Stain Studios' fan-content
-            policy when bundled.
+            .{" "}
+            <strong className="text-fg">Game item & building icons</strong>{" "}
+            bundled from the SatisfactoryTools icon set under the Coffee Stain
+            Studios fan-content policy — original assets remain © Coffee
+            Stain Studios.
           </li>
           <li>
             <strong className="text-fg">Built with</strong> Tauri 2,

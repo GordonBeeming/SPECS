@@ -1,9 +1,14 @@
+import { Icon } from "@/shared/ui/Icon";
 import { useBuildings } from "../hooks/useLibrary";
 import type { Building } from "../types";
 import { LibraryTable, type Column } from "./LibraryTable";
 import { TierBadge } from "./TierBadge";
 
 const columns: Column<Building>[] = [
+  {
+    header: "",
+    cell: (b) => <Icon itemId={b.id} alt={b.name} className="h-6 w-6" />,
+  },
   { header: "Name", cell: (b) => b.name },
   { header: "Category", cell: (b) => b.category },
   { header: "Power (MW)", cell: (b) => b.powerMw.toFixed(1), align: "right" },

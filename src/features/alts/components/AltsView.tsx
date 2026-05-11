@@ -4,6 +4,7 @@ import { Search } from "lucide-react";
 import { useRecipes } from "@/features/library/hooks/useLibrary";
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { Card } from "@/shared/ui/Card";
+import { Icon } from "@/shared/ui/Icon";
 
 import { useToggleAlt, useUnlockedAlts } from "../hooks/useAlts";
 
@@ -91,10 +92,20 @@ export function AltsView() {
                   }
                   className="h-4 w-4 rounded border-border"
                 />
-                <label htmlFor={`alt-${r.id}`} className="flex-1 cursor-pointer">
-                  <div className="text-sm font-medium text-fg">{r.name}</div>
-                  <div className="text-xs text-fg-muted">
-                    {r.id} · unlocks at T{r.unlockTier}
+                <label htmlFor={`alt-${r.id}`} className="flex flex-1 cursor-pointer items-center gap-3">
+                  {/* The first output's item icon doubles as the recipe
+                      glyph — most alt recipes are named after their
+                      primary output ("Pure Iron Ingot" → iron ingot icon). */}
+                  <Icon
+                    itemId={r.outputs[0]?.itemId ?? r.id}
+                    alt={r.name}
+                    className="h-7 w-7"
+                  />
+                  <div>
+                    <div className="text-sm font-medium text-fg">{r.name}</div>
+                    <div className="text-xs text-fg-muted">
+                      {r.id} · unlocks at T{r.unlockTier}
+                    </div>
                   </div>
                 </label>
               </li>
