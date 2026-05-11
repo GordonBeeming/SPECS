@@ -63,10 +63,11 @@ export function PlaythroughSwitcher() {
                 <button
                   key={p.id}
                   type="button"
+                  disabled={openMut.isPending}
                   onClick={() => {
                     openMut.mutate(p.id, { onSuccess: () => setOpen(false) });
                   }}
-                  className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                  className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                     active ? "bg-primary text-white" : "text-fg hover:bg-border"
                   }`}
                 >
@@ -75,6 +76,21 @@ export function PlaythroughSwitcher() {
                 </button>
               );
             })}
+            {openMut.isError && (
+              // Silent failures here are how a broken playthrough (e.g.
+              // refinery checksum divergence after a migration was edited
+              // in place) looked like "clicks do nothing" — surface it so
+              // the user sees what actually happened.
+              <div
+                role="alert"
+                className="mx-1 mt-1 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger"
+              >
+                Couldn't open playthrough:{" "}
+                {openMut.error instanceof Error
+                  ? openMut.error.message
+                  : String(openMut.error)}
+              </div>
+            )}
           </div>
           <div className="border-t border-border pt-1">
             <button
