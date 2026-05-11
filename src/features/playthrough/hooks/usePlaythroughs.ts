@@ -49,8 +49,28 @@ export function useClosePlaythrough() {
 export function useSetCurrentTier() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (tier: number) => playthroughApi.setCurrentTier(tier),
-    onSuccess: () => invalidatePlaythroughs(client),
+    mutationFn: async (tier: number) => {
+      // Capture the pre-change tier *now* so the undo reverse can
+      // restore it. Reading from the cache (not the server) keeps the
+      // round-trip count down and matches what the user actually saw
+      // in the header at the moment they bumped the selector.
+      const prev =
+        client.getQueryData<{ currentTier: number } | null>(
+          queryKeys.playthrough.current,
+        )?.currentTier ?? 0;
+      const { useUndoStore } = await import("@/shared/undo/store");
+      await useUndoStore.getState().push({
+        apply: async () => {
+          await playthroughApi.setCurrentTier(tier);
+          invalidatePlaythroughs(client);
+        },
+        reverse: async () => {
+          await playthroughApi.setCurrentTier(prev);
+          invalidatePlaythroughs(client);
+        },
+        label: `Set tier to ${tier}`,
+      });
+    },
   });
 }
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   BookOpen,
   Factory as FactoryIcon,
@@ -24,7 +24,9 @@ import { TrainRoutesView } from "@/features/trains/components/TrainRoutesView";
 import { NetworkView } from "@/features/network/components/NetworkView";
 import { AltsView } from "@/features/alts/components/AltsView";
 import { PlaythroughSwitcher } from "@/features/playthrough/components/PlaythroughSwitcher";
+import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { PowerView } from "@/features/power/components/PowerView";
+import { useUndoStore } from "@/shared/undo/store";
 
 type Route = "home" | "factories" | "logistics" | "trains" | "power" | "network" | "library" | "alts";
 
@@ -43,6 +45,47 @@ export function AppShell() {
   const { mode, toggle } = useThemeMode();
   const [route, setRoute] = useState<Route>("factories");
   const [showAbout, setShowAbout] = useState(false);
+  const undo = useUndoStore((s) => s.undo);
+  const redo = useUndoStore((s) => s.redo);
+  const reset = useUndoStore((s) => s.reset);
+  const toast = useUndoStore((s) => s.toast);
+  const clearToast = useUndoStore((s) => s.clearToast);
+  const playthroughId = useCurrentPlaythrough().data?.id ?? null;
+
+  // ⌘Z / Ctrl+Z undoes, ⌘⇧Z / Ctrl+Shift+Z redoes. Suppress when the
+  // user is mid-edit in a text field so single-char undo doesn't fight
+  // the browser's native input history.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const meta = e.metaKey || e.ctrlKey;
+      if (!meta || e.key.toLowerCase() !== "z") return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
+      e.preventDefault();
+      if (e.shiftKey) {
+        void redo();
+      } else {
+        void undo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
+
+  // Clearing the undo stack when the active playthrough changes avoids
+  // an undo against playthrough A landing reverse calls against
+  // playthrough B's DB. The toast naturally falls away too.
+  useEffect(() => {
+    reset();
+  }, [playthroughId, reset]);
+
+  // Auto-dismiss the undo / redo toast after a short window.
+  useEffect(() => {
+    if (!toast) return;
+    const t = window.setTimeout(clearToast, 1800);
+    return () => window.clearTimeout(t);
+  }, [toast, clearToast]);
 
   return (
     <div className="flex h-full flex-col">
@@ -65,6 +108,15 @@ export function AppShell() {
         </div>
       </header>
       {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-border bg-bg-raised px-4 py-1.5 text-xs text-fg shadow-lg"
+        >
+          {toast.kind === "undo" ? "Undid" : "Redid"}: {toast.label}
+        </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         <nav
