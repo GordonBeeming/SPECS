@@ -85,7 +85,7 @@ export function NewFactoryPanel({ onClose, onApplied }: NewFactoryPanelProps) {
     }));
   }, [items.data, recipes.data]);
 
-  const derive = async () => {
+  const derive = async (bypassSupply = false) => {
     if (!target) return;
     setPending(true);
     setResult(null);
@@ -94,6 +94,7 @@ export function NewFactoryPanel({ onClose, onApplied }: NewFactoryPanelProps) {
       const r = await plannerApi.derive({
         targetItemId: target,
         targetIpm,
+        bypassSupply,
       });
       setResult(r);
     } finally {
@@ -210,11 +211,15 @@ function PanelError({
   items,
   nodes,
   onAfterClaim,
+  onPlaceAnyway,
+  placeAnywayPending,
 }: {
   error: PlannerError;
   items: { id: string; name: string }[];
   nodes: import("@/features/resources/types").ResourceNodeRow[];
   onAfterClaim: () => void;
+  onPlaceAnyway: () => void;
+  placeAnywayPending: boolean;
 }) {
   const [claimingFor, setClaimingFor] = useState<{
     id: string;
@@ -264,6 +269,19 @@ function PanelError({
             onClaimed={onAfterClaim}
           />
         )}
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/40 pt-2">
+          <span className="text-[10px] text-fg-muted">
+            Or place the pins now and bind supply by dragging nodes onto them.
+          </span>
+          <Button
+            variant="ghost"
+            onClick={onPlaceAnyway}
+            disabled={placeAnywayPending}
+            className="px-2 py-1 text-[10px]"
+          >
+            {placeAnywayPending ? "Placing…" : "Place anyway"}
+          </Button>
+        </div>
       </div>
     );
   }
