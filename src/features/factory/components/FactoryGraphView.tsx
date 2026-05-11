@@ -143,12 +143,23 @@ function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }
   const recipes = useRecipes();
   const removeMachine = useRemoveMachine(factoryId);
 
+  // The mutation object's reference changes every render, but
+  // `mutate` is what we actually need inside the node's onRemove
+  // callback. Stash it in a ref so closing over it doesn't make
+  // initialNodes unstable and trigger an infinite setNodes loop
+  // through xyflow's StoreUpdater.
+  const removeRef = useRef(removeMachine.mutate);
+  useEffect(() => {
+    removeRef.current = removeMachine.mutate;
+  }, [removeMachine.mutate]);
+
   const computedLayout = useMemo(() => autoLayout(machines), [machines]);
 
   const initialNodes: FlowNode[] = useMemo(() => {
     return machines.map((m) => {
       const fromUser = layouts.get(m.id);
       const pos = fromUser ?? computedLayout.get(m.id) ?? { x: 0, y: 0 };
+      const recipeName = recipeNames.get(m.recipeId) ?? m.recipeId;
       return {
         id: m.id,
         type: "machine" as const,
@@ -156,16 +167,16 @@ function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }
         data: {
           machine: m,
           buildingName: buildingNames.get(m.buildingId) ?? m.buildingId,
-          recipeName: recipeNames.get(m.recipeId) ?? m.recipeId,
+          recipeName,
           onRemove: () => {
-            if (confirm(`Remove this ${recipeNames.get(m.recipeId) ?? "machine"} row?`)) {
-              removeMachine.mutate(m.id);
+            if (confirm(`Remove this ${recipeName} row?`)) {
+              removeRef.current(m.id);
             }
           },
         },
       };
     });
-  }, [machines, layouts, computedLayout, buildingNames, recipeNames, removeMachine]);
+  }, [machines, layouts, computedLayout, buildingNames, recipeNames]);
 
   // Derive edges from the recipe graph — for any two machines where the
   // upstream's recipe outputs an item that the downstream's recipe takes

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Factory as FactoryGlyph, Pencil } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import { Icon } from "@/shared/ui/Icon";
@@ -40,11 +40,29 @@ export function FactoryDetail({ factoryId }: FactoryDetailProps) {
   }
 
   const { factory, machines, ledger } = detail.data;
-  const buildingNames = new Map(buildings.data?.map((b) => [b.id, b.name]) ?? []);
-  const recipeNames = new Map(recipes.data?.map((r) => [r.id, r.name]) ?? []);
-  const itemNames = new Map(items.data?.map((i) => [i.id, i.name]) ?? []);
-  const layoutMap = new Map(
-    (layouts.data ?? []).map((l) => [l.machineId, { x: l.x, y: l.y }]),
+  // Memoise the lookup Maps + layout Map so the FactoryGraphView's
+  // initialNodes useMemo doesn't see a fresh identity every render
+  // (that path led to a `setNodes` ↔ `useEffect` infinite loop
+  // through xyflow's StoreUpdater, surfaced as "Maximum update depth
+  // exceeded" inside ReactFlow's Wrapper).
+  const buildingNames = useMemo(
+    () => new Map(buildings.data?.map((b) => [b.id, b.name]) ?? []),
+    [buildings.data],
+  );
+  const recipeNames = useMemo(
+    () => new Map(recipes.data?.map((r) => [r.id, r.name]) ?? []),
+    [recipes.data],
+  );
+  const itemNames = useMemo(
+    () => new Map(items.data?.map((i) => [i.id, i.name]) ?? []),
+    [items.data],
+  );
+  const layoutMap = useMemo(
+    () =>
+      new Map(
+        (layouts.data ?? []).map((l) => [l.machineId, { x: l.x, y: l.y }] as const),
+      ),
+    [layouts.data],
   );
 
   return (
