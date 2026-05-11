@@ -1,0 +1,691 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - link "jump to content" [ref=e3] [cursor=pointer]:
+      - /url: "#content"
+    - generic [ref=e5]:
+      - generic [ref=e7] [cursor=pointer]: my subreddits ▼
+      - generic [ref=e8]:
+        - list [ref=e9]:
+          - listitem [ref=e10]:
+            - link "popular" [ref=e11] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/popular/
+          - listitem [ref=e12]:
+            - text: "-"
+            - link "all" [ref=e13] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/all/
+          - listitem [ref=e14]:
+            - text: "-"
+            - link "users" [ref=e15] [cursor=pointer]:
+              - /url: https://old.reddit.com/users/
+        - text: "|"
+        - list [ref=e16]:
+          - listitem [ref=e17]:
+            - link "AskReddit" [ref=e18] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/AskReddit/
+          - listitem [ref=e19]:
+            - text: "-"
+            - link "pics" [ref=e20] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/pics/
+          - listitem [ref=e21]:
+            - text: "-"
+            - link "funny" [ref=e22] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/funny/
+          - listitem [ref=e23]:
+            - text: "-"
+            - link "movies" [ref=e24] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/movies/
+          - listitem [ref=e25]:
+            - text: "-"
+            - link "gaming" [ref=e26] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/gaming/
+          - listitem [ref=e27]:
+            - text: "-"
+            - link "worldnews" [ref=e28] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/worldnews/
+          - listitem [ref=e29]:
+            - text: "-"
+            - link "news" [ref=e30] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/news/
+          - listitem [ref=e31]:
+            - text: "-"
+            - link "todayilearned" [ref=e32] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/todayilearned/
+          - listitem [ref=e33]:
+            - text: "-"
+            - link "nottheonion" [ref=e34] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/nottheonion/
+          - listitem [ref=e35]:
+            - text: "-"
+            - link "explainlikeimfive" [ref=e36] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/explainlikeimfive/
+          - listitem [ref=e37]:
+            - text: "-"
+            - link "mildlyinteresting" [ref=e38] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/mildlyinteresting/
+          - listitem [ref=e39]:
+            - text: "-"
+            - link "DIY" [ref=e40] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/DIY/
+          - listitem [ref=e41]:
+            - text: "-"
+            - link "videos" [ref=e42] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/videos/
+          - listitem [ref=e43]:
+            - text: "-"
+            - link "OldSchoolCool" [ref=e44] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/OldSchoolCool/
+          - listitem [ref=e45]:
+            - text: "-"
+            - link "TwoXChromosomes" [ref=e46] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/TwoXChromosomes/
+          - listitem [ref=e47]:
+            - text: "-"
+            - link "tifu" [ref=e48] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/tifu/
+          - listitem [ref=e49]:
+            - text: "-"
+            - link "Music" [ref=e50] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/Music/
+          - listitem [ref=e51]:
+            - text: "-"
+            - link "books" [ref=e52] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/books/
+          - listitem [ref=e53]:
+            - text: "-"
+            - link "LifeProTips" [ref=e54] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/LifeProTips/
+          - listitem [ref=e55]:
+            - text: "-"
+            - link "dataisbeautiful" [ref=e56] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/dataisbeautiful/
+          - listitem [ref=e57]:
+            - text: "-"
+            - link "aww" [ref=e58] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/aww/
+          - listitem [ref=e59]:
+            - text: "-"
+            - link "science" [ref=e60] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/science/
+          - listitem [ref=e61]:
+            - text: "-"
+            - link "space" [ref=e62] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/space/
+          - listitem [ref=e63]:
+            - text: "-"
+            - link "Showerthoughts" [ref=e64] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/Showerthoughts/
+          - listitem [ref=e65]:
+            - text: "-"
+            - link "askscience" [ref=e66] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/askscience/
+          - listitem [ref=e67]:
+            - text: "-"
+            - link "Jokes" [ref=e68] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/Jokes/
+          - listitem [ref=e69]:
+            - text: "-"
+            - link "Art" [ref=e70] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/Art/
+          - listitem [ref=e71]:
+            - text: "-"
+            - link "IAmA" [ref=e72] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/IAmA/
+          - listitem [ref=e73]:
+            - text: "-"
+            - link "Futurology" [ref=e74] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/Futurology/
+          - listitem [ref=e75]:
+            - text: "-"
+            - link "sports" [ref=e76] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/sports/
+          - listitem [ref=e77]:
+            - text: "-"
+            - link "UpliftingNews" [ref=e78] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/UpliftingNews/
+          - listitem [ref=e79]:
+            - text: "-"
+            - link "food" [ref=e80] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/food/
+          - listitem [ref=e81]:
+            - text: "-"
+            - link "nosleep" [ref=e82] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/nosleep/
+          - listitem [ref=e83]:
+            - text: "-"
+            - link "creepy" [ref=e84] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/creepy/
+          - listitem [ref=e85]:
+            - text: "-"
+            - link "history" [ref=e86] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/history/
+          - listitem [ref=e87]:
+            - text: "-"
+            - link "gifs" [ref=e88] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/gifs/
+          - listitem [ref=e89]:
+            - text: "-"
+            - link "InternetIsBeautiful" [ref=e90] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/InternetIsBeautiful/
+          - listitem [ref=e91]:
+            - text: "-"
+            - link "GetMotivated" [ref=e92] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/GetMotivated/
+          - listitem [ref=e93]:
+            - text: "-"
+            - link "gadgets" [ref=e94] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/gadgets/
+          - listitem [ref=e95]:
+            - text: "-"
+            - link "announcements" [ref=e96] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/announcements/
+          - listitem [ref=e97]:
+            - text: "-"
+            - link "WritingPrompts" [ref=e98] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/WritingPrompts/
+          - listitem [ref=e99]:
+            - text: "-"
+            - link "philosophy" [ref=e100] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/philosophy/
+          - listitem [ref=e101]:
+            - text: "-"
+            - link "Documentaries" [ref=e102] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/Documentaries/
+          - listitem [ref=e103]:
+            - text: "-"
+            - link "EarthPorn" [ref=e104] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/EarthPorn/
+          - listitem [ref=e105]:
+            - text: "-"
+            - link "photoshopbattles" [ref=e106] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/photoshopbattles/
+          - listitem [ref=e107]:
+            - text: "-"
+            - link "listentothis" [ref=e108] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/listentothis/
+          - listitem [ref=e109]:
+            - text: "-"
+            - link "blog" [ref=e110] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/blog/
+      - link "more »" [ref=e111] [cursor=pointer]:
+        - /url: https://old.reddit.com/subreddits/
+    - generic [ref=e112]:
+      - link "SatisfactoryGame" [ref=e113] [cursor=pointer]:
+        - /url: https://old.reddit.com/
+        - img "SatisfactoryGame" [ref=e114]
+      - link "SatisfactoryGame" [ref=e116] [cursor=pointer]:
+        - /url: https://old.reddit.com/r/SatisfactoryGame/
+      - list [ref=e117]:
+        - listitem [ref=e118]:
+          - link "comments" [ref=e119] [cursor=pointer]:
+            - /url: https://old.reddit.com/r/SatisfactoryGame/comments/ug8ppz/high_res_game_map/
+    - generic [ref=e120]:
+      - generic [ref=e121]:
+        - text: Want to join?
+        - link "Log in" [ref=e122] [cursor=pointer]:
+          - /url: https://www.reddit.com/login
+        - text: or
+        - link "sign up" [ref=e123] [cursor=pointer]:
+          - /url: https://www.reddit.com/login
+        - text: in seconds.
+      - list
+  - generic [ref=e124]:
+    - search [ref=e125]:
+      - textbox "search" [ref=e126]
+      - button "Submit" [ref=e127] [cursor=pointer]
+    - generic [ref=e128]:
+      - generic [ref=e129]:
+        - text: this post was submitted on
+        - time [ref=e130]: 01 May 2022
+      - generic [ref=e131]: 13 points (94% upvoted)
+      - textbox [ref=e132]: https://redd.it/ug8ppz
+    - generic [ref=e133]:
+      - link "Submit LinkSubmit a new link" [ref=e134] [cursor=pointer]:
+        - /url: https://old.reddit.com/r/SatisfactoryGame/submit
+      - text: N/A
+    - generic [ref=e135]:
+      - text: N/A
+      - link "Submit TextSubmit a new text post" [ref=e136] [cursor=pointer]:
+        - /url: https://old.reddit.com/r/SatisfactoryGame/submit?selftext=true
+    - generic [ref=e138]:
+      - text: Subreddit Info
+      - heading "SatisfactoryGame" [level=1] [ref=e139]:
+        - link "SatisfactoryGame" [ref=e140] [cursor=pointer]:
+          - /url: https://old.reddit.com/r/SatisfactoryGame/
+      - link "join" [ref=e142] [cursor=pointer]:
+        - /url: "#"
+      - generic [ref=e145]:
+        - list [ref=e146]:
+          - listitem [ref=e147]:
+            - link "Check out the game" [ref=e148] [cursor=pointer]:
+              - /url: https://www.satisfactorygame.com
+              - strong [ref=e149]: Check out the game
+          - listitem [ref=e150]:
+            - link "Join the Discord" [ref=e151] [cursor=pointer]:
+              - /url: https://discord.gg/satisfactory
+              - strong [ref=e152]: Join the Discord
+          - listitem [ref=e153]:
+            - link "Official Wiki" [ref=e154] [cursor=pointer]:
+              - /url: https://satisfactory.wiki.gg/wiki/Satisfactory_Wiki
+              - strong [ref=e155]: Official Wiki
+          - listitem [ref=e156]:
+            - link "Patch Notes" [ref=e157] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/SatisfactoryGame/search?q=flair%3A%7BPatch+Notes%7D&restrict_sr=on&sort=new&t=year
+              - strong [ref=e158]: Patch Notes
+          - listitem [ref=e159]:
+            - link "Dedicated Servers" [ref=e160] [cursor=pointer]:
+              - /url: https://satisfactory.wiki.gg/wiki/Dedicated_servers
+              - strong [ref=e161]: Dedicated Servers
+          - listitem [ref=e162]:
+            - link "Bugs, Feedback, Q&A" [ref=e163] [cursor=pointer]:
+              - /url: https://questions.satisfactorygame.com/
+              - strong [ref=e164]: Bugs, Feedback, Q&A
+          - listitem [ref=e165]:
+            - link "Get Older Version" [ref=e166] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/SatisfactoryGame/comments/17ns9oc/info_steam_how_to_download_older_versions_of/
+              - strong [ref=e167]: Get Older Version
+          - listitem [ref=e168]:
+            - link "Online Tools" [ref=e169] [cursor=pointer]:
+              - /url: https://satisfactory.wiki.gg/wiki/Online_tools
+              - strong [ref=e170]: Online Tools
+          - listitem [ref=e171]:
+            - link "Train Signal Info" [ref=e172] [cursor=pointer]:
+              - /url: https://satisfactory.wiki.gg/wiki/Train_Signals
+              - strong [ref=e173]: Train Signal Info
+          - listitem [ref=e174]:
+            - link "Alternate Recipes" [ref=e175] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/SatisfactoryGame/comments/1fekus9/alternate_recipe_ranking_10_optimizing_for/
+              - strong [ref=e176]: Alternate Recipes
+          - listitem [ref=e177]:
+            - link "Use of Game Mods" [ref=e178] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/SatisfactoryGame/comments/199xoid/guide_use_of_game_mods_and_list_of_quality_of/
+              - strong [ref=e179]: Use of Game Mods
+          - listitem [ref=e180]:
+            - link "QoL Game Mods" [ref=e181] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/SatisfactoryGame/comments/199xoid/guide_use_of_game_mods_and_list_of_quality_of/
+              - strong [ref=e182]: QoL Game Mods
+          - listitem [ref=e183]:
+            - link "Recipe Ranker" [ref=e184] [cursor=pointer]:
+              - /url: https://satisfactory-ranker-91f08c6418db.herokuapp.com
+              - strong [ref=e185]: Recipe Ranker
+          - listitem [ref=e186]:
+            - link "Unban Requests" [ref=e187] [cursor=pointer]:
+              - /url: https://dyno.gg/form/9b3c32bb
+              - strong [ref=e188]: Unban Requests
+          - listitem [ref=e189]:
+            - link "Related Subreddit" [ref=e190] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/SatisfactoryPorn/
+              - strong [ref=e191]: Related Subreddit
+        - paragraph [ref=e192]:
+          - strong [ref=e193]: Community Rules
+        - blockquote [ref=e194]:
+          - list [ref=e195]:
+            - listitem [ref=e196]:
+              - paragraph [ref=e197]:
+                - link "Please click here to see the full list of rules and adhere to them" [ref=e198] [cursor=pointer]:
+                  - /url: https://www.reddit.com/r/SatisfactoryGame/about/rules/
+            - listitem [ref=e199]:
+              - paragraph [ref=e200]: The global rules of reddit still apply here
+            - listitem [ref=e201]:
+              - paragraph [ref=e202]: Following Reddiquette is required. Using downvotes for content you don't enjoy is fine, however abuse of this may lead to future changes.
+            - listitem [ref=e203]:
+              - paragraph [ref=e204]: Posts and comments that contain racist, sexist, homophobic content, or threats will be removed and the users will be banned.
+            - listitem [ref=e205]:
+              - paragraph [ref=e206]: If you have any issues, please message the mods.
+      - generic [ref=e208]:
+        - text: a community for
+        - time [ref=e209]: 8 years
+    - generic [ref=e211]:
+      - heading "MODERATORS" [level=1] [ref=e213]
+      - list [ref=e214]:
+        - listitem [ref=e215]:
+          - link "message the mods" [ref=e216] [cursor=pointer]:
+            - /url: /message/compose/?to=/r/SatisfactoryGame
+    - complementary [ref=e219]:
+      - generic [ref=e220]:
+        - generic [ref=e221]:
+          - text: discussions in
+          - link "r/SatisfactoryGame" [ref=e222] [cursor=pointer]:
+            - /url: https://old.reddit.com/r/SatisfactoryGame/?ref=readnext
+        - navigation [ref=e223]:
+          - generic [ref=e224] [cursor=pointer]: <
+          - generic [ref=e225] [cursor=pointer]: ">"
+        - generic [ref=e227] [cursor=pointer]: X
+      - 'link "86 · 24 comments Patch Notes: v1.2.2.1 – (EXPERIMENTAL) - Build 489969" [ref=e229] [cursor=pointer]':
+        - /url: https://old.reddit.com/r/SatisfactoryGame/comments/1t6imbz/patch_notes_v1221_experimental_build_489969/?ref=readnext_0
+        - generic [ref=e230]: 86 · 24 comments
+        - generic [ref=e231]: "Patch Notes: v1.2.2.1 – (EXPERIMENTAL) - Build 489969"
+    - text: This subreddit uses the /r/Naut theme.
+  - main [ref=e232]:
+    - generic [ref=e233]:
+      - link "Welcome to Reddit. Come for the cats, stay for the empathy. Become a Redditor and start exploring." [ref=e234] [cursor=pointer]:
+        - /url: /login
+        - heading "Welcome to Reddit." [level=2] [ref=e235]
+        - paragraph [ref=e236]: Come for the cats, stay for the empathy.
+        - generic [ref=e237]:
+          - generic [ref=e238]: Become a Redditor
+          - paragraph [ref=e239]: and start exploring.
+      - link "×" [ref=e240] [cursor=pointer]:
+        - /url: "#"
+    - generic [ref=e242]:
+      - paragraph
+      - generic [ref=e243]:
+        - button "upvote" [ref=e244] [cursor=pointer]
+        - generic "13" [ref=e245]
+        - button "downvote" [ref=e246] [cursor=pointer]
+      - link [ref=e247] [cursor=pointer]:
+        - /url: /r/SatisfactoryGame/comments/ug8ppz/high_res_game_map/
+      - generic [ref=e249]:
+        - paragraph [ref=e250]:
+          - link "High res game map" [ref=e251] [cursor=pointer]:
+            - /url: /r/SatisfactoryGame/comments/ug8ppz/high_res_game_map/
+          - link "self.SatisfactoryGame" [ref=e252] [cursor=pointer]:
+            - /url: /r/SatisfactoryGame/
+        - paragraph [ref=e254]:
+          - text: submitted
+          - time [ref=e255]: 4 years ago
+          - time [ref=e256]: "*"
+          - text: by [deleted]
+        - list [ref=e257]:
+          - listitem [ref=e258]:
+            - link "26 comments" [ref=e259] [cursor=pointer]:
+              - /url: https://old.reddit.com/r/SatisfactoryGame/comments/ug8ppz/high_res_game_map/
+          - listitem [ref=e260]:
+            - link "share" [ref=e261] [cursor=pointer]:
+              - /url: "javascript: void 0;"
+          - listitem [ref=e262]:
+            - link "save" [ref=e263] [cursor=pointer]:
+              - /url: "#"
+          - listitem [ref=e264]:
+            - link "hide" [ref=e267] [cursor=pointer]:
+              - /url: javascript:void(0)
+          - listitem [ref=e268]:
+            - link "report" [ref=e269] [cursor=pointer]:
+              - /url: javascript:void(0)
+    - generic [ref=e270]:
+      - generic [ref=e272]:
+        - text: "sorted by:"
+        - generic [ref=e274] [cursor=pointer]: best (suggested) ▼
+      - link "Want to add to the discussion? Post a comment! Create an account" [ref=e277] [cursor=pointer]:
+        - /url: /login
+        - textbox [ref=e278]
+        - generic [ref=e279]:
+          - heading "Want to add to the discussion?" [level=2] [ref=e280]
+          - paragraph [ref=e281]: Post a comment!
+          - generic [ref=e283]: Create an account
+      - generic [ref=e284]:
+        - text: you are viewing a single comment's thread.
+        - paragraph [ref=e285]:
+          - link "view the rest of the comments" [ref=e286] [cursor=pointer]:
+            - /url: /r/SatisfactoryGame/comments/ug8ppz/high_res_game_map/
+          - text: →
+      - generic [ref=e288]:
+        - paragraph
+        - generic [ref=e289]:
+          - button "upvote" [ref=e290] [cursor=pointer]
+          - button "downvote" [ref=e291] [cursor=pointer]
+        - generic [ref=e292]:
+          - paragraph [ref=e293]:
+            - link "[–]" [ref=e294] [cursor=pointer]:
+              - /url: javascript:void(0)
+            - link "mysticreddit" [ref=e295] [cursor=pointer]:
+              - /url: https://old.reddit.com/user/mysticreddit
+            - text: • • 2 points •
+            - time [ref=e296]: 1 year ago
+            - time [ref=e297]: "*"
+          - generic [ref=e300]:
+            - heading "Update" [level=1] [ref=e301]
+            - paragraph [ref=e302]: It is pretty easy to rip the tiles from SCIM.
+            - paragraph [ref=e303]:
+              - text: Normally a canvas is used for rendering which means it is tricky to track down the tiles but we can modify Leaflet to NOT use canvas rendering and instead use
+              - code [ref=e304]: <img>
+              - text: for the map.
+            - list [ref=e305]:
+              - listitem [ref=e306]:
+                - link "https://satisfactory-calculator.com/en/interactive-map" [ref=e307] [cursor=pointer]:
+                  - /url: https://satisfactory-calculator.com/en/interactive-map
+              - listitem [ref=e308]: Inspect (Ctrl-Shift-I)
+              - listitem [ref=e309]: Sources > static.satisfactory-calculator.com
+              - listitem [ref=e310]:
+                - text: Setup a breakpoint on
+                - code [ref=e311]: https://static.satisfactory-calculator.com/js/InteractiveMap/build/SCIM.js
+                - text: "on the line:"
+                - code [ref=e312]: "this.leafletMap = L.map(\"leafletMap\", {"
+              - listitem [ref=e313]:
+                - text: Press
+                - code [ref=e314]: F10
+                - text: to step over
+              - listitem [ref=e315]:
+                - text: "Enter this line into the console:"
+                - code [ref=e316]: this.leafletMap.options.preferCanvas = false;
+              - listitem [ref=e317]:
+                - text: Press
+                - code [ref=e318]: F8
+                - text: to continue
+              - listitem [ref=e319]: Pan/Zoom on the map
+              - listitem [ref=e320]:
+                - text: "Inspect the div that has the tiles:"
+                - code [ref=e321]: var leaf = document.getElementById('leafletMap');
+            - paragraph [ref=e322]: "Drilling down you'll see image files such as:"
+            - list [ref=e323]:
+              - listitem [ref=e324]:
+                - link "https://static.satisfactory-calculator.com/imgMap/gameLayer/Stable/4/9/9.png?v=1727095012" [ref=e325] [cursor=pointer]:
+                  - /url: https://static.satisfactory-calculator.com/imgMap/gameLayer/Stable/4/9/9.png?v=1727095012
+            - paragraph [ref=e326]: The pseudo-version is to prevent mass downloading of images.
+            - paragraph [ref=e327]: Each tile is 256x256 px. The question is how many tiles are used for each zoom?
+            - table [ref=e328]:
+              - rowgroup [ref=e329]:
+                - row "Zoom Dimensions" [ref=e330]:
+                  - columnheader "Zoom" [ref=e331]
+                  - columnheader "Dimensions" [ref=e332]
+              - rowgroup [ref=e333]:
+                - row "3 5" [ref=e334]:
+                  - cell "3" [ref=e335]
+                  - cell "5" [ref=e336]
+                - row "4 10" [ref=e337]:
+                  - cell "4" [ref=e338]
+                  - cell "10" [ref=e339]
+                - row "5 20" [ref=e340]:
+                  - cell "5" [ref=e341]
+                  - cell "20" [ref=e342]
+                - row "6 40" [ref=e343]:
+                  - cell "6" [ref=e344]
+                  - cell "40" [ref=e345]
+                - row "7 80" [ref=e346]:
+                  - cell "7" [ref=e347]
+                  - cell "80" [ref=e348]
+                - row "8 160" [ref=e349]:
+                  - cell "8" [ref=e350]
+                  - cell "160" [ref=e351]
+            - code [ref=e353]: dimensions = 5 * (1 << (zoom-3));
+            - paragraph [ref=e354]: For zoom level 4, we have 10x10 tiles in the map.
+            - list [ref=e355]:
+              - listitem [ref=e356]: Top-left is /4/0/0.png
+              - listitem [ref=e357]: Bottom-right is /4/9/9.png
+            - paragraph [ref=e358]: "You will need a little CSS to position each image with absolute coordinates:"
+            - code [ref=e360]: ".leaflet-tile { position: absolute; }"
+            - paragraph [ref=e361]: i.e.
+            - code [ref=e363]: "<img src=\"zoom/4/0/0.png\" class=\"tile\" style=\"transform: translate3d( 0px, 0px, 0px);\"> <img src=\"zoom/4/1/0.png\" class=\"tile\" style=\"transform: translate3d( 256px, 0px, 0px);\"> <img src=\"zoom4/2/0.png\" class=\"tile\" style=\"transform: translate3d( 512px, 0px, 0px);\">"
+            - paragraph [ref=e364]: Hope this helps other people wanting to make their own offline satisfactory map viewer.
+            - separator [ref=e365]
+            - paragraph [ref=e366]: I'm looking forward to this as well.
+            - paragraph [ref=e367]:
+              - text: ~
+              - deletion [ref=e368]:
+                - text: Any chance you can provide some more details / mini-writeup for how you ripped the tiles and stitched them together? Looks like SCIM is using
+                - link "Leaflet" [ref=e369] [cursor=pointer]:
+                  - /url: https://static.satisfactory-calculator.com/js/leaflet.js
+                - text: as the map viewer but I'm not sure of the total number of tiles?
+              - text: ~
+            - paragraph [ref=e370]: "i.e. I see that it splits the main map image into two layers:"
+            - list [ref=e371]:
+              - listitem [ref=e372]:
+                - code [ref=e373]: https://static.satisfactory-calculator.com/imgMap/gameLayer/Stable/#/#/#.png
+            - paragraph [ref=e374]:
+              - text: Further reading of
+              - code [ref=e375]: GameMap.js
+              - text: "shows this is the format:"
+            - code [ref=e377]: "this.baseLayers.gameLayer = L.tileLayer(this.staticUrl + '/imgMap/gameLayer/' + this.build + '/{z}/{x}/{y}.png?v=' + this.version, baseLayersOptions); this.baseLayers.realisticLayer = L.tileLayer(this.staticUrl + '/imgMap/realisticLayer/' + this.build + '/{z}/{x}/{y}.png?v=' + this.version, baseLayersOptions);"
+            - paragraph [ref=e378]:
+              - deletion [ref=e379]: I'm manually downloading each tile but it looks like it should be doable to write a simple script to pull down each tile, and even auto-generate the html table.
+              - text: This JS will generate a curl script file to slurp down the images.
+            - code [ref=e381]: "function BuildFetchScript( zoom, dimensions, baseURL, version ) { var txt = \"\\n\", x, y; for( y = 0; y < dimensions; y++ ) for( x = 0; x < dimensions; x++ ) { var src = baseURL + zoom + \"/\" + x + \"/\" + y + \".png?v=\" + version; var dst = x + '_' + y + '.png'; txt += 'curl ' + src + ' -o ' + dst + '\\n'; } console.log( txt ); }"
+            - paragraph [ref=e382]:
+              - text: Checking the GitHub
+              - link "repro" [ref=e383] [cursor=pointer]:
+                - /url: https://github.com/AnthorNet/SC-InteractiveMap/tree/dev
+              - text: for SCIM I see it is missing most of the image files. There is only an
+              - code [ref=e384]: img\
+              - text: folder but no
+              - code [ref=e385]: imgMap\
+              - text: folder which is why we even have to mess with stitching tiles in the first place. :-/
+            - paragraph [ref=e386]: The reason I ask is that I'm trying to find out the x,y,z data for the (impure, normal, pure) nodes and I got interested in the map since it displays them. i.e. I want to know how many of each impure, normal, and pure nodes are, and where they are located, so I can plan my new Über factory.
+            - paragraph [ref=e387]:
+              - strong [ref=e388]: "Edit:"
+              - text: Add calculation for dimensions from zoom level.
+          - list [ref=e389]:
+            - listitem [ref=e390]:
+              - link "permalink" [ref=e391] [cursor=pointer]:
+                - /url: https://old.reddit.com/r/SatisfactoryGame/comments/ug8ppz/high_res_game_map/lomnhut/
+            - listitem [ref=e392]:
+              - link "embed" [ref=e393] [cursor=pointer]:
+                - /url: javascript:void(0)
+            - listitem [ref=e394]:
+              - link "save" [ref=e395] [cursor=pointer]:
+                - /url: javascript:void(0)
+            - listitem [ref=e396]:
+              - link "parent" [ref=e397] [cursor=pointer]:
+                - /url: https://old.reddit.com/r/SatisfactoryGame/comments/ug8ppz/high_res_game_map/lold6l1/
+            - listitem [ref=e398]:
+              - link "report" [ref=e399] [cursor=pointer]:
+                - /url: javascript:void(0)
+            - listitem [ref=e400]:
+              - link "reply" [ref=e401] [cursor=pointer]:
+                - /url: javascript:void(0)
+        - generic [ref=e404]:
+          - paragraph
+          - generic [ref=e405]:
+            - button "upvote" [ref=e406] [cursor=pointer]
+            - button "downvote" [ref=e407] [cursor=pointer]
+          - generic [ref=e408]:
+            - paragraph [ref=e409]:
+              - link "[–]" [ref=e410] [cursor=pointer]:
+                - /url: javascript:void(0)
+              - link "Mattsterpiece29" [ref=e411] [cursor=pointer]:
+                - /url: https://old.reddit.com/user/Mattsterpiece29
+              - text: • • 5 points •
+              - time [ref=e412]: 6 months ago
+            - paragraph [ref=e416]:
+              - text: Thank you so much! According to your instructions I managed to make these two maps (game and realistic view, each at zoom 5)
+              - text: "link for anyone interested:"
+              - link "https://drive.google.com/drive/folders/1x0f-BeaA3yimW1yUDP7nNsNXveyN7DEO?usp=sharing" [ref=e417] [cursor=pointer]:
+                - /url: https://drive.google.com/drive/folders/1x0f-BeaA3yimW1yUDP7nNsNXveyN7DEO?usp=sharing
+            - list [ref=e418]:
+              - listitem [ref=e419]:
+                - link "permalink" [ref=e420] [cursor=pointer]:
+                  - /url: https://old.reddit.com/r/SatisfactoryGame/comments/ug8ppz/high_res_game_map/nodfxzu/
+              - listitem [ref=e421]:
+                - link "embed" [ref=e422] [cursor=pointer]:
+                  - /url: javascript:void(0)
+              - listitem [ref=e423]:
+                - link "save" [ref=e424] [cursor=pointer]:
+                  - /url: javascript:void(0)
+              - listitem [ref=e425]:
+                - link "parent" [ref=e426] [cursor=pointer]:
+                  - /url: "#lomnhut"
+              - listitem [ref=e427]:
+                - link "report" [ref=e428] [cursor=pointer]:
+                  - /url: javascript:void(0)
+              - listitem [ref=e429]:
+                - link "reply" [ref=e430] [cursor=pointer]:
+                  - /url: javascript:void(0)
+          - generic [ref=e433]:
+            - paragraph
+            - generic [ref=e434]:
+              - button "upvote" [ref=e435] [cursor=pointer]
+              - button "downvote" [ref=e436] [cursor=pointer]
+            - generic [ref=e437]:
+              - paragraph [ref=e438]:
+                - link "[–]" [ref=e439] [cursor=pointer]:
+                  - /url: javascript:void(0)
+                - link "mysticreddit" [ref=e440] [cursor=pointer]:
+                  - /url: https://old.reddit.com/user/mysticreddit
+                - text: • • 2 points •
+                - time [ref=e441]: 6 months ago
+              - paragraph [ref=e445]: Looks beautiful! Thanks for keeping me in the loop!
+              - list [ref=e446]:
+                - listitem [ref=e447]:
+                  - link "permalink" [ref=e448] [cursor=pointer]:
+                    - /url: https://old.reddit.com/r/SatisfactoryGame/comments/ug8ppz/high_res_game_map/nodwp6v/
+                - listitem [ref=e449]:
+                  - link "embed" [ref=e450] [cursor=pointer]:
+                    - /url: javascript:void(0)
+                - listitem [ref=e451]:
+                  - link "save" [ref=e452] [cursor=pointer]:
+                    - /url: javascript:void(0)
+                - listitem [ref=e453]:
+                  - link "parent" [ref=e454] [cursor=pointer]:
+                    - /url: "#nodfxzu"
+                - listitem [ref=e455]:
+                  - link "report" [ref=e456] [cursor=pointer]:
+                    - /url: javascript:void(0)
+                - listitem [ref=e457]:
+                  - link "reply" [ref=e458] [cursor=pointer]:
+                    - /url: javascript:void(0)
+  - generic [ref=e459]:
+    - generic [ref=e460]:
+      - list [ref=e462]:
+        - listitem [ref=e463]: about
+        - listitem [ref=e464]:
+          - link "blog" [ref=e465] [cursor=pointer]:
+            - /url: https://redditblog.com
+        - listitem [ref=e466]:
+          - link "about" [ref=e467] [cursor=pointer]:
+            - /url: https://www.redditinc.com
+        - listitem [ref=e468]:
+          - link "advertising" [ref=e469] [cursor=pointer]:
+            - /url: https://www.redditinc.com/advertising
+        - listitem [ref=e470]:
+          - link "careers" [ref=e471] [cursor=pointer]:
+            - /url: https://www.redditinc.com/careers
+      - list [ref=e473]:
+        - listitem [ref=e474]: help
+        - listitem [ref=e475]:
+          - link "site rules" [ref=e476] [cursor=pointer]:
+            - /url: https://old.reddit.com/rules/
+        - listitem [ref=e477]:
+          - link "Reddit help center" [ref=e478] [cursor=pointer]:
+            - /url: https://www.reddithelp.com
+        - listitem [ref=e479]:
+          - link "reddiquette" [ref=e480] [cursor=pointer]:
+            - /url: https://old.reddit.com/wiki/reddiquette/
+        - listitem [ref=e481]:
+          - link "mod guidelines" [ref=e482] [cursor=pointer]:
+            - /url: https://old.reddit.com/help/healthycommunities/
+        - listitem [ref=e483]:
+          - link "contact us" [ref=e484] [cursor=pointer]:
+            - /url: https://old.reddit.com/contact/
+      - list [ref=e486]:
+        - listitem [ref=e487]: apps & tools
+        - listitem [ref=e488]:
+          - link "Reddit for iPhone" [ref=e489] [cursor=pointer]:
+            - /url: https://itunes.apple.com/us/app/reddit-the-official-app/id1064216828?mt=8
+        - listitem [ref=e490]:
+          - link "Reddit for Android" [ref=e491] [cursor=pointer]:
+            - /url: https://play.google.com/store/apps/details?id=com.reddit.frontpage
+        - listitem [ref=e492]:
+          - link "mobile website" [ref=e493] [cursor=pointer]:
+            - /url: "#"
+      - list [ref=e495]:
+        - listitem [ref=e496]: <3
+        - listitem [ref=e497]:
+          - link "reddit premium" [ref=e498] [cursor=pointer]:
+            - /url: https://old.reddit.com/premium/
+    - paragraph [ref=e499]:
+      - text: Use of this site constitutes acceptance of our
+      - link "User Agreement" [ref=e500] [cursor=pointer]:
+        - /url: https://old.reddit.com/help/useragreement
+      - text: and
+      - link "Privacy Policy" [ref=e501] [cursor=pointer]:
+        - /url: https://old.reddit.com/help/privacypolicy
+      - text: . © 2026 reddit inc. All rights reserved.
+    - paragraph [ref=e502]: REDDIT and the ALIEN Logo are registered trademarks of reddit inc.
