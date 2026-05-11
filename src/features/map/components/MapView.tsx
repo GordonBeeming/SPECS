@@ -8,6 +8,10 @@ import {
 
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { useFactoryDetail, useFactoryList } from "@/features/factory/hooks/useFactories";
+import { useLogisticsLinks } from "@/features/logistics/hooks/useLogistics";
+import { useAllPowerGens } from "@/features/power/hooks/usePower";
+import { useGenerators } from "@/features/library/hooks/useLibrary";
+import { powerApi } from "@/features/power/api";
 import {
   useClearNodeClaim,
   useResourceNodes,
@@ -18,7 +22,7 @@ import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { Icon } from "@/shared/ui/Icon";
 import { useNavStore } from "@/shared/nav-store";
-import { Factory as FactoryGlyph, Pencil } from "lucide-react";
+import { Factory as FactoryGlyph, Pencil, Unlink, Zap } from "lucide-react";
 
 import mapAsset from "@/assets/map/satisfactory-map.webp";
 
@@ -91,6 +95,9 @@ export function MapView() {
   const playthrough = useCurrentPlaythrough();
   const factories = useFactoryList();
   const nodes = useResourceNodes();
+  const links = useLogisticsLinks();
+  const powerGens = useAllPowerGens();
+  const generators = useGenerators();
   const setClaim = useSetNodeClaim();
   const clearClaim = useClearNodeClaim();
   const wrapRef = useRef<ReactZoomPanPinchRef | null>(null);
@@ -132,7 +139,37 @@ export function MapView() {
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedFactoryId, setSelectedFactoryId] = useState<string | null>(null);
+  // Power-gen selection — the popover that consumes it lands in a
+  // follow-up commit; for now setting it just clears the other
+  // selection types so click handlers behave predictably.
+  const [_selectedPowerGenId, setSelectedPowerGenId] = useState<string | null>(null);
+  void _selectedPowerGenId;
   const [dragging, setDragging] = useState<string | null>(null);
+
+  // Bound inputs (claimed nodes + upstream factories) for the
+  // currently-selected factory. Drives the SVG line overlay and the
+  // "always-show this node even if its filter is off" override.
+  const boundNodes = useMemo(() => {
+    if (!selectedFactoryId) return [];
+    return (nodes.data ?? []).filter((n) => n.claim?.factoryId === selectedFactoryId);
+  }, [nodes.data, selectedFactoryId]);
+
+  const upstreamFactories = useMemo(() => {
+    if (!selectedFactoryId) return [];
+    const factoryById = new Map((factories.data ?? []).map((f) => [f.id, f]));
+    const out: Array<{
+      link: NonNullable<typeof links.data>[number];
+      factory: NonNullable<typeof factories.data>[number];
+    }> = [];
+    for (const l of links.data ?? []) {
+      if (l.toFactoryId !== selectedFactoryId) continue;
+      const f = factoryById.get(l.fromFactoryId);
+      if (f) out.push({ link: l, factory: f });
+    }
+    return out;
+  }, [links.data, factories.data, selectedFactoryId]);
+
+  const boundNodeIds = useMemo(() => new Set(boundNodes.map((n) => n.id)), [boundNodes]);
 
   const resourceTypes = useMemo(() => {
     const m = new Map<string, { id: string; name: string; total: number }>();
@@ -147,12 +184,17 @@ export function MapView() {
   const visibleNodes = useMemo(() => {
     const data = nodes.data ?? [];
     return data.filter((n) => {
+      // Always show a node if it's an input of the currently-
+      // selected factory, regardless of filter state. The user
+      // clicked a factory to see its inputs; hiding them because
+      // a filter is on would defeat the point.
+      if (boundNodeIds.has(n.id)) return true;
       if (!showClaimedToo && n.claim) return false;
       if (hiddenResources.has(n.resourceItemId)) return false;
       if (hiddenPurities.has(n.purity)) return false;
       return true;
     });
-  }, [nodes.data, showClaimedToo, hiddenResources, hiddenPurities]);
+  }, [nodes.data, showClaimedToo, hiddenResources, hiddenPurities, boundNodeIds]);
 
   const selectedNode = useMemo(
     () => visibleNodes.find((n) => n.id === selectedNodeId) ?? null,
@@ -179,7 +221,7 @@ export function MapView() {
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex h-full min-h-[600px] flex-col gap-3">
       <Card>
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -255,8 +297,8 @@ export function MapView() {
         </div>
       </Card>
 
-      <Card className="p-0 overflow-hidden">
-        <div className="relative">
+      <Card className="flex min-h-0 flex-1 flex-col p-0 overflow-hidden">
+        <div className="relative flex-1 min-h-0">
           {/* Zoom controls — overlaid on the map so they stay reachable
               regardless of pan state. react-zoom-pan-pinch's built-in
               controls are minimal, so we render our own to keep the
@@ -288,7 +330,7 @@ export function MapView() {
             </button>
           </div>
 
-          <div ref={containerRef} className="h-[700px] w-full bg-black/40">
+          <div ref={containerRef} className="absolute inset-0 bg-black/40">
             <TransformWrapper
               ref={wrapRef}
               minScale={0.4}
@@ -373,6 +415,34 @@ export function MapView() {
                     );
                   })}
 
+                  {/* Input-flow lines for the currently-selected
+                      factory. Drawn under the markers so clicks
+                      still hit the icon buttons; SVG is fixed at
+                      MAP_W × MAP_H and lives inside the transform
+                      so it scales with pan/zoom for free. */}
+                  {selectedFactoryId && (
+                    <InputLinesLayer
+                      selectedFactoryId={selectedFactoryId}
+                      boundNodes={boundNodes}
+                      upstreamFactories={upstreamFactories}
+                      allFactories={factories.data ?? []}
+                      onDetachNode={(nodeId, prev) => {
+                        // Reuse setClaim's existing undo flow but
+                        // strip the factoryId — keeps the node
+                        // claimed (with its miner + clock) but
+                        // unbound from this factory.
+                        if (!prev.claim) return;
+                        void setClaim.mutateAsync({
+                          nodeId,
+                          minerId: prev.claim.minerId ?? null,
+                          clockPct: prev.claim.clockPct,
+                          factoryId: null,
+                          notes: prev.claim.notes ?? null,
+                        });
+                      }}
+                    />
+                  )}
+
                   {(factories.data ?? []).map((f) => (
                     <FactoryPin
                       key={f.id}
@@ -391,11 +461,51 @@ export function MapView() {
                       }}
                       onClick={() => {
                         setSelectedNodeId(null);
+                        setSelectedPowerGenId(null);
                         setSelectedFactoryId(f.id);
                       }}
                       currentScale={() => wrapRef.current?.state.scale ?? 1}
                     />
                   ))}
+
+                  {/* Power-gen pins. Each generator with its own
+                      world coords renders independently; the ones
+                      without coords fall through to their parent
+                      factory's pin and stay invisible here. */}
+                  {(powerGens.data ?? [])
+                    .filter((g) => g.worldX != null && g.worldY != null)
+                    .map((g) => {
+                      const gen = generators.data?.find((x) => x.id === g.generatorId);
+                      const parent = (factories.data ?? []).find((f) => f.id === g.factoryId);
+                      const name =
+                        gen?.name ?? g.generatorId.replace(/_C$/, "").replace(/^Build_/, "");
+                      return (
+                        <PowerGenPin
+                          key={g.id}
+                          gen={g}
+                          name={`${g.count}× ${name}`}
+                          parentName={parent?.name ?? "—"}
+                          dragging={dragging === `gen-${g.id}`}
+                          onDragStart={() => setDragging(`gen-${g.id}`)}
+                          onDragEnd={(pt) => {
+                            setDragging(null);
+                            const { worldX, worldY } = pctToWorld(
+                              pt.x / MAP_W,
+                              pt.y / MAP_H,
+                            );
+                            void powerApi
+                              .setPosition({ id: g.id, worldX, worldY })
+                              .finally(() => powerGens.refetch());
+                          }}
+                          onClick={() => {
+                            setSelectedNodeId(null);
+                            setSelectedFactoryId(null);
+                            setSelectedPowerGenId(g.id);
+                          }}
+                          currentScale={() => wrapRef.current?.state.scale ?? 1}
+                        />
+                      );
+                    })}
                 </div>
               </TransformComponent>
             </TransformWrapper>
@@ -461,6 +571,219 @@ interface FactoryPinProps {
 // as a click instead of a drag. Trackpads register tiny jitter even on
 // a real "click", so 4 px is safer than 0.
 const CLICK_THRESHOLD_PX = 4;
+
+interface InputLinesLayerProps {
+  selectedFactoryId: string;
+  boundNodes: ResourceNodeRow[];
+  upstreamFactories: Array<{
+    link: { id: string; itemId: string; itemsPerMinute: number };
+    factory: { id: string; name: string; worldX: number; worldY: number };
+  }>;
+  allFactories: Array<{ id: string; name: string; worldX: number; worldY: number }>;
+  onDetachNode: (nodeId: string, prev: ResourceNodeRow) => void;
+}
+
+/**
+ * SVG layer that draws a line from each input (claimed node or
+ * upstream factory) to the currently-selected factory, with a small
+ * detach-button on each line's source endpoint. Mounted inside the
+ * pan/zoom transform so the lines stay glued to their endpoints at
+ * every zoom level.
+ */
+function InputLinesLayer({
+  selectedFactoryId,
+  boundNodes,
+  upstreamFactories,
+  allFactories,
+  onDetachNode,
+}: InputLinesLayerProps) {
+  const target = allFactories.find((f) => f.id === selectedFactoryId);
+  if (!target) return null;
+  const t = worldToPct(target.worldX, target.worldY);
+  const tx = t.xPct * MAP_W;
+  const ty = t.yPct * MAP_H;
+
+  return (
+    <>
+      <svg
+        className="pointer-events-none absolute inset-0"
+        width={MAP_W}
+        height={MAP_H}
+        viewBox={`0 0 ${MAP_W} ${MAP_H}`}
+      >
+        <defs>
+          <marker
+            id="specs-arrow"
+            viewBox="0 0 10 10"
+            refX="9"
+            refY="5"
+            markerUnits="userSpaceOnUse"
+            markerWidth="14"
+            markerHeight="14"
+            orient="auto-start-reverse"
+          >
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+          </marker>
+        </defs>
+        {boundNodes.map((n) => {
+          const p = worldToPct(n.x, n.y);
+          return (
+            <line
+              key={`n-${n.id}`}
+              x1={p.xPct * MAP_W}
+              y1={p.yPct * MAP_H}
+              x2={tx}
+              y2={ty}
+              stroke="var(--color-primary)"
+              strokeWidth={3}
+              strokeOpacity={0.6}
+              strokeDasharray="6 6"
+              markerEnd="url(#specs-arrow)"
+              style={{ color: "var(--color-primary)" }}
+            />
+          );
+        })}
+        {upstreamFactories.map(({ link, factory }) => {
+          const p = worldToPct(factory.worldX, factory.worldY);
+          return (
+            <line
+              key={`f-${link.id}`}
+              x1={p.xPct * MAP_W}
+              y1={p.yPct * MAP_H}
+              x2={tx}
+              y2={ty}
+              stroke="var(--color-accent, var(--color-primary))"
+              strokeWidth={3}
+              strokeOpacity={0.75}
+              markerEnd="url(#specs-arrow)"
+              style={{ color: "var(--color-accent, var(--color-primary))" }}
+            />
+          );
+        })}
+      </svg>
+      {/* Detach buttons sit on top of the SVG (which is
+          pointer-events-none) so each one is independently clickable
+          without blocking node/factory hits underneath. */}
+      {boundNodes.map((n) => {
+        const p = worldToPct(n.x, n.y);
+        return (
+          <button
+            key={`detach-${n.id}`}
+            type="button"
+            className="specs-map-pin absolute -translate-x-1/2 -translate-y-1/2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-bg-raised text-fg-muted shadow-sm hover:bg-danger/20 hover:text-danger"
+            style={{
+              left: `${p.xPct * MAP_W + 16}px`,
+              top: `${p.yPct * MAP_H - 16}px`,
+            }}
+            title={`Detach ${n.resourceItemName} from this factory`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDetachNode(n.id, n);
+            }}
+          >
+            <Unlink className="h-3 w-3" />
+          </button>
+        );
+      })}
+    </>
+  );
+}
+
+interface PowerGenPinProps {
+  gen: { id: string; worldX?: number | null; worldY?: number | null; generatorId: string };
+  name: string;
+  parentName: string;
+  dragging: boolean;
+  onDragStart: () => void;
+  onDragEnd: (pt: { x: number; y: number }) => void;
+  onClick: () => void;
+  currentScale: () => number;
+}
+
+function PowerGenPin({
+  gen,
+  name,
+  dragging: _dragging,
+  onDragStart,
+  onDragEnd,
+  onClick,
+  currentScale,
+}: PowerGenPinProps) {
+  const wx = gen.worldX ?? 0;
+  const wy = gen.worldY ?? 0;
+  const { xPct, yPct } = worldToPct(wx, wy);
+  const startRef = useRef<{
+    x: number;
+    y: number;
+    clientX: number;
+    clientY: number;
+    moved: boolean;
+  } | null>(null);
+  const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
+
+  const baseX = xPct * MAP_W;
+  const baseY = yPct * MAP_H;
+  const px = hoverPos?.x ?? baseX;
+  const py = hoverPos?.y ?? baseY;
+
+  return (
+    <button
+      type="button"
+      className="specs-map-pin absolute -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-md border-2 border-warning bg-bg-raised/95 px-2 py-1 text-[11px] font-medium text-fg shadow-sm hover:bg-bg-raised active:cursor-grabbing"
+      style={{ left: `${px}px`, top: `${py}px` }}
+      title={`${name} — click for details, drag to move`}
+      onMouseDown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        startRef.current = {
+          x: baseX,
+          y: baseY,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          moved: false,
+        };
+        const onMove = (ev: MouseEvent) => {
+          const s = startRef.current;
+          if (!s) return;
+          const dxScreen = ev.clientX - s.clientX;
+          const dyScreen = ev.clientY - s.clientY;
+          if (!s.moved && Math.hypot(dxScreen, dyScreen) >= CLICK_THRESHOLD_PX) {
+            s.moved = true;
+            onDragStart();
+          }
+          if (s.moved) {
+            const scale = currentScale();
+            setHoverPos({ x: s.x + dxScreen / scale, y: s.y + dyScreen / scale });
+          }
+        };
+        const onUp = (ev: MouseEvent) => {
+          const s = startRef.current;
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+          startRef.current = null;
+          if (!s) return;
+          if (!s.moved) {
+            setHoverPos(null);
+            onClick();
+            return;
+          }
+          const scale = currentScale();
+          const dx = (ev.clientX - s.clientX) / scale;
+          const dy = (ev.clientY - s.clientY) / scale;
+          setHoverPos(null);
+          onDragEnd({ x: s.x + dx, y: s.y + dy });
+        };
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+      }}
+    >
+      <span className="inline-flex items-center gap-1">
+        <Zap className="h-3.5 w-3.5 text-warning" />
+        {name}
+      </span>
+    </button>
+  );
+}
 
 function FactoryPin({ factory, onDragStart, onDragEnd, onClick, currentScale }: FactoryPinProps) {
   const { xPct, yPct } = worldToPct(factory.worldX, factory.worldY);
