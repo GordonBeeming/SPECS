@@ -44,12 +44,13 @@ function markerIconId(resourceItemId: string): string {
 }
 
 // Image dimensions of the bundled WebP. Must stay in lockstep with
-// `scripts/fetch-map.ts` (currently stitches SCIM's zoom-4 tile grid
-// = 10×10 of 256 px = 2560×2560). The world-coord transform in
-// `transform.ts` is independent of this — pct-of-image gets multiplied
-// by these to land on pixel offsets inside the canvas.
-const MAP_W = 2560;
-const MAP_H = 2560;
+// `scripts/fetch-map.ts` — zoom-4 stitch (2560²) cropped to the
+// inner 80% playable rect = 2048². The world-coord transform in
+// `transform.ts` is independent of these constants; pct-of-image
+// gets multiplied by these to land on pixel offsets inside the
+// canvas.
+const MAP_W = 2048;
+const MAP_H = 2048;
 
 // localStorage keys for the map filter state — bumped suffix on shape
 // changes if we ever extend what's persisted.
@@ -655,7 +656,7 @@ function NodePopover({ node, factories, onClaim, onRelease, onClose }: NodePopov
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-semibold text-fg">
-            <Icon itemId={node.resourceItemId} className="h-4 w-4" />
+            <Icon itemId={markerIconId(node.resourceItemId)} className="h-4 w-4" />
             {node.resourceItemName} · {node.purity}
           </div>
           <div className="mt-0.5 text-[11px] text-fg-muted">

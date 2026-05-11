@@ -18,45 +18,22 @@ export const WORLD_BOUNDS = {
 } as const;
 
 /**
- * SCIM's tile pyramid bakes a fixed `extraBackgroundSize` padding on
- * each side at every zoom level — the playable world doesn't fill
- * the tiles; it sits in a centered inner rect. From their JS:
- *
- *     backgroundSize = 32768  // world pixels
- *     extraBackgroundSize = 4096  // padding each side
- *     // total raster = 32768 + 2×4096 = 40960
- *
- * So 4096 / 40960 = 0.1 of the image on each side is "outside the
- * world" padding, regardless of which zoom you stitched at. Bake
- * that into worldToPct so pixel offsets land on the right map
- * features.
+ * `scripts/fetch-map.ts` crops SCIM's tile-pyramid output to the
+ * inner 80% rect (the playable world without SCIM's surrounding
+ * `extraBackgroundSize` padding), so the bundled image and the
+ * world bounds line up 1:1 — no inset needed in the math.
  */
-export const IMAGE_INSET_PCT = 4096 / 40960;
-
 export function worldToPct(worldX: number, worldY: number): { xPct: number; yPct: number } {
-  // SCIM puts north at yMin and south at yMax, so y is a straight
-  // ratio with no flip. The IMAGE_INSET_PCT shifts pct=0 from the
-  // image's left edge to where the world's western boundary lives,
-  // and the (1 - 2×inset) factor compresses the world range into
-  // the playable inner rect rather than the full image.
-  const innerScale = 1 - 2 * IMAGE_INSET_PCT;
-  const xWorldPct =
-    (worldX - WORLD_BOUNDS.xMin) / (WORLD_BOUNDS.xMax - WORLD_BOUNDS.xMin);
-  const yWorldPct =
-    (worldY - WORLD_BOUNDS.yMin) / (WORLD_BOUNDS.yMax - WORLD_BOUNDS.yMin);
   return {
-    xPct: IMAGE_INSET_PCT + xWorldPct * innerScale,
-    yPct: IMAGE_INSET_PCT + yWorldPct * innerScale,
+    xPct: (worldX - WORLD_BOUNDS.xMin) / (WORLD_BOUNDS.xMax - WORLD_BOUNDS.xMin),
+    yPct: (worldY - WORLD_BOUNDS.yMin) / (WORLD_BOUNDS.yMax - WORLD_BOUNDS.yMin),
   };
 }
 
 export function pctToWorld(xPct: number, yPct: number): { worldX: number; worldY: number } {
-  const innerScale = 1 - 2 * IMAGE_INSET_PCT;
-  const xWorldPct = (xPct - IMAGE_INSET_PCT) / innerScale;
-  const yWorldPct = (yPct - IMAGE_INSET_PCT) / innerScale;
   return {
-    worldX: xWorldPct * (WORLD_BOUNDS.xMax - WORLD_BOUNDS.xMin) + WORLD_BOUNDS.xMin,
-    worldY: yWorldPct * (WORLD_BOUNDS.yMax - WORLD_BOUNDS.yMin) + WORLD_BOUNDS.yMin,
+    worldX: xPct * (WORLD_BOUNDS.xMax - WORLD_BOUNDS.xMin) + WORLD_BOUNDS.xMin,
+    worldY: yPct * (WORLD_BOUNDS.yMax - WORLD_BOUNDS.yMin) + WORLD_BOUNDS.yMin,
   };
 }
 

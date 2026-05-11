@@ -64,9 +64,32 @@ const stack = spawnSync("magick", [...rowPaths, "-append", stitched], {
 });
 if (stack.status !== 0) throw new Error("row stack failed");
 
+// SCIM bakes a fixed ratio of "outside-world" padding into every
+// zoom of its tile pyramid (extraBackgroundSize=4096 vs
+// backgroundSize=32768 → 10% on each side). Crop the central
+// 80% inner rect so the bundled image is just the playable map,
+// which lets the world→pixel transform collapse to a straight
+// ratio and removes the ugly white border at low zoom levels.
+const fullPx = SIDE * 256;
+const innerPx = Math.round(fullPx * 0.8);
+const offsetPx = Math.round(fullPx * 0.1);
+const cropped = resolve(tmp, "cropped.png");
+const crop = spawnSync(
+  "magick",
+  [
+    stitched,
+    "-crop",
+    `${innerPx}x${innerPx}+${offsetPx}+${offsetPx}`,
+    "+repage",
+    cropped,
+  ],
+  { stdio: "inherit" },
+);
+if (crop.status !== 0) throw new Error("crop failed");
+
 const webp = spawnSync(
   "magick",
-  [stitched, "-quality", "78", "-define", "webp:lossless=false", OUT],
+  [cropped, "-quality", "78", "-define", "webp:lossless=false", OUT],
   { stdio: "inherit" },
 );
 if (webp.status !== 0) throw new Error("webp convert failed");
