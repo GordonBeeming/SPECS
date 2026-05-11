@@ -965,16 +965,11 @@ function FactoryPopover({ factoryId, hasPower, onEdit, onEditPower, onClose }: F
               </li>
             ))}
             {inputs.map((flow) => {
-              const need = -flow.netPerMinute;
+              const need = Math.max(0, -flow.netPerMinute);
               const fromNodes = flow.fromNodesPerMinute ?? 0;
-              // Coverage from bound resource nodes — surfaces here
-              // so the user can tell at a glance whether the input
-              // is fully covered by claimed supply or still needs an
-              // upstream factory to ship it in. Lays groundwork for
-              // splitting an input pool across multiple factories
-              // later.
               const covered = Math.min(fromNodes, need);
               const shortfall = Math.max(0, need - fromNodes);
+              const unusedSupply = need === 0 && fromNodes > 0;
               return (
                 <li
                   key={`in-${flow.itemId}`}
@@ -985,14 +980,28 @@ function FactoryPopover({ factoryId, hasPower, onEdit, onEditPower, onClose }: F
                     <span className="truncate">{flow.itemName}</span>
                   </span>
                   <span className="flex items-center gap-1 tabular-nums">
-                    <span className="text-danger">-{need.toFixed(1)}/min</span>
-                    {fromNodes > 0 && (
+                    {unusedSupply ? (
+                      // Bound supply with nothing in this factory
+                      // consuming it — surface it so the user
+                      // doesn't lose track of the binding.
                       <span
-                        className="rounded-full bg-primary/10 px-1.5 text-[10px] font-medium text-primary"
-                        title={`From bound nodes: ${fromNodes.toFixed(1)}/min · still needed: ${shortfall.toFixed(1)}/min`}
+                        className="text-fg-muted"
+                        title={`From bound nodes: ${fromNodes.toFixed(1)}/min · no machine in this factory uses it`}
                       >
-                        {covered.toFixed(0)}/{need.toFixed(0)}
+                        {fromNodes.toFixed(1)}/min available
                       </span>
+                    ) : (
+                      <>
+                        <span className="text-danger">-{need.toFixed(1)}/min</span>
+                        {fromNodes > 0 && (
+                          <span
+                            className="rounded-full bg-primary/10 px-1.5 text-[10px] font-medium text-primary"
+                            title={`From bound nodes: ${fromNodes.toFixed(1)}/min · still needed: ${shortfall.toFixed(1)}/min`}
+                          >
+                            {covered.toFixed(0)}/{need.toFixed(0)}
+                          </span>
+                        )}
+                      </>
                     )}
                   </span>
                 </li>
