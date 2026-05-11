@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import {
   BookOpen,
+  Compass,
   Factory as FactoryIcon,
   FlaskConical,
   Info,
   LayoutDashboard,
+  MapPin,
   Moon,
   Network,
   Share2,
@@ -30,6 +32,10 @@ import {
   usePlaythroughList,
 } from "@/features/playthrough/hooks/usePlaythroughs";
 import { PowerView } from "@/features/power/components/PowerView";
+import { ResourcesView } from "@/features/resources/components/ResourcesView";
+import { MapView } from "@/features/map/components/MapView";
+import { useNavStore } from "@/shared/nav-store";
+import { ErrorBoundary } from "@/shared/ui/ErrorBoundary";
 import { useUndoStore } from "@/shared/undo/store";
 
 type Route =
@@ -40,11 +46,20 @@ type Route =
   | "power"
   | "network"
   | "library"
-  | "alts";
+  | "alts"
+  | "resources"
+  | "map";
 
+// The Map is the canvas now — Planner folded into a "New factory"
+// overlay on the map, and the per-resource list still has its own
+// tab for bulk-editing claims. Factory/Power tabs remain so the
+// graph editor and per-machine forms have room to breathe; they
+// can route in from map popovers via the nav store.
 const NAV: ReadonlyArray<{ id: Route; label: string; Icon: typeof BookOpen }> = [
   { id: "home", label: "Home", Icon: LayoutDashboard },
+  { id: "map", label: "Map", Icon: Compass },
   { id: "network", label: "Network", Icon: Share2 },
+  { id: "resources", label: "Resources", Icon: MapPin },
   { id: "factories", label: "Factories", Icon: FactoryIcon },
   { id: "logistics", label: "Logistics", Icon: Network },
   { id: "trains", label: "Trains", Icon: TrainTrack },
@@ -52,6 +67,11 @@ const NAV: ReadonlyArray<{ id: Route; label: string; Icon: typeof BookOpen }> = 
   { id: "alts", label: "Alts", Icon: FlaskConical },
   { id: "library", label: "Library", Icon: BookOpen },
 ];
+
+const ROUTE_IDS = new Set<string>(NAV.map((n) => n.id));
+function isRoute(s: string): s is Route {
+  return ROUTE_IDS.has(s);
+}
 
 export function AppShell() {
   const { mode, toggle } = useThemeMode();
@@ -67,6 +87,19 @@ export function AppShell() {
   const list = usePlaythroughList();
   const openMut = useOpenPlaythrough();
   const [autoOpenAttempted, setAutoOpenAttempted] = useState(false);
+  const takePendingRoute = useNavStore((s) => s.takePendingRoute);
+  const pendingRoute = useNavStore((s) => s.pendingRoute);
+
+  // Cross-slice deep linking: the Network view's "open in graph" button
+  // pushes "factories" through the nav store. AppShell owns route
+  // state, so we read + clear here whenever a new pendingRoute lands.
+  useEffect(() => {
+    if (!pendingRoute) return;
+    const next = takePendingRoute();
+    if (next && isRoute(next)) {
+      setRoute(next);
+    }
+  }, [pendingRoute, takePendingRoute]);
 
   // First-paint convenience: if nothing is open but a previous run
   // touched at least one playthrough, auto-select the most-recently-
@@ -200,14 +233,21 @@ export function AppShell() {
         </nav>
 
         <main className="flex-1 overflow-auto p-6">
-          {route === "home" && <HomeView goTo={(r) => setRoute(r)} />}
-          {route === "network" && <NetworkView />}
-          {route === "factories" && <FactoryListView />}
-          {route === "logistics" && <LogisticsListView />}
-          {route === "trains" && <TrainRoutesView />}
-          {route === "power" && <PowerView />}
-          {route === "alts" && <AltsView />}
-          {route === "library" && <LibraryView />}
+          {/* Per-route boundary keyed on the route id so a re-mount on
+              tab switch resets a previous crash, and a crash in one
+              tab can't blank the shell. */}
+          <ErrorBoundary key={route} label={`The ${route} tab`}>
+            {route === "home" && <HomeView goTo={(r) => setRoute(r)} />}
+            {route === "network" && <NetworkView />}
+            {route === "factories" && <FactoryListView />}
+            {route === "logistics" && <LogisticsListView />}
+            {route === "trains" && <TrainRoutesView />}
+            {route === "power" && <PowerView />}
+            {route === "alts" && <AltsView />}
+            {route === "resources" && <ResourcesView />}
+            {route === "map" && <MapView />}
+            {route === "library" && <LibraryView />}
+          </ErrorBoundary>
         </main>
       </div>
     </div>

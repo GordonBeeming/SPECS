@@ -16,6 +16,15 @@ interface NavState {
   selectFactory: (id: string) => void;
   /** Atomic read + clear. Returns the id (or null) and resets state. */
   takePendingFactoryId: () => string | null;
+  /**
+   * Route the user wants the shell to switch to next render. AppShell
+   * subscribes and clears after applying. Lets a deep-link from the
+   * network view land directly on the factory graph without prop
+   * drilling through every intermediate component.
+   */
+  pendingRoute: string | null;
+  goTo: (route: string) => void;
+  takePendingRoute: () => string | null;
 }
 
 export const useNavStore = create<NavState>((set, get) => ({
@@ -25,5 +34,12 @@ export const useNavStore = create<NavState>((set, get) => ({
     const id = get().pendingFactoryId;
     if (id) set({ pendingFactoryId: null });
     return id;
+  },
+  pendingRoute: null,
+  goTo: (route) => set({ pendingRoute: route }),
+  takePendingRoute: () => {
+    const r = get().pendingRoute;
+    if (r) set({ pendingRoute: null });
+    return r;
   },
 }));

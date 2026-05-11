@@ -43,12 +43,21 @@ Done:
 - **Phase 10** — Export / import `.specsdb` files (WAL-safe via
   `VACUUM INTO`; validated by opening a copy + verifying the seeded
   progress row). Undo/redo deferred to a later milestone.
-
-Next:
-
 - **Phase 11** — Branding polish + bundled game-icon pack
   (per Coffee Stain's fan-content policy) + reference screenshots.
 - **Phase 12** — CI/CD + signed macOS / Windows / Linux bundles.
+- **Phase 13** — Resource-node catalog + claim UI (608 nodes from
+  the satisfactory-calculator.com map), supply-aware planner that
+  derives whole factory chains from a target output rate, draggable
+  Map view for placing factories, and an `@xyflow/react` graph
+  editor replacing the per-machine table.
+
+Future:
+
+- Train-track planner overlay on the Map view.
+- Save-game importer (parse Satisfactory's `.sav` directly).
+- Distance-weighted planner (prefer claimed nodes nearest the
+  staged factory when sizing a chain).
 
 See [`docs/vsa/`](./docs/vsa/) for the architecture and
 [`DESIGN.md`](./DESIGN.md) for visual standards.

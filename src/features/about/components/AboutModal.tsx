@@ -95,6 +95,25 @@ export function AboutModal({ onClose }: AboutModalProps) {
             policy. Original assets remain © Coffee Stain Studios.
           </li>
           <li>
+            <strong className="text-fg">Resource-node catalog</strong> derived
+            from{" "}
+            <a
+              href="https://satisfactory-calculator.com/en/interactive-map"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline"
+            >
+              satisfactory-calculator.com
+            </a>{" "}
+            interactive-map data — coordinates + per-purity counts for
+            every ore, well, and vent on the map.
+          </li>
+          <li>
+            <strong className="text-fg">Map background</strong> is a
+            downsampled community high-res game map, used under Coffee
+            Stain's fan-content policy.
+          </li>
+          <li>
             <strong className="text-fg">Satisfactory</strong> is © Coffee
             Stain Studios. SPECS is an unofficial fan tool with no
             affiliation.

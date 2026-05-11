@@ -10,7 +10,8 @@ use crate::shared::gamedata::GameData;
 
 use super::dto::{
     AddMachineInput, CreateFactoryInput, Factory, FactoryDetail, FactoryLedger, FactoryMachine,
-    ItemFlow, RenameFactoryInput, SetFactoryIconInput, UpdateMachineInput,
+    ItemFlow, MachineLayout, RenameFactoryInput, SetFactoryIconInput, SetFactoryPositionInput,
+    SetMachineLayoutInput, UpdateMachineInput,
 };
 use super::domain::{machine_power_mw_amp, recipe_io_flows_amp};
 use super::repo;
@@ -169,6 +170,60 @@ pub fn rename_factory(
 }
 
 #[tauri::command]
+pub fn set_machine_layout(
+    active: State<ActivePlaythrough>,
+    input: SetMachineLayoutInput,
+) -> AppResult<()> {
+    if !input.x.is_finite() || !input.y.is_finite() {
+        return Err(AppError::Invalid("layout coords must be finite".into()));
+    }
+    let db = require_active(&active)?;
+    let now = now_iso();
+    db.with(|c| {
+        repo::machine_layout_upsert(c, &input.machine_id, input.x, input.y, &now)
+            .map_err(AppError::from)
+    })
+}
+
+#[tauri::command]
+pub fn list_machine_layouts(
+    active: State<ActivePlaythrough>,
+    factory_id: String,
+) -> AppResult<Vec<MachineLayout>> {
+    let db = require_active(&active)?;
+    let rows = db.with(|c| {
+        repo::machine_layouts_for_factory(c, &factory_id).map_err(AppError::from)
+    })?;
+    Ok(rows
+        .into_iter()
+        .map(|(machine_id, x, y)| MachineLayout { machine_id, x, y })
+        .collect())
+}
+
+#[tauri::command]
+pub fn set_factory_position(
+    active: State<ActivePlaythrough>,
+    input: SetFactoryPositionInput,
+) -> AppResult<Factory> {
+    if !input.world_x.is_finite() || !input.world_y.is_finite() {
+        return Err(AppError::Invalid(
+            "world coordinates must be finite numbers".into(),
+        ));
+    }
+    let db = require_active(&active)?;
+    let now = now_iso();
+    let affected = db.with(|c| {
+        repo::factory_set_position(c, &input.id, input.world_x, input.world_y, &now)
+            .map_err(AppError::from)
+    })?;
+    if affected == 0 {
+        return Err(AppError::NotFound(format!("factory {} not found", input.id)));
+    }
+    db.with(|c| repo::factory_get(c, &input.id).map_err(AppError::from))?
+        .ok_or_else(|| AppError::NotFound(format!("factory {} not found", input.id)))
+}
+
+#[tauri::command]
 pub fn set_factory_icon(
     active: State<ActivePlaythrough>,
     input: SetFactoryIconInput,
@@ -272,6 +327,7 @@ pub fn add_factory_machine(
 #[tauri::command]
 pub fn update_factory_machine(
     active: State<ActivePlaythrough>,
+    game_data: State<GameData>,
     input: UpdateMachineInput,
 ) -> AppResult<()> {
     validate_count(input.count)?;
@@ -284,14 +340,39 @@ pub fn update_factory_machine(
     validate_clock_against_shards(input.clock_pct, input.power_shard_count)?;
     let db = require_active(&active)?;
     let now = now_iso();
-    let affected = db.with(|c| {
-        repo::machine_update(
-            c, &input.id, input.count, input.clock_pct,
-            input.use_somersloop, input.somersloop_slots_filled, input.power_shard_count,
-            &now,
-        )
-        .map_err(AppError::from)
-    })?;
+    let affected = if let (Some(recipe_id), Some(building_id)) =
+        (input.recipe_id.as_deref(), input.building_id.as_deref())
+    {
+        // Cross-check the recipe/building against the dataset so a
+        // typo or stale id doesn't leave the row in an inconsistent
+        // state.
+        let recipe = game_data
+            .recipe(recipe_id)
+            .ok_or_else(|| AppError::Invalid(format!("unknown recipe: {recipe_id}")))?;
+        if recipe.building_id != building_id {
+            return Err(AppError::Invalid(format!(
+                "recipe {recipe_id} runs in {} not {building_id}",
+                recipe.building_id
+            )));
+        }
+        db.with(|c| {
+            repo::machine_update_with_recipe(
+                c, &input.id, building_id, recipe_id, input.count, input.clock_pct,
+                input.use_somersloop, input.somersloop_slots_filled, input.power_shard_count,
+                &now,
+            )
+            .map_err(AppError::from)
+        })?
+    } else {
+        db.with(|c| {
+            repo::machine_update(
+                c, &input.id, input.count, input.clock_pct,
+                input.use_somersloop, input.somersloop_slots_filled, input.power_shard_count,
+                &now,
+            )
+            .map_err(AppError::from)
+        })?
+    };
     if affected == 0 {
         return Err(AppError::NotFound(format!("machine {} not found", input.id)));
     }
@@ -312,7 +393,12 @@ pub fn factory_ledger(
 ) -> AppResult<FactoryLedger> {
     let db = require_active(&active)?;
     let machines = db.with(|c| repo::machines_for_factory(c, &factory_id).map_err(AppError::from))?;
-    Ok(compose_ledger(&factory_id, &machines, &game_data))
+    let claims = db.with(|c| {
+        crate::features::resource_nodes::repo::claims_all(c).map_err(AppError::from)
+    })?;
+    let supply =
+        crate::features::resource_nodes::domain::supply_for_factory(&claims, &factory_id, &game_data);
+    Ok(compose_ledger_with_supply(&factory_id, &machines, &game_data, &supply))
 }
 
 #[tauri::command]
@@ -326,7 +412,12 @@ pub fn get_factory_detail(
         .with(|c| repo::factory_get(c, &id).map_err(AppError::from))?
         .ok_or_else(|| AppError::NotFound(format!("factory {id} not found")))?;
     let machines = db.with(|c| repo::machines_for_factory(c, &id).map_err(AppError::from))?;
-    let ledger = compose_ledger(&id, &machines, &game_data);
+    let claims = db.with(|c| {
+        crate::features::resource_nodes::repo::claims_all(c).map_err(AppError::from)
+    })?;
+    let supply =
+        crate::features::resource_nodes::domain::supply_for_factory(&claims, &id, &game_data);
+    let ledger = compose_ledger_with_supply(&id, &machines, &game_data, &supply);
     Ok(FactoryDetail {
         factory,
         machines,
@@ -357,6 +448,19 @@ pub fn compose_ledger(
     factory_id: &str,
     machines: &[FactoryMachine],
     game_data: &GameData,
+) -> FactoryLedger {
+    compose_ledger_with_supply(factory_id, machines, game_data, &std::collections::HashMap::new())
+}
+
+/// Same as `compose_ledger` but also annotates each `ItemFlow` with the
+/// ipm available from resource nodes bound to this factory. The
+/// power slice + tests stay on `compose_ledger` and get the zero-supply
+/// behaviour by default.
+pub fn compose_ledger_with_supply(
+    factory_id: &str,
+    machines: &[FactoryMachine],
+    game_data: &GameData,
+    node_supply: &std::collections::HashMap<String, f32>,
 ) -> FactoryLedger {
     let mut produced: BTreeMap<String, f32> = BTreeMap::new();
     let mut consumed: BTreeMap<String, f32> = BTreeMap::new();
@@ -397,7 +501,15 @@ pub fn compose_ledger(
         }
     }
 
-    let mut all_ids: Vec<String> = produced.keys().chain(consumed.keys()).cloned().collect();
+    // Include items that are *only* fed by bound nodes (e.g. the user
+    // wired water wells to this factory before adding any water-using
+    // machines) so the supply chip isn't silently invisible.
+    let mut all_ids: Vec<String> = produced
+        .keys()
+        .chain(consumed.keys())
+        .chain(node_supply.keys())
+        .cloned()
+        .collect();
     all_ids.sort();
     all_ids.dedup();
 
@@ -410,6 +522,7 @@ pub fn compose_ledger(
                 .item(&item_id)
                 .map(|i| (i.name.clone(), i.is_fluid))
                 .unwrap_or_else(|| (item_id.clone(), false));
+            let from_nodes = *node_supply.get(&item_id).unwrap_or(&0.0);
             ItemFlow {
                 item_id,
                 item_name: name,
@@ -417,6 +530,7 @@ pub fn compose_ledger(
                 produced_per_minute: p,
                 consumed_per_minute: c,
                 net_per_minute: p - c,
+                from_nodes_per_minute: from_nodes,
             }
         })
         .collect();

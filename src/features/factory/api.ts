@@ -8,6 +8,7 @@ import type {
   FactoryMachine,
   RenameFactoryInput,
   SetFactoryIconInput,
+  SetFactoryPositionInput,
   UpdateMachineInput,
 } from "./types";
 
@@ -18,6 +19,12 @@ export const factoryApi = {
   create: (input: CreateFactoryInput) => invoke<Factory>("create_factory", { input }),
   rename: (input: RenameFactoryInput) => invoke<Factory>("rename_factory", { input }),
   setIcon: (input: SetFactoryIconInput) => invoke<Factory>("set_factory_icon", { input }),
+  setPosition: (input: SetFactoryPositionInput) =>
+    invoke<Factory>("set_factory_position", { input }),
+  setMachineLayout: (input: { machineId: string; x: number; y: number }) =>
+    invoke<void>("set_machine_layout", { input }),
+  listMachineLayouts: (factoryId: string) =>
+    invoke<Array<{ machineId: string; x: number; y: number }>>("list_machine_layouts", { factoryId }),
   delete: (id: string) => invoke<void>("delete_factory", { id }),
   addMachine: (input: AddMachineInput) => invoke<FactoryMachine>("add_factory_machine", { input }),
   updateMachine: (input: UpdateMachineInput) => invoke<void>("update_factory_machine", { input }),

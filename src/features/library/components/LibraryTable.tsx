@@ -16,6 +16,11 @@ interface LibraryTableProps<T> {
   columns: Column<T>[];
   rowKey: (row: T) => string;
   emptyMessage?: string;
+  /**
+   * Optional grouping. When provided, rows must be pre-sorted by
+   * group; the table inserts a section header before each new group.
+   */
+  groupKey?: (row: T) => string;
 }
 
 // Literal Tailwind classes — string-interpolating utilities like `text-${align}`
@@ -37,6 +42,7 @@ export function LibraryTable<T>({
   columns,
   rowKey,
   emptyMessage = "No rows.",
+  groupKey,
 }: LibraryTableProps<T>) {
   if (isError) {
     const message =
@@ -86,18 +92,39 @@ export function LibraryTable<T>({
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {rows.map((row) => (
-            <tr key={rowKey(row)} className="hover:bg-border/30">
-              {columns.map((c) => (
-                <td
-                  key={c.header}
-                  className={`px-3 py-2 ${ALIGN_TD[c.align ?? "left"]}`}
-                >
-                  {c.cell(row)}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {(() => {
+            let lastGroup: string | undefined;
+            const out: ReactNode[] = [];
+            for (const row of rows) {
+              const g = groupKey?.(row);
+              if (g !== undefined && g !== lastGroup) {
+                out.push(
+                  <tr key={`group-${g}`} className="bg-bg/60">
+                    <td
+                      colSpan={columns.length}
+                      className="sticky top-0 z-10 bg-bg/95 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-fg-muted backdrop-blur"
+                    >
+                      {g}
+                    </td>
+                  </tr>,
+                );
+                lastGroup = g;
+              }
+              out.push(
+                <tr key={rowKey(row)} className="hover:bg-border/30">
+                  {columns.map((c) => (
+                    <td
+                      key={c.header}
+                      className={`px-3 py-2 ${ALIGN_TD[c.align ?? "left"]}`}
+                    >
+                      {c.cell(row)}
+                    </td>
+                  ))}
+                </tr>,
+              );
+            }
+            return out;
+          })()}
         </tbody>
       </table>
     </div>

@@ -12,8 +12,22 @@ pub struct PowerGen {
     pub clock_pct: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    /// In-game world position (Unreal cm). `None` falls back to the
+    /// parent factory's location on the map.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub world_x: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub world_y: Option<f64>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetPowerGenPositionInput {
+    pub id: String,
+    pub world_x: f64,
+    pub world_y: f64,
 }
 
 #[derive(Debug, Clone, Deserialize)]

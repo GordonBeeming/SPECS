@@ -42,4 +42,7 @@ export const queryKeys = {
   alts: {
     list: ["alts", "list"] as const,
   },
+  resources: {
+    list: ["resources", "list"] as const,
+  },
 };

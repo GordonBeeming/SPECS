@@ -1,5 +1,11 @@
-import { useMemo, useState, type FormEvent } from "react";
-import { Trash2, Zap } from "lucide-react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Factory as FactoryGlyph, Pencil, Trash2, Zap } from "lucide-react";
+import { Icon } from "@/shared/ui/Icon";
+import { useNavStore } from "@/shared/nav-store";
+import { EditPowerGenModal } from "./EditPowerGenModal";
+import { useAllPowerGens } from "../hooks/usePower";
+import type { PowerGen } from "../types";
+import type { Factory } from "@/features/factory/types";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { FilterSelect } from "@/shared/ui/FilterSelect";
@@ -17,7 +23,39 @@ import type { CreatePowerGenInput } from "../types";
 export function PowerView() {
   const playthrough = useCurrentPlaythrough();
   const factories = useFactoryList();
+  const allGens = useAllPowerGens();
+  const takePendingFactoryId = useNavStore((s) => s.takePendingFactoryId);
   const [selectedFactoryId, setSelectedFactoryId] = useState<string | null>(null);
+
+  // Deep-link: if the Factories tab pushed an "open this factory in
+  // Power" intent through the nav store, snap to that selection on
+  // first paint.
+  useEffect(() => {
+    const pending = takePendingFactoryId();
+    if (pending) setSelectedFactoryId(pending);
+    // takePendingFactoryId is stable (zustand action) — don't depend
+    // on it or this fires twice and clears legitimate selections.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Per-factory generator counts — hoisted above the early returns
+  // so the hook order stays stable across renders (Rules of Hooks).
+  const genCountByFactory = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const g of allGens.data ?? []) {
+      m.set(g.factoryId, (m.get(g.factoryId) ?? 0) + 1);
+    }
+    return m;
+  }, [allGens.data]);
+  // Filter the factory list before the early returns for the same
+  // reason — keeps the hook count constant across all render paths.
+  const factoryListFiltered = useMemo(() => {
+    const all = factories.data ?? [];
+    return all.filter(
+      (f) =>
+        (genCountByFactory.get(f.id) ?? 0) > 0 ||
+        f.id === selectedFactoryId,
+    );
+  }, [factories.data, genCountByFactory, selectedFactoryId]);
 
   if (!playthrough.data) {
     return (
@@ -31,48 +69,109 @@ export function PowerView() {
     );
   }
 
-  const factoryList = factories.data ?? [];
+  // Only surface factories that actually carry generators (or the
+  // one the user is currently editing) — pure item factories pad
+  // the sidebar without belonging here.
+  const factoryList = factoryListFiltered;
   const activeId = selectedFactoryId ?? factoryList[0]?.id ?? null;
 
+  if (factoryList.length === 0) {
+    return (
+      <Card className="mx-auto max-w-2xl">
+        <h1 className="text-xl font-semibold text-primary">Power</h1>
+        <p className="mt-2 text-sm text-fg-muted">
+          No factories with power generators yet. Pop over to
+          Factories, open one, and hit <strong>Add power</strong> to
+          start building a power plant.
+        </p>
+      </Card>
+    );
+  }
+
   return (
-    <div className="flex h-full flex-col gap-4">
-      <header className="flex items-center justify-between">
+    <div className="grid h-full gap-4 lg:grid-cols-[20rem_1fr]">
+      <Card className="flex flex-col gap-3 overflow-hidden">
         <div>
-          <h1 className="text-xl font-semibold text-fg">Power</h1>
+          <h1 className="flex items-center gap-2 text-lg font-semibold text-primary">
+            <Zap className="h-4 w-4 text-warning" />
+            Power
+          </h1>
           <p className="text-xs text-fg-muted">
             {playthrough.data.displayName} · T{playthrough.data.currentTier}
           </p>
         </div>
-        {factoryList.length > 1 && (
-          <label className="text-xs text-fg-muted">
-            <span className="mr-2">Factory</span>
-            <select
-              aria-label="Factory"
-              value={activeId ?? ""}
-              onChange={(e) => setSelectedFactoryId(e.target.value || null)}
-              className="h-8 rounded border border-border bg-bg px-2 text-sm text-fg outline-none focus:border-primary"
-            >
-              {factoryList.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-      </header>
+        <ul className="flex flex-1 flex-col gap-1 overflow-auto">
+          {factoryList.map((f) => (
+            <PowerFactoryRow
+              key={f.id}
+              factory={f}
+              active={activeId === f.id}
+              genCount={genCountByFactory.get(f.id) ?? 0}
+              onSelect={() => setSelectedFactoryId(f.id)}
+            />
+          ))}
+        </ul>
+      </Card>
 
-      {factoryList.length === 0 ? (
-        <Card>
-          <p className="text-sm text-fg-muted">
-            Create a factory first — power generators are scoped to a
-            specific factory.
-          </p>
-        </Card>
-      ) : activeId ? (
-        <PowerFactoryPanel factoryId={activeId} />
-      ) : null}
+      <Card className="flex flex-col overflow-hidden">
+        {activeId ? (
+          <PowerFactoryPanel factoryId={activeId} />
+        ) : (
+          <div className="m-auto max-w-md text-center text-sm text-fg-muted">
+            Pick a factory on the left to add or edit its power
+            generators.
+          </div>
+        )}
+      </Card>
     </div>
+  );
+}
+
+interface PowerFactoryRowProps {
+  factory: Factory;
+  active: boolean;
+  genCount: number;
+  onSelect: () => void;
+}
+
+function PowerFactoryRow({ factory, active, genCount, onSelect }: PowerFactoryRowProps) {
+  return (
+    <li
+      className={`rounded-md transition-colors ${
+        active ? "bg-primary/10" : "hover:bg-border/40"
+      }`}
+    >
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-current={active ? "true" : undefined}
+        className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left"
+      >
+        {factory.iconId ? (
+          <Icon itemId={factory.iconId} alt="" className="h-5 w-5 shrink-0" />
+        ) : (
+          <FactoryGlyph className="h-4 w-4 shrink-0 text-fg-muted" />
+        )}
+        <span className="flex-1 truncate text-sm font-medium text-fg">{factory.name}</span>
+        {/* Surface what's on each factory at a glance: a ⚡ if it has
+            power, plus the machine count (so 'mixed-use' factories
+            read as both kinds). Avoids a hard 'power factory vs item
+            factory' classification while still making power-only
+            rows stand out. */}
+        {genCount > 0 && (
+          <span
+            className="inline-flex items-center gap-0.5 rounded-full bg-warning/15 px-1.5 text-[10px] font-medium text-warning"
+            title={`${genCount} generator${genCount === 1 ? "" : "s"}`}
+          >
+            <Zap className="h-3 w-3" />
+            {genCount}
+          </span>
+        )}
+        <span className="ml-1 text-xs text-fg-muted tabular-nums">
+          {factory.machineCount}m
+        </span>
+      </button>
+    </li>
   );
 }
 
@@ -84,6 +183,23 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
   const items = useItems();
   const playthrough = useCurrentPlaythrough();
   const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<PowerGen | null>(null);
+  // Tauri 2's webview suppresses window.confirm()/alert() — using
+  // the browser dialog meant clicking Trash silently did nothing.
+  // Two-click confirm instead: first click arms the row, second
+  // fires the mutation. Auto-disarms after 3 s so a stale primed
+  // row can't accidentally delete on the next click.
+  const [armedDeleteId, setArmedDeleteId] = useState<string | null>(null);
+  // Per-row delete error string. Tauri 2 also suppresses window.alert()
+  // so surfacing mutation errors via alert() is invisible — render them
+  // inline on the row instead.
+  const [deleteError, setDeleteError] = useState<{ id: string; message: string } | null>(null);
+  const armForDelete = (id: string) => {
+    setArmedDeleteId(id);
+    window.setTimeout(() => {
+      setArmedDeleteId((cur) => (cur === id ? null : cur));
+    }, 3000);
+  };
 
   const generatorsById = useMemo(
     () => new Map(generators.data?.map((g) => [g.id, g]) ?? []),
@@ -176,22 +292,59 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
                         {g.clockPct.toFixed(1)}%
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (
-                              confirm(
-                                `Remove this ${gen?.name ?? "generator"} row?`,
-                              )
-                            ) {
-                              remove.mutate(g.id);
-                            }
-                          }}
-                          aria-label="Remove generator"
-                          className="rounded-md p-1.5 text-fg-muted hover:bg-danger/20 hover:text-danger"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setEditing(g)}
+                            aria-label="Edit generator"
+                            className="rounded-md p-1.5 text-fg-muted hover:bg-border hover:text-fg"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          {armedDeleteId === g.id ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const rowId = g.id;
+                                setDeleteError(null);
+                                remove.mutate(rowId, {
+                                  onError: (err) => {
+                                    console.error("remove power_gen failed", err);
+                                    setDeleteError({
+                                      id: rowId,
+                                      message:
+                                        err instanceof Error ? err.message : String(err),
+                                    });
+                                  },
+                                });
+                                setArmedDeleteId(null);
+                              }}
+                              aria-label="Click to confirm delete"
+                              className="inline-flex items-center gap-1 rounded-md bg-danger px-2 py-1 text-xs font-medium text-white hover:opacity-90"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Confirm
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => armForDelete(g.id)}
+                              aria-label="Remove generator"
+                              title="Click to delete (confirms next click)"
+                              className="rounded-md p-1.5 text-fg-muted hover:bg-danger/20 hover:text-danger"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                        {deleteError?.id === g.id && (
+                          <div
+                            role="alert"
+                            className="mt-1 text-right text-[11px] text-danger"
+                          >
+                            Delete failed: {deleteError.message}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );
@@ -201,6 +354,23 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
           </div>
         )}
       </Card>
+
+      {editing && (() => {
+        const gen = generatorsById.get(editing.generatorId);
+        const fuelOptions = (gen?.fuels ?? []).map((f) => ({
+          id: f.fuelItemId,
+          name: itemsById.get(f.fuelItemId)?.name ?? f.fuelItemId,
+        }));
+        return (
+          <EditPowerGenModal
+            factoryId={factoryId}
+            gen={editing}
+            generatorName={gen?.name ?? editing.generatorId}
+            fuelOptions={fuelOptions}
+            onClose={() => setEditing(null)}
+          />
+        );
+      })()}
 
       {balance.data && balance.data.fuelFlows.length > 0 && (
         <Card>

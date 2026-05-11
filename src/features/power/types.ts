@@ -11,8 +11,17 @@ export interface PowerGen {
   /** percent — 1.0 to 250.0 */
   clockPct: number;
   notes?: string;
+  /** Optional own-position; falls back to the factory's coords. */
+  worldX?: number;
+  worldY?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SetPowerGenPositionInput {
+  id: string;
+  worldX: number;
+  worldY: number;
 }
 
 export interface CreatePowerGenInput {

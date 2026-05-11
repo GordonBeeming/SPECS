@@ -19,14 +19,20 @@ const columns: Column<Milestone>[] = [
 
 export function MilestonesTable() {
   const { data, isPending, isError, error } = useMilestones();
+  const rows = data
+    ? [...data].sort((a, b) =>
+        a.tier === b.tier ? a.name.localeCompare(b.name) : a.tier - b.tier,
+      )
+    : undefined;
   return (
     <LibraryTable
-      rows={data}
+      rows={rows}
       isPending={isPending}
       isError={isError}
       error={error}
       columns={columns}
       rowKey={(r) => r.id}
+      groupKey={(r) => `Tier ${r.tier}`}
     />
   );
 }

@@ -8,14 +8,22 @@ use std::collections::HashSet;
 
 use anyhow::{Context, Result, anyhow, bail};
 
-use super::types::GameDataFile;
+use super::types::{GameDataFile, MapNode};
 
 /// Bundled dataset — compiled into the binary so prod doesn't touch the FS.
 pub const BUNDLED_JSON: &str = include_str!("../../../game-data/v1.1.json");
+/// Bundled resource-node catalog — sibling to `BUNDLED_JSON` but split so
+/// the per-node coords don't have to live in the same file as recipes.
+pub const BUNDLED_NODES_JSON: &str = include_str!("../../../game-data/nodes.json");
 
 /// Parse and validate the bundled dataset.
 pub fn load_bundled() -> Result<GameDataFile> {
     parse_str(BUNDLED_JSON).context("loading bundled game data")
+}
+
+/// Parse the bundled resource-node catalog.
+pub fn load_bundled_nodes() -> Result<Vec<MapNode>> {
+    serde_json::from_str(BUNDLED_NODES_JSON).context("loading bundled resource-node catalog")
 }
 
 /// Parse and validate a JSON string.

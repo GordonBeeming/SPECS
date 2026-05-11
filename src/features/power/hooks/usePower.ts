@@ -21,6 +21,16 @@ export function usePowerGens(factoryId: string | null) {
   });
 }
 
+export function useAllPowerGens() {
+  const playthrough = useCurrentPlaythrough();
+  const ptId = playthrough.data?.id ?? null;
+  return useQuery({
+    queryKey: ["power", "list-all", ptId] as const,
+    queryFn: () => powerApi.listAll(),
+    enabled: !!playthrough.data,
+  });
+}
+
 export function usePowerBalance(factoryId: string | null) {
   const playthrough = useCurrentPlaythrough();
   const ptId = playthrough.data?.id ?? null;
@@ -36,6 +46,11 @@ export function usePowerBalance(factoryId: string | null) {
 function invalidate(client: ReturnType<typeof useQueryClient>, factoryId: string) {
   client.invalidateQueries({ queryKey: queryKeys.power.list(factoryId) });
   client.invalidateQueries({ queryKey: queryKeys.power.balance(factoryId) });
+  // The map view consumes `["power", "list-all", ptId]` via
+  // useAllPowerGens; without this invalidation a freshly-added /
+  // edited / deleted generator wouldn't reflect on the map until
+  // the next playthrough switch.
+  client.invalidateQueries({ queryKey: ["power", "list-all"] });
   // The factory ledger surfaces the consumed-MW figure that
   // factory_power_balance compares against — keep it in sync.
   client.invalidateQueries({ queryKey: ["factory", "detail", factoryId] });

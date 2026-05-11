@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { ArrowRight, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, Pencil, Plus } from "lucide-react";
+import { ConfirmDeleteButton } from "@/shared/ui/ConfirmDeleteButton";
 
 import { useFactoryList } from "@/features/factory/hooks/useFactories";
 import { useItems } from "@/features/library/hooks/useLibrary";
@@ -100,15 +101,7 @@ export function LogisticsListView() {
                 itemLabel={itemName(link.itemId)}
                 isFluid={itemIsFluid(link.itemId)}
                 onEdit={() => setEditing(link)}
-                onDelete={() => {
-                  if (
-                    confirm(
-                      `Delete link ${factoryName(link.fromFactoryId)} → ${factoryName(link.toFactoryId)}?`,
-                    )
-                  ) {
-                    deleteMut.mutate(link.id);
-                  }
-                }}
+                onDelete={() => deleteMut.mutate(link.id)}
               />
             ))}
           </ul>
@@ -167,14 +160,10 @@ function LinkRow({ link, fromName, toName, itemLabel, isFluid, onEdit, onDelete 
       >
         <Pencil className="h-3.5 w-3.5" />
       </button>
-      <button
-        type="button"
-        onClick={onDelete}
-        aria-label={`Delete link ${fromName} to ${toName}`}
-        className="rounded-md p-1.5 text-fg-muted hover:bg-danger/20 hover:text-danger"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
+      <ConfirmDeleteButton
+        onConfirm={onDelete}
+        label={`Delete link ${fromName} to ${toName}`}
+      />
     </li>
   );
 }

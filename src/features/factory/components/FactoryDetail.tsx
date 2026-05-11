@@ -1,29 +1,18 @@
-import { useState } from "react";
-import { Factory as FactoryGlyph, Pencil, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Factory as FactoryGlyph, Pencil, Zap } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import { Icon } from "@/shared/ui/Icon";
 import { IconPicker } from "@/shared/ui/IconPicker";
+import { useNavStore } from "@/shared/nav-store";
 import {
   useFactoryDetail,
-  useRemoveMachine,
+  useMachineLayouts,
   useSetFactoryIcon,
 } from "../hooks/useFactories";
 import { useBuildings, useItems, useRecipes } from "@/features/library/hooks/useLibrary";
 import { AddMachineForm } from "./AddMachineForm";
+import { FactoryGraphView } from "./FactoryGraphView";
 import { FactoryLedgerTable } from "./FactoryLedgerTable";
-import type { FactoryMachine } from "../types";
-import { ampSlotsForBuilding } from "../ampRules";
-
-function formatAmpSummary(m: FactoryMachine): string {
-  const parts: string[] = [];
-  if (m.useSomersloop && m.somersloopSlotsFilled > 0) {
-    parts.push(`${m.somersloopSlotsFilled}/${ampSlotsForBuilding(m.buildingId)} S`);
-  }
-  if (m.powerShardCount > 0) {
-    parts.push(`${m.powerShardCount}× PS`);
-  }
-  return parts.length === 0 ? "—" : parts.join(" · ");
-}
 
 interface FactoryDetailProps {
   factoryId: string;
@@ -34,10 +23,35 @@ export function FactoryDetail({ factoryId }: FactoryDetailProps) {
   const items = useItems();
   const recipes = useRecipes();
   const buildings = useBuildings();
-  const removeMachine = useRemoveMachine(factoryId);
+  const layouts = useMachineLayouts(factoryId);
   const setIcon = useSetFactoryIcon();
   const [showAdd, setShowAdd] = useState(false);
   const [editingIcon, setEditingIcon] = useState(false);
+
+  // Memoise the lookup Maps + layout Map BEFORE any early return so
+  // the hook count stays constant across renders (Rules of Hooks).
+  // Stable identity also breaks the FactoryGraphView setNodes ↔
+  // useEffect loop that surfaced as "Maximum update depth exceeded"
+  // inside ReactFlow's Wrapper.
+  const buildingNames = useMemo(
+    () => new Map(buildings.data?.map((b) => [b.id, b.name]) ?? []),
+    [buildings.data],
+  );
+  const recipeNames = useMemo(
+    () => new Map(recipes.data?.map((r) => [r.id, r.name]) ?? []),
+    [recipes.data],
+  );
+  const itemNames = useMemo(
+    () => new Map(items.data?.map((i) => [i.id, i.name]) ?? []),
+    [items.data],
+  );
+  const layoutMap = useMemo(
+    () =>
+      new Map(
+        (layouts.data ?? []).map((l) => [l.machineId, { x: l.x, y: l.y }] as const),
+      ),
+    [layouts.data],
+  );
 
   if (detail.isError) {
     return (
@@ -52,9 +66,6 @@ export function FactoryDetail({ factoryId }: FactoryDetailProps) {
   }
 
   const { factory, machines, ledger } = detail.data;
-  const buildingNames = new Map(buildings.data?.map((b) => [b.id, b.name]) ?? []);
-  const recipeNames = new Map(recipes.data?.map((r) => [r.id, r.name]) ?? []);
-  const itemNames = new Map(items.data?.map((i) => [i.id, i.name]) ?? []);
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-auto">
@@ -80,8 +91,24 @@ export function FactoryDetail({ factoryId }: FactoryDetailProps) {
             {factory.notes && <p className="mt-1 text-sm text-fg-muted">{factory.notes}</p>}
           </div>
         </div>
-        <div className="text-right text-xs text-fg-muted tabular-nums">
-          {machines.length} {machines.length === 1 ? "machine" : "machines"} · {ledger.powerMw.toFixed(1)}&nbsp;MW
+        <div className="flex flex-col items-end gap-2 text-right text-xs text-fg-muted tabular-nums">
+          <span>
+            {machines.length} {machines.length === 1 ? "machine" : "machines"} · {ledger.powerMw.toFixed(1)}&nbsp;MW
+          </span>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              // Hand the factory id off via the nav store and route
+              // to Power; PowerView's useEffect picks the pending id
+              // up on mount and pre-selects this factory.
+              useNavStore.getState().selectFactory(factory.id);
+              useNavStore.getState().goTo("power");
+            }}
+            className="px-2 py-1 text-xs"
+          >
+            <Zap className="h-3.5 w-3.5" />
+            Add power
+          </Button>
         </div>
       </header>
 
@@ -117,47 +144,13 @@ export function FactoryDetail({ factoryId }: FactoryDetailProps) {
             No machines yet. Click <strong>Add machine</strong> to wire up a recipe.
           </div>
         ) : (
-          <div className="overflow-hidden rounded-md border border-border">
-            <table className="w-full text-sm">
-              <thead className="bg-border/50 text-xs uppercase tracking-wide text-fg-muted">
-                <tr>
-                  <th className="px-3 py-2 text-left font-medium">Recipe</th>
-                  <th className="px-3 py-2 text-left font-medium">Building</th>
-                  <th className="px-3 py-2 text-right font-medium">Count</th>
-                  <th className="px-3 py-2 text-right font-medium">Clock</th>
-                  <th className="px-3 py-2 text-right font-medium">Amp</th>
-                  <th className="px-3 py-2 text-right font-medium" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {machines.map((m) => (
-                  <tr key={m.id} className="hover:bg-border/30">
-                    <td className="px-3 py-2">{recipeNames.get(m.recipeId) ?? m.recipeId}</td>
-                    <td className="px-3 py-2 text-fg-muted">{buildingNames.get(m.buildingId) ?? m.buildingId}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{m.count}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{m.clockPct.toFixed(1)}%</td>
-                    <td className="px-3 py-2 text-right text-xs text-fg-muted tabular-nums">
-                      {formatAmpSummary(m)}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (confirm(`Remove this ${recipeNames.get(m.recipeId) ?? "machine"} row?`)) {
-                            removeMachine.mutate(m.id);
-                          }
-                        }}
-                        aria-label="Remove machine"
-                        className="rounded-md p-1.5 text-fg-muted hover:bg-danger/20 hover:text-danger"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <FactoryGraphView
+            factoryId={factoryId}
+            machines={machines}
+            buildingNames={buildingNames}
+            recipeNames={recipeNames}
+            layouts={layoutMap}
+          />
         )}
       </section>
 

@@ -92,6 +92,9 @@ pub fn run() {
             features::factory::commands::create_factory,
             features::factory::commands::rename_factory,
             features::factory::commands::set_factory_icon,
+            features::factory::commands::set_factory_position,
+            features::factory::commands::set_machine_layout,
+            features::factory::commands::list_machine_layouts,
             features::factory::commands::delete_factory,
             features::factory::commands::add_factory_machine,
             features::factory::commands::update_factory_machine,
@@ -115,8 +118,15 @@ pub fn run() {
             features::power::commands::update_power_gen,
             features::power::commands::remove_power_gen,
             features::power::commands::factory_power_balance,
+            features::power::commands::list_all_power_gens,
+            features::power::commands::set_power_gen_position,
             features::alts::commands::list_unlocked_alt_recipes,
             features::alts::commands::toggle_alt_recipe,
+            features::resource_nodes::commands::list_resource_nodes,
+            features::resource_nodes::commands::set_node_claim,
+            features::resource_nodes::commands::clear_node_claim,
+            features::planner::commands::planner_derive_chain,
+            features::planner::commands::apply_chain_plan,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

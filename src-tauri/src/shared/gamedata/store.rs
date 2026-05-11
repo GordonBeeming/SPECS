@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use super::loader::load_bundled;
+use super::loader::{load_bundled, load_bundled_nodes};
 use super::types::*;
 
 #[derive(Clone)]
@@ -25,15 +25,27 @@ struct Inner {
     buildings_by_id: HashMap<String, usize>,
     recipes_by_id: HashMap<String, usize>,
     milestones_by_id: HashMap<String, usize>,
+    /// Index from output item id → indices into `file.recipes` that
+    /// produce that item. Populated for the planner BFS so it can
+    /// enumerate candidate recipes per stage without re-scanning the
+    /// full recipe list each step.
+    recipes_by_output_item: HashMap<String, Vec<usize>>,
+    nodes: Vec<MapNode>,
+    nodes_by_id: HashMap<String, usize>,
 }
 
 impl GameData {
     /// Load + index the bundled dataset.
     pub fn from_bundled() -> Result<Self> {
-        Self::from_file(load_bundled()?)
+        Self::from_parts(load_bundled()?, load_bundled_nodes()?)
     }
 
+    #[allow(dead_code)]
     pub fn from_file(file: GameDataFile) -> Result<Self> {
+        Self::from_parts(file, Vec::new())
+    }
+
+    pub fn from_parts(file: GameDataFile, nodes: Vec<MapNode>) -> Result<Self> {
         let items_by_id = file
             .items
             .iter()
@@ -58,6 +70,20 @@ impl GameData {
             .enumerate()
             .map(|(i, m)| (m.id.clone(), i))
             .collect();
+        let mut recipes_by_output_item: HashMap<String, Vec<usize>> = HashMap::new();
+        for (i, r) in file.recipes.iter().enumerate() {
+            for out in &r.outputs {
+                recipes_by_output_item
+                    .entry(out.item_id.clone())
+                    .or_default()
+                    .push(i);
+            }
+        }
+        let nodes_by_id = nodes
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.id.clone(), i))
+            .collect();
         Ok(Self {
             inner: Arc::new(Inner {
                 file,
@@ -65,6 +91,9 @@ impl GameData {
                 buildings_by_id,
                 recipes_by_id,
                 milestones_by_id,
+                recipes_by_output_item,
+                nodes,
+                nodes_by_id,
             }),
         })
     }
@@ -150,6 +179,70 @@ impl GameData {
             .milestones_by_id
             .get(id)
             .map(|i| &self.inner.file.milestones[*i])
+    }
+
+    pub fn nodes(&self) -> &[MapNode] {
+        &self.inner.nodes
+    }
+
+    pub fn node(&self, id: &str) -> Option<&MapNode> {
+        self.inner
+            .nodes_by_id
+            .get(id)
+            .map(|i| &self.inner.nodes[*i])
+    }
+
+    /// Recipes whose `outputs[].item_id` includes `item_id`. The planner
+    /// uses this to enumerate candidate recipes per stage without a
+    /// linear scan of the full recipe list. Returns an empty slice for
+    /// raw resources (no recipe produces Iron Ore directly).
+    pub fn recipes_producing(&self, item_id: &str) -> Vec<&Recipe> {
+        match self.inner.recipes_by_output_item.get(item_id) {
+            Some(idxs) => idxs.iter().map(|i| &self.inner.file.recipes[*i]).collect(),
+            None => Vec::new(),
+        }
+    }
+
+    /// True if no recipe in the dataset produces this item.
+    /// (Currently only a sanity helper — the planner reaches its
+    /// termination condition via `is_extracted_resource` below
+    /// because several "natural" items show up as recipe byproducts
+    /// elsewhere.)
+    #[allow(dead_code)]
+    pub fn is_raw_resource(&self, item_id: &str) -> bool {
+        self.inner
+            .recipes_by_output_item
+            .get(item_id)
+            .map(|v| v.is_empty())
+            .unwrap_or(true)
+    }
+
+    /// True for items that the game exclusively sources from
+    /// extractors / wells / vents — Iron Ore, Water, Crude Oil, etc.
+    /// They may *also* appear as recipe byproducts (Water from
+    /// Battery production, Crude Oil from various refines) but the
+    /// planner should still constrain on claimed supply: a player
+    /// without a Water Extractor can't realistically run a Pure Iron
+    /// Ingot chain just because Battery production also drips water
+    /// out the side.
+    pub fn is_extracted_resource(&self, item_id: &str) -> bool {
+        matches!(
+            item_id,
+            "Desc_OreIron_C"
+                | "Desc_OreCopper_C"
+                | "Desc_OreGold_C"
+                | "Desc_Stone_C"
+                | "Desc_Coal_C"
+                | "Desc_Sulfur_C"
+                | "Desc_OreBauxite_C"
+                | "Desc_RawQuartz_C"
+                | "Desc_OreUranium_C"
+                | "Desc_SAM_C"
+                | "Desc_LiquidOil_C"
+                | "Desc_Water_C"
+                | "Desc_NitrogenGas_C"
+                | "Desc_Geyser_C"
+        )
     }
 }
 

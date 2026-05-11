@@ -22,6 +22,7 @@ export function FactoryLedgerTable({ ledger, itemNames }: FactoryLedgerTableProp
             <th className="px-3 py-2 text-left font-medium">Item</th>
             <th className="px-3 py-2 text-right font-medium">Produced</th>
             <th className="px-3 py-2 text-right font-medium">Consumed</th>
+            <th className="px-3 py-2 text-right font-medium">From nodes</th>
             <th className="px-3 py-2 text-right font-medium">Net</th>
           </tr>
         </thead>
@@ -43,6 +44,18 @@ export function FactoryLedgerTable({ ledger, itemNames }: FactoryLedgerTableProp
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">
                   {flow.consumedPerMinute > 0 ? flow.consumedPerMinute.toFixed(1) : "—"}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums">
+                  {flow.fromNodesPerMinute && flow.fromNodesPerMinute > 0 ? (
+                    <span
+                      className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
+                      title="Items per minute from claimed resource nodes bound to this factory"
+                    >
+                      {flow.fromNodesPerMinute.toFixed(1)}
+                    </span>
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td
                   className={`px-3 py-2 text-right tabular-nums font-medium ${

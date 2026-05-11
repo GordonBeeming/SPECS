@@ -43,6 +43,8 @@ export interface ItemFlow {
   producedPerMinute: number;
   consumedPerMinute: number;
   netPerMinute: number;
+  /** ipm available from resource nodes bound to this factory. */
+  fromNodesPerMinute?: number;
 }
 
 export interface FactoryLedger {
@@ -70,6 +72,12 @@ export interface SetFactoryIconInput {
   iconId: string | null;
 }
 
+export interface SetFactoryPositionInput {
+  id: string;
+  worldX: number;
+  worldY: number;
+}
+
 export interface RenameFactoryInput {
   id: string;
   name: string;
@@ -94,4 +102,7 @@ export interface UpdateMachineInput {
   useSomersloop?: boolean;
   somersloopSlotsFilled?: number;
   powerShardCount?: number;
+  /** Optional: swap the machine's recipe (and the matching building). */
+  recipeId?: string;
+  buildingId?: string;
 }

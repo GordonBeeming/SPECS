@@ -217,3 +217,57 @@ pub enum VehicleKind {
     Truck,
     Drone,
 }
+
+/// One node on the in-game map. Sourced from
+/// `scripts/build-nodes.ts` → `game-data/nodes.json` (bundled JSON), with
+/// the SCIM `pathName` stem as the id so the per-playthrough claim table
+/// can reference it without a join.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MapNode {
+    pub id: String,
+    /// Item this node yields when extracted (e.g. `Desc_OreIron_C`).
+    /// Geysers carry the placeholder `Desc_Geyser_C` — they feed power,
+    /// not item flow.
+    pub resource_item_id: String,
+    pub purity: NodePurity,
+    pub kind: NodeKind,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    /// For fracking satellites, the shared `BP_FrackingCore*` group id
+    /// so the UI can surface "this well shares a core with N others".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub core_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum NodePurity {
+    Impure,
+    Normal,
+    Pure,
+}
+
+impl NodePurity {
+    /// Multiplier applied to a miner's base ipm. Pure deposits double,
+    /// Impure halve. Fracking-well rates use the same scaling.
+    pub fn multiplier(self) -> f32 {
+        match self {
+            NodePurity::Impure => 0.5,
+            NodePurity::Normal => 1.0,
+            NodePurity::Pure => 2.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum NodeKind {
+    /// Solid-ore node — extracted with a `Build_MinerMk*_C`.
+    MinerNode,
+    /// Fracking satellite — extracted with a Resource Well Extractor.
+    /// Shares throughput math with miners but uses well rates.
+    FrackingWell,
+    /// Geothermal vent — powers a Geothermal Generator. No item flow.
+    Geyser,
+}

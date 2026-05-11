@@ -52,6 +52,57 @@ pub fn factory_set_icon(
     .map_err(anyhow::Error::from)
 }
 
+pub fn factory_set_position(
+    conn: &Connection,
+    id: &str,
+    world_x: f64,
+    world_y: f64,
+    now: &str,
+) -> Result<usize> {
+    conn.execute(
+        "UPDATE factory SET world_x = ?, world_y = ?, updated_at = ? WHERE id = ?",
+        params![world_x, world_y, now, id],
+    )
+    .map_err(anyhow::Error::from)
+}
+
+pub fn machine_layout_upsert(
+    conn: &Connection,
+    machine_id: &str,
+    x: f64,
+    y: f64,
+    now: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO factory_machine_layout (machine_id, x, y, updated_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(machine_id) DO UPDATE SET
+            x = excluded.x, y = excluded.y, updated_at = excluded.updated_at",
+        params![machine_id, x, y, now],
+    )?;
+    Ok(())
+}
+
+pub fn machine_layouts_for_factory(
+    conn: &Connection,
+    factory_id: &str,
+) -> Result<Vec<(String, f64, f64)>> {
+    let mut stmt = conn.prepare(
+        "SELECT l.machine_id, l.x, l.y
+         FROM factory_machine_layout l
+         JOIN factory_machine m ON m.id = l.machine_id
+         WHERE m.factory_id = ?",
+    )?;
+    let rows = stmt.query_map([factory_id], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?, r.get::<_, f64>(2)?))
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
 pub fn factory_delete(conn: &Connection, id: &str) -> Result<()> {
     conn.execute("DELETE FROM factory WHERE id = ?", [id])?;
     Ok(())
@@ -163,6 +214,39 @@ pub fn machine_update(
              power_shard_count = ?, updated_at = ?
          WHERE id = ?",
         params![
+            count, clock_x100,
+            if use_somersloop { 1 } else { 0 },
+            somersloop_slots_filled,
+            power_shard_count,
+            now, id,
+        ],
+    )?;
+    Ok(affected)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn machine_update_with_recipe(
+    conn: &Connection,
+    id: &str,
+    building_id: &str,
+    recipe_id: &str,
+    count: i64,
+    clock_pct: f32,
+    use_somersloop: bool,
+    somersloop_slots_filled: i64,
+    power_shard_count: i64,
+    now: &str,
+) -> Result<usize> {
+    let clock_x100 = clock_pct_to_x100(clock_pct);
+    let affected = conn.execute(
+        "UPDATE factory_machine
+         SET building_id = ?, recipe_id = ?,
+             count = ?, clock_pct_x100 = ?,
+             use_somersloop = ?, somersloop_slots_filled = ?,
+             power_shard_count = ?, updated_at = ?
+         WHERE id = ?",
+        params![
+            building_id, recipe_id,
             count, clock_x100,
             if use_somersloop { 1 } else { 0 },
             somersloop_slots_filled,

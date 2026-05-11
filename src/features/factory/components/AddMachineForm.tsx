@@ -122,15 +122,34 @@ export function AddMachineForm({ factoryId, onSubmitted }: AddMachineFormProps) 
             placeholder="Type to filter recipes…"
             value={recipeId || null}
             onChange={(next) => setRecipeId(next ?? "")}
-            options={eligibleRecipes.map((r) => ({
-              value: r.id,
-              label: r.name + (r.isAlt ? " (alt)" : ""),
-              hint: buildingsById.get(r.buildingId)?.name,
-              // The recipe's primary output is what the player thinks of
-              // as "this row" — show that item's icon next to the name so
-              // the picker reads visually like the in-game build menu.
-              iconId: r.outputs[0]?.itemId,
-            }))}
+            // Sort recipes by group then name. Non-alts group by
+            // their actual milestone tier; alts share a single
+            // "Alts (Hard Drives)" bucket because the dataset's
+            // unlockTier=0 on alts means "available once you
+            // analyze a Hard Drive", not "available at T0" — using
+            // the raw tier would put alts of every late-game item
+            // under "Tier 0" which is exactly the confusion we just
+            // hit in the planner picker.
+            options={[...eligibleRecipes]
+              .sort((a, b) => {
+                if (a.isAlt !== b.isAlt) return a.isAlt ? 1 : -1;
+                if (!a.isAlt) {
+                  return a.unlockTier === b.unlockTier
+                    ? a.name.localeCompare(b.name)
+                    : a.unlockTier - b.unlockTier;
+                }
+                return a.name.localeCompare(b.name);
+              })
+              .map((r) => ({
+                value: r.id,
+                label: r.name + (r.isAlt ? " (alt)" : ""),
+                hint: buildingsById.get(r.buildingId)?.name,
+                // The recipe's primary output is what the player thinks of
+                // as "this row" — show that item's icon next to the name so
+                // the picker reads visually like the in-game build menu.
+                iconId: r.outputs[0]?.itemId,
+                group: r.isAlt ? "Alts (Hard Drives)" : `Tier ${r.unlockTier}`,
+              }))}
           />
         </div>
       </label>

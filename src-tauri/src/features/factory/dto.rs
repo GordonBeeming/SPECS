@@ -57,6 +57,16 @@ pub struct ItemFlow {
     /// produced - consumed. Negative means the factory needs imports;
     /// positive means it has surplus to ship out.
     pub net_per_minute: f32,
+    /// ipm available from claimed resource nodes bound to *this*
+    /// factory. Surfaces as a "From nodes: X ipm" chip on raw-material
+    /// rows so the user can see at a glance whether their staked
+    /// supply covers what the recipe needs.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub from_nodes_per_minute: f32,
+}
+
+fn is_zero(v: &f32) -> bool {
+    *v == 0.0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -98,6 +108,32 @@ pub struct SetFactoryIconInput {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SetFactoryPositionInput {
+    pub id: String,
+    /// In-game world coordinates. The map view writes these straight
+    /// from drag events — no rounding here, the SQL column is REAL.
+    pub world_x: f64,
+    pub world_y: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetMachineLayoutInput {
+    pub machine_id: String,
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineLayout {
+    pub machine_id: String,
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AddMachineInput {
     pub factory_id: String,
     pub building_id: String,
@@ -127,6 +163,13 @@ pub struct UpdateMachineInput {
     pub somersloop_slots_filled: i64,
     #[serde(default)]
     pub power_shard_count: i64,
+    /// Optional: swap the machine's recipe (and matching building)
+    /// in-place. Backwards-compatible — older callers that omit this
+    /// keep the current recipe.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recipe_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub building_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

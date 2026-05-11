@@ -731,6 +731,13 @@
       "isFluid": false
     },
     {
+      "id": "Desc_SAM_C",
+      "name": "SAM",
+      "category": "raw",
+      "stackSize": 100,
+      "isFluid": false
+    },
+    {
       "id": "Desc_IronScrew_C",
       "name": "Screw",
       "category": "part",
