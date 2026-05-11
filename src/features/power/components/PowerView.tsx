@@ -203,16 +203,28 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
                           <button
                             type="button"
                             onClick={() => {
-                              if (
-                                confirm(
-                                  `Remove this ${gen?.name ?? "generator"} row?`,
-                                )
-                              ) {
+                              if (armedDeleteId === g.id) {
                                 remove.mutate(g.id);
+                                setArmedDeleteId(null);
+                              } else {
+                                armForDelete(g.id);
                               }
                             }}
-                            aria-label="Remove generator"
-                            className="rounded-md p-1.5 text-fg-muted hover:bg-danger/20 hover:text-danger"
+                            aria-label={
+                              armedDeleteId === g.id
+                                ? "Click again to confirm delete"
+                                : "Remove generator"
+                            }
+                            title={
+                              armedDeleteId === g.id
+                                ? "Click again to confirm"
+                                : "Remove generator"
+                            }
+                            className={`rounded-md p-1.5 ${
+                              armedDeleteId === g.id
+                                ? "bg-danger/20 text-danger"
+                                : "text-fg-muted hover:bg-danger/20 hover:text-danger"
+                            }`}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
