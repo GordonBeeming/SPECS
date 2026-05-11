@@ -61,6 +61,21 @@ describe("<PowerView />", () => {
       },
     ]);
     vi.spyOn(powerApi, "list").mockResolvedValue([]);
+    // PowerView now filters the sidebar to factories that already
+    // have at least one generator row, so the active-factory panel
+    // doesn't render until listAll reports something for this id.
+    vi.spyOn(powerApi, "listAll").mockResolvedValue([
+      {
+        id: "g1",
+        factoryId: "f1",
+        generatorId: "Build_GeneratorCoal_C",
+        fuelItemId: "Desc_Coal_C",
+        count: 4,
+        clockPct: 100,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+      },
+    ]);
     vi.spyOn(powerApi, "balance").mockResolvedValue({
       factoryId: "f1",
       // Pin the canonical math: 4 × Coal × 100% = 300 MW.

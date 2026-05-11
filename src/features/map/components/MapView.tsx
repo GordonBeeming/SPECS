@@ -10,8 +10,6 @@ import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythrou
 import { useFactoryDetail, useFactoryList } from "@/features/factory/hooks/useFactories";
 import { useLogisticsLinks } from "@/features/logistics/hooks/useLogistics";
 import { useAllPowerGens } from "@/features/power/hooks/usePower";
-import { useGenerators } from "@/features/library/hooks/useLibrary";
-import { powerApi } from "@/features/power/api";
 import {
   useClearNodeClaim,
   useResourceNodes,
@@ -97,7 +95,6 @@ export function MapView() {
   const nodes = useResourceNodes();
   const links = useLogisticsLinks();
   const powerGens = useAllPowerGens();
-  const generators = useGenerators();
   const setClaim = useSetNodeClaim();
   const clearClaim = useClearNodeClaim();
   const wrapRef = useRef<ReactZoomPanPinchRef | null>(null);
@@ -443,97 +440,42 @@ export function MapView() {
                     />
                   )}
 
-                  {(factories.data ?? []).map((f) => (
-                    <FactoryPin
-                      key={f.id}
-                      factory={f}
-                      dragging={dragging === f.id}
-                      onDragStart={() => setDragging(f.id)}
-                      onDragEnd={(pt) => {
-                        setDragging(null);
-                        const { worldX, worldY } = pctToWorld(
-                          pt.x / MAP_W,
-                          pt.y / MAP_H,
-                        );
-                        void factoryApi
-                          .setPosition({ id: f.id, worldX, worldY })
-                          .finally(() => factories.refetch());
-                      }}
-                      onClick={() => {
-                        setSelectedNodeId(null);
-                        setSelectedPowerGenId(null);
-                        setSelectedFactoryId(f.id);
-                      }}
-                      currentScale={() => wrapRef.current?.state.scale ?? 1}
-                    />
-                  ))}
+                  {(factories.data ?? []).map((f) => {
+                    const hasPower = (powerGens.data ?? []).some(
+                      (g) => g.factoryId === f.id,
+                    );
+                    return (
+                      <FactoryPin
+                        key={f.id}
+                        factory={f}
+                        hasPower={hasPower}
+                        dragging={dragging === f.id}
+                        onDragStart={() => setDragging(f.id)}
+                        onDragEnd={(pt) => {
+                          setDragging(null);
+                          const { worldX, worldY } = pctToWorld(
+                            pt.x / MAP_W,
+                            pt.y / MAP_H,
+                          );
+                          void factoryApi
+                            .setPosition({ id: f.id, worldX, worldY })
+                            .finally(() => factories.refetch());
+                        }}
+                        onClick={() => {
+                          setSelectedNodeId(null);
+                          setSelectedPowerGenId(null);
+                          setSelectedFactoryId(f.id);
+                        }}
+                        currentScale={() => wrapRef.current?.state.scale ?? 1}
+                      />
+                    );
+                  })}
 
-                  {/* Power-gen pins. Generators with their own
-                      coords render where placed; generators without
-                      coords get a fanned-out fallback around their
-                      parent factory so the player can see them
-                      individually and drag any one out to set its
-                      real position (otherwise N generators in one
-                      factory all stack invisibly on the factory's
-                      pin). The fan radius scales gently with the
-                      number of unplaced siblings. */}
-                  {(() => {
-                    const all = powerGens.data ?? [];
-                    // Group unplaced gens per factory so each gets
-                    // a fan around its parent.
-                    const unplacedByFactory = new Map<string, number>();
-                    return all.map((g) => {
-                      const gen = generators.data?.find((x) => x.id === g.generatorId);
-                      const parent = (factories.data ?? []).find((f) => f.id === g.factoryId);
-                      const name =
-                        gen?.name ?? g.generatorId.replace(/_C$/, "").replace(/^Build_/, "");
-                      let renderX = g.worldX ?? null;
-                      let renderY = g.worldY ?? null;
-                      if ((renderX == null || renderY == null) && parent) {
-                        const idx = unplacedByFactory.get(parent.id) ?? 0;
-                        unplacedByFactory.set(parent.id, idx + 1);
-                        // ~3000 world units per step is a small
-                        // visible offset at typical zoom; circle of
-                        // 8 fits before overlap matters.
-                        const angle = (idx / 8) * Math.PI * 2;
-                        const r = 4000 + Math.floor(idx / 8) * 3000;
-                        renderX = parent.worldX + Math.cos(angle) * r;
-                        renderY = parent.worldY + Math.sin(angle) * r;
-                      }
-                      if (renderX == null || renderY == null) return null;
-                      return (
-                        <PowerGenPin
-                          key={g.id}
-                          gen={{
-                            id: g.id,
-                            generatorId: g.generatorId,
-                            worldX: renderX,
-                            worldY: renderY,
-                          }}
-                          name={`${g.count}× ${name}`}
-                          parentName={parent?.name ?? "—"}
-                          dragging={dragging === `gen-${g.id}`}
-                          onDragStart={() => setDragging(`gen-${g.id}`)}
-                          onDragEnd={(pt) => {
-                            setDragging(null);
-                            const { worldX, worldY } = pctToWorld(
-                              pt.x / MAP_W,
-                              pt.y / MAP_H,
-                            );
-                            void powerApi
-                              .setPosition({ id: g.id, worldX, worldY })
-                              .finally(() => powerGens.refetch());
-                          }}
-                          onClick={() => {
-                            setSelectedNodeId(null);
-                            setSelectedFactoryId(null);
-                            setSelectedPowerGenId(g.id);
-                          }}
-                          currentScale={() => wrapRef.current?.state.scale ?? 1}
-                        />
-                      );
-                    });
-                  })()}
+                  {/* No per-generator pins: the factory IS the
+                      grouping. A FactoryPin renders a ⚡ badge when
+                      it owns any power_gen rows so the player can
+                      tell which factories include power gear at a
+                      glance. */}
                 </div>
               </TransformComponent>
             </TransformWrapper>
@@ -568,9 +510,17 @@ export function MapView() {
             <div className="absolute bottom-3 left-3 z-20">
               <FactoryPopover
                 factoryId={selectedFactoryId}
+                hasPower={(powerGens.data ?? []).some(
+                  (g) => g.factoryId === selectedFactoryId,
+                )}
                 onEdit={() => {
                   useNavStore.getState().selectFactory(selectedFactoryId);
                   useNavStore.getState().goTo("factories");
+                  setSelectedFactoryId(null);
+                }}
+                onEditPower={() => {
+                  useNavStore.getState().selectFactory(selectedFactoryId);
+                  useNavStore.getState().goTo("power");
                   setSelectedFactoryId(null);
                 }}
                 onClose={() => setSelectedFactoryId(null)}
@@ -798,17 +748,28 @@ function FactoryPin({ factory, hasPower, onDragStart, onDragEnd, onClick, curren
       ) : (
         factory.name
       )}
+      {hasPower && (
+        <span
+          aria-label="Has power generators"
+          title="Has power generators"
+          className="absolute -right-1.5 -top-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-warning text-bg-raised"
+        >
+          <Zap className="h-2.5 w-2.5" />
+        </span>
+      )}
     </button>
   );
 }
 
 interface FactoryPopoverProps {
   factoryId: string;
+  hasPower?: boolean;
   onEdit: () => void;
+  onEditPower?: () => void;
   onClose: () => void;
 }
 
-function FactoryPopover({ factoryId, onEdit, onClose }: FactoryPopoverProps) {
+function FactoryPopover({ factoryId, hasPower, onEdit, onEditPower, onClose }: FactoryPopoverProps) {
   const detail = useFactoryDetail(factoryId);
   const f = detail.data?.factory;
   const ledger = detail.data?.ledger;
@@ -876,6 +837,16 @@ function FactoryPopover({ factoryId, onEdit, onClose }: FactoryPopoverProps) {
       )}
 
       <div className="mt-3 flex items-center justify-end gap-2">
+        {hasPower && onEditPower && (
+          <Button
+            variant="ghost"
+            onClick={onEditPower}
+            className="px-3 py-1 text-xs"
+          >
+            <Zap className="h-3 w-3 text-warning" />
+            Edit power
+          </Button>
+        )}
         <Button onClick={onEdit} className="px-3 py-1 text-xs">
           <Pencil className="h-3 w-3" />
           Edit factory

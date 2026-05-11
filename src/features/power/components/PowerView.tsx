@@ -1,7 +1,11 @@
-import { useMemo, useState, type FormEvent } from "react";
-import { Pencil, Trash2, Zap } from "lucide-react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Factory as FactoryGlyph, Pencil, Trash2, Zap } from "lucide-react";
+import { Icon } from "@/shared/ui/Icon";
+import { useNavStore } from "@/shared/nav-store";
 import { EditPowerGenModal } from "./EditPowerGenModal";
+import { useAllPowerGens } from "../hooks/usePower";
 import type { PowerGen } from "../types";
+import type { Factory } from "@/features/factory/types";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { FilterSelect } from "@/shared/ui/FilterSelect";
@@ -19,7 +23,39 @@ import type { CreatePowerGenInput } from "../types";
 export function PowerView() {
   const playthrough = useCurrentPlaythrough();
   const factories = useFactoryList();
+  const allGens = useAllPowerGens();
+  const takePendingFactoryId = useNavStore((s) => s.takePendingFactoryId);
   const [selectedFactoryId, setSelectedFactoryId] = useState<string | null>(null);
+
+  // Deep-link: if the Factories tab pushed an "open this factory in
+  // Power" intent through the nav store, snap to that selection on
+  // first paint.
+  useEffect(() => {
+    const pending = takePendingFactoryId();
+    if (pending) setSelectedFactoryId(pending);
+    // takePendingFactoryId is stable (zustand action) — don't depend
+    // on it or this fires twice and clears legitimate selections.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Per-factory generator counts — hoisted above the early returns
+  // so the hook order stays stable across renders (Rules of Hooks).
+  const genCountByFactory = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const g of allGens.data ?? []) {
+      m.set(g.factoryId, (m.get(g.factoryId) ?? 0) + 1);
+    }
+    return m;
+  }, [allGens.data]);
+  // Filter the factory list before the early returns for the same
+  // reason — keeps the hook count constant across all render paths.
+  const factoryListFiltered = useMemo(() => {
+    const all = factories.data ?? [];
+    return all.filter(
+      (f) =>
+        (genCountByFactory.get(f.id) ?? 0) > 0 ||
+        f.id === selectedFactoryId,
+    );
+  }, [factories.data, genCountByFactory, selectedFactoryId]);
 
   if (!playthrough.data) {
     return (
@@ -33,59 +69,109 @@ export function PowerView() {
     );
   }
 
-  const factoryList = factories.data ?? [];
+  // Only surface factories that actually carry generators (or the
+  // one the user is currently editing) — pure item factories pad
+  // the sidebar without belonging here.
+  const factoryList = factoryListFiltered;
   const activeId = selectedFactoryId ?? factoryList[0]?.id ?? null;
-  const activeFactory = factoryList.find((f) => f.id === activeId) ?? null;
+
+  if (factoryList.length === 0) {
+    return (
+      <Card className="mx-auto max-w-2xl">
+        <h1 className="text-xl font-semibold text-primary">Power</h1>
+        <p className="mt-2 text-sm text-fg-muted">
+          No factories with power generators yet. Pop over to
+          Factories, open one, and hit <strong>Add power</strong> to
+          start building a power plant.
+        </p>
+      </Card>
+    );
+  }
 
   return (
-    <div className="flex h-full flex-col gap-4">
-      <Card>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-warning/10">
-              <Zap className="h-5 w-5 text-warning" />
-            </span>
-            <div className="min-w-0">
-              <h1 className="text-lg font-semibold text-primary">
-                Power · {activeFactory?.name ?? "(no factory)"}
-              </h1>
-              <p className="text-xs text-fg-muted">
-                Configuring generators for this factory. Switch using
-                the picker on the right.
-              </p>
-            </div>
-          </div>
-          {factoryList.length > 0 && (
-            <label className="flex items-center gap-2 text-xs text-fg-muted">
-              <span>Factory</span>
-              <select
-                aria-label="Factory"
-                value={activeId ?? ""}
-                onChange={(e) => setSelectedFactoryId(e.target.value || null)}
-                className="h-9 min-w-[12rem] rounded-md border border-border bg-bg px-2 text-sm text-fg outline-none focus:border-primary"
-              >
-                {factoryList.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+    <div className="grid h-full gap-4 lg:grid-cols-[20rem_1fr]">
+      <Card className="flex flex-col gap-3 overflow-hidden">
+        <div>
+          <h1 className="flex items-center gap-2 text-lg font-semibold text-primary">
+            <Zap className="h-4 w-4 text-warning" />
+            Power
+          </h1>
+          <p className="text-xs text-fg-muted">
+            {playthrough.data.displayName} · T{playthrough.data.currentTier}
+          </p>
         </div>
+        <ul className="flex flex-1 flex-col gap-1 overflow-auto">
+          {factoryList.map((f) => (
+            <PowerFactoryRow
+              key={f.id}
+              factory={f}
+              active={activeId === f.id}
+              genCount={genCountByFactory.get(f.id) ?? 0}
+              onSelect={() => setSelectedFactoryId(f.id)}
+            />
+          ))}
+        </ul>
       </Card>
 
-      {factoryList.length === 0 ? (
-        <Card>
-          <p className="text-sm text-fg-muted">
-            Create a factory first — power generators are scoped to a
-            specific factory.
-          </p>
-        </Card>
-      ) : activeId ? (
-        <PowerFactoryPanel factoryId={activeId} />
-      ) : null}
+      <Card className="flex flex-col overflow-hidden">
+        {activeId ? (
+          <PowerFactoryPanel factoryId={activeId} />
+        ) : (
+          <div className="m-auto max-w-md text-center text-sm text-fg-muted">
+            Pick a factory on the left to add or edit its power
+            generators.
+          </div>
+        )}
+      </Card>
     </div>
+  );
+}
+
+interface PowerFactoryRowProps {
+  factory: Factory;
+  active: boolean;
+  genCount: number;
+  onSelect: () => void;
+}
+
+function PowerFactoryRow({ factory, active, genCount, onSelect }: PowerFactoryRowProps) {
+  return (
+    <li
+      className={`rounded-md transition-colors ${
+        active ? "bg-primary/10" : "hover:bg-border/40"
+      }`}
+    >
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-current={active ? "true" : undefined}
+        className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left"
+      >
+        {factory.iconId ? (
+          <Icon itemId={factory.iconId} alt="" className="h-5 w-5 shrink-0" />
+        ) : (
+          <FactoryGlyph className="h-4 w-4 shrink-0 text-fg-muted" />
+        )}
+        <span className="flex-1 truncate text-sm font-medium text-fg">{factory.name}</span>
+        {/* Surface what's on each factory at a glance: a ⚡ if it has
+            power, plus the machine count (so 'mixed-use' factories
+            read as both kinds). Avoids a hard 'power factory vs item
+            factory' classification while still making power-only
+            rows stand out. */}
+        {genCount > 0 && (
+          <span
+            className="inline-flex items-center gap-0.5 rounded-full bg-warning/15 px-1.5 text-[10px] font-medium text-warning"
+            title={`${genCount} generator${genCount === 1 ? "" : "s"}`}
+          >
+            <Zap className="h-3 w-3" />
+            {genCount}
+          </span>
+        )}
+        <span className="ml-1 text-xs text-fg-muted tabular-nums">
+          {factory.machineCount}m
+        </span>
+      </button>
+    </li>
   );
 }
 

@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { Factory as FactoryGlyph, Pencil } from "lucide-react";
+import { Factory as FactoryGlyph, Pencil, Zap } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import { Icon } from "@/shared/ui/Icon";
 import { IconPicker } from "@/shared/ui/IconPicker";
+import { useNavStore } from "@/shared/nav-store";
 import {
   useFactoryDetail,
   useMachineLayouts,
@@ -90,8 +91,24 @@ export function FactoryDetail({ factoryId }: FactoryDetailProps) {
             {factory.notes && <p className="mt-1 text-sm text-fg-muted">{factory.notes}</p>}
           </div>
         </div>
-        <div className="text-right text-xs text-fg-muted tabular-nums">
-          {machines.length} {machines.length === 1 ? "machine" : "machines"} · {ledger.powerMw.toFixed(1)}&nbsp;MW
+        <div className="flex flex-col items-end gap-2 text-right text-xs text-fg-muted tabular-nums">
+          <span>
+            {machines.length} {machines.length === 1 ? "machine" : "machines"} · {ledger.powerMw.toFixed(1)}&nbsp;MW
+          </span>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              // Hand the factory id off via the nav store and route
+              // to Power; PowerView's useEffect picks the pending id
+              // up on mount and pre-selects this factory.
+              useNavStore.getState().selectFactory(factory.id);
+              useNavStore.getState().goTo("power");
+            }}
+            className="px-2 py-1 text-xs"
+          >
+            <Zap className="h-3.5 w-3.5" />
+            Add power
+          </Button>
         </div>
       </header>
 
