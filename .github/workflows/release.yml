@@ -1,0 +1,316 @@
+name: Release
+
+# Build Tauri bundles for macOS (signed + notarised when secrets are
+# present), Windows, and Linux. Published to a draft GitHub Release on
+# every tag push so the binaries can be reviewed before going live.
+#
+# Distribution:
+# - GitHub Release: source of truth for every platform (DMG, MSI, deb,
+#   AppImage)
+# - Homebrew tap (`gordonbeeming/homebrew-tap`): macOS cask updated
+#   automatically after a successful release (vista pattern)
+# - winget (`microsoft/winget-pkgs`): Windows manifest updated via
+#   `wingetcreate` after a successful release (copilot_here pattern;
+#   first manifest submission is manual — see packaging/SETUP.md)
+#
+# macOS signing follows the vista pattern — base64-encoded p12 into a
+# fresh temporary keychain so login.keychain on the runner stays
+# untouched. Tauri's bundler picks up the certificate via the
+# APPLE_SIGNING_IDENTITY env var and notarises through `tauri-action`.
+#
+# Required secrets (Settings → Secrets and variables → Actions). All
+# optional — the workflow skips its dependent steps when missing:
+#
+#   APPLE_CERTIFICATE          base64 .p12 with "Developer ID Application"
+#   APPLE_CERTIFICATE_PASSWORD password for the .p12
+#   APPLE_SIGNING_IDENTITY     "Developer ID Application: Gordon Beeming (TEAM)"
+#   APPLE_ID                   Apple Developer account email
+#   APPLE_TEAM_ID              10-char Apple Team ID
+#   APPLE_PASSWORD             app-specific password for notarytool
+#   HOMEBREW_TAP_DEPLOY_KEY    SSH key with write to gordonbeeming/homebrew-tap
+#   WINGET_PAT                 PAT with `public_repo` for fork of microsoft/winget-pkgs
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bundle:
+    name: ${{ matrix.platform.name }}
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - name: macos-arm64
+            os: macos-14
+            target: aarch64-apple-darwin
+            args: '--target aarch64-apple-darwin'
+          - name: macos-x86_64
+            os: macos-13
+            target: x86_64-apple-darwin
+            args: '--target x86_64-apple-darwin'
+          - name: linux-x86_64
+            os: ubuntu-latest
+            target: ''
+            args: ''
+          - name: windows-x86_64
+            os: windows-latest
+            target: ''
+            args: ''
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Linux tauri deps
+        if: matrix.platform.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install JS deps
+        run: bun install --frozen-lockfile
+
+      # Import the Apple Developer ID into a fresh keychain (vista
+      # pattern). Skipped when the secret isn't set so the workflow
+      # still produces an unsigned mac bundle for testing.
+      - name: Import Apple signing certificate
+        if: startsWith(matrix.platform.os, 'macos') && env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          echo "${APPLE_CERTIFICATE}" | base64 --decode > certificate.p12
+          KEYCHAIN_PATH="${RUNNER_TEMP}/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 16)"
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security default-keychain -s "${KEYCHAIN_PATH}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security import certificate.p12 \
+            -k "${KEYCHAIN_PATH}" \
+            -P "${APPLE_CERTIFICATE_PASSWORD}" \
+            -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "${KEYCHAIN_PASSWORD}" \
+            "${KEYCHAIN_PATH}"
+          rm certificate.p12
+
+      - name: Build bundle
+        uses: tauri-apps/tauri-action@v0
+        env:
+          NODE_ENV: production
+          # tauri-action picks these up automatically when present;
+          # mac signing + notarisation skip silently when they're empty.
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'SPECS ${{ github.ref_name }}'
+          releaseBody: |
+            Auto-built bundle.
+
+            **Install paths:**
+            - **macOS**: `brew install --cask gordonbeeming/tap/specs`
+              (or DMG below)
+            - **Windows**: `winget install GordonBeeming.SPECS`
+              (or MSI below)
+            - **Linux**: AppImage / deb assets below
+
+            **Signing:** macOS bundles are signed + notarised when
+            this run had Apple Developer secrets configured.
+            Windows ships unsigned (SmartScreen warns once;
+            "More info → Run anyway"). Linux runs as-is.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.platform.args }}
+
+  # ---------------------------------------------------------------------------
+  # Distribution channels — fan out after every bundle artifact lands.
+  # Both jobs gate on the secret being present so forks without the keys
+  # don't fail the workflow.
+  # ---------------------------------------------------------------------------
+
+  update-homebrew:
+    name: Update Homebrew tap
+    needs: bundle
+    runs-on: macos-latest
+    if: ${{ vars.PUBLISH_HOMEBREW != 'false' }}
+    steps:
+      - name: Skip when secret missing
+        id: gate
+        env:
+          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+        run: |
+          if [ -z "${HOMEBREW_TAP_DEPLOY_KEY}" ]; then
+            echo "HOMEBREW_TAP_DEPLOY_KEY not set — skipping tap update"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Wait for release assets and compute SHA256
+        if: steps.gate.outputs.skip != 'true'
+        id: sha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          # The bundle job creates a draft release; assets land async.
+          # Poll for the universal/arm64/x86_64 DMGs (tauri-action names
+          # them `SPECS_${VERSION}_*.dmg`).
+          for i in {1..30}; do
+            ARM64_URL=$(gh release view "${TAG}" --json assets \
+              --jq ".assets[] | select(.name | endswith(\"aarch64.dmg\")) | .url" || true)
+            X64_URL=$(gh release view "${TAG}" --json assets \
+              --jq ".assets[] | select(.name | endswith(\"x64.dmg\")) | .url" || true)
+            if [ -n "${ARM64_URL}" ] && [ -n "${X64_URL}" ]; then break; fi
+            echo "Waiting for DMGs to land on release ${TAG} (attempt ${i})"
+            sleep 10
+          done
+          curl -sSL "${ARM64_URL}" -o specs-arm64.dmg
+          curl -sSL "${X64_URL}" -o specs-x64.dmg
+          echo "arm64_sha=$(shasum -a 256 specs-arm64.dmg | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "x64_sha=$(shasum -a 256 specs-x64.dmg | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Push updated cask to homebrew-tap
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+        run: |
+          VERSION="${{ steps.sha.outputs.version }}"
+          mkdir -p ~/.ssh
+          echo "${HOMEBREW_TAP_DEPLOY_KEY}" > ~/.ssh/homebrew_tap_key
+          chmod 600 ~/.ssh/homebrew_tap_key
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/homebrew_tap_key -o StrictHostKeyChecking=no"
+
+          git clone git@github.com:GordonBeeming/homebrew-tap.git /tmp/homebrew-tap
+          mkdir -p /tmp/homebrew-tap/Casks
+
+          cat > /tmp/homebrew-tap/Casks/specs.rb << CASK_EOF
+          cask "specs" do
+            version "${VERSION}"
+
+            on_arm do
+              url "https://github.com/GordonBeeming/SPECS/releases/download/v#{version}/SPECS_#{version}_aarch64.dmg"
+              sha256 "${{ steps.sha.outputs.arm64_sha }}"
+            end
+            on_intel do
+              url "https://github.com/GordonBeeming/SPECS/releases/download/v#{version}/SPECS_#{version}_x64.dmg"
+              sha256 "${{ steps.sha.outputs.x64_sha }}"
+            end
+
+            name "SPECS"
+            desc "Plan whole-playthrough Satisfactory factory networks"
+            homepage "https://github.com/GordonBeeming/SPECS"
+            depends_on macos: ">= :sonoma"
+
+            app "SPECS.app"
+
+            zap trash: [
+              "~/Library/Application Support/com.gordonbeeming.specs",
+              "~/Library/Caches/com.gordonbeeming.specs",
+              "~/Library/Preferences/com.gordonbeeming.specs.plist",
+            ]
+          end
+          CASK_EOF
+          sed -i '' 's/^          //' /tmp/homebrew-tap/Casks/specs.rb
+
+          cd /tmp/homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/specs.rb
+          git commit -m "Update specs to ${VERSION}" || echo "No changes"
+          git push
+          rm -f ~/.ssh/homebrew_tap_key
+
+  update-winget:
+    name: Update WinGet manifest
+    needs: bundle
+    runs-on: windows-latest
+    if: ${{ vars.PUBLISH_WINGET != 'false' }}
+    steps:
+      - name: Skip when secret missing
+        id: gate
+        env:
+          WINGET_PAT: ${{ secrets.WINGET_PAT }}
+        shell: pwsh
+        run: |
+          if (-not $env:WINGET_PAT) {
+            Write-Host "WINGET_PAT not set — skipping winget update"
+            "skip=true" | Out-File -Append $env:GITHUB_OUTPUT
+          } else {
+            "skip=false" | Out-File -Append $env:GITHUB_OUTPUT
+          }
+
+      - name: Sync winget-pkgs fork with upstream
+        if: steps.gate.outputs.skip != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.WINGET_PAT }}
+        run: |
+          # microsoft/winget-pkgs gets hundreds of commits/day so the
+          # fork drifts and wingetcreate's built-in sync sometimes
+          # refuses. Fast-forward first; hard-reset to upstream master
+          # if that fails (copilot_here pattern).
+          $forkOwner = gh api user --jq .login
+          $fork = "$forkOwner/winget-pkgs"
+          $sync = gh api -X POST "repos/$fork/merge-upstream" -f branch=master 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Fast-forward sync OK: $sync"
+            exit 0
+          }
+          Write-Host "Fast-forward failed ($sync) — hard-resetting to upstream."
+          $upstreamSha = gh api repos/microsoft/winget-pkgs/git/ref/heads/master --jq .object.sha
+          gh api -X PATCH "repos/$fork/git/refs/heads/master" -F sha="$upstreamSha" -F force=true
+
+      - name: Submit WinGet manifest
+        if: steps.gate.outputs.skip != 'true'
+        shell: pwsh
+        env:
+          WINGET_PAT: ${{ secrets.WINGET_PAT }}
+        run: |
+          iwr https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          $tag = "${{ github.ref_name }}"
+          $version = $tag -replace '^v', ''
+          # tauri-action's MSI naming is `SPECS_${version}_x64_en-US.msi`.
+          $url = "https://github.com/${{ github.repository }}/releases/download/$tag/SPECS_${version}_x64_en-US.msi"
+
+          # First submission must be manual (`wingetcreate new`) — see
+          # packaging/SETUP.md. Subsequent releases use `update`.
+          .\wingetcreate.exe update GordonBeeming.SPECS `
+            --version $version `
+            --urls $url `
+            --submit --token $env:WINGET_PAT
