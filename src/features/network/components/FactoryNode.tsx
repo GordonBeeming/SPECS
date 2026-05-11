@@ -1,5 +1,7 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { AlertTriangle, ArrowDownCircle } from "lucide-react";
+import { AlertTriangle, ArrowDownCircle, ExternalLink } from "lucide-react";
+
+import { useNavStore } from "@/shared/nav-store";
 
 import type { FactoryNodeData } from "../types";
 
