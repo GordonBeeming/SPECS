@@ -53,7 +53,7 @@ export function AboutModal({ onClose }: AboutModalProps) {
           </div>
           <div className="flex justify-between gap-3">
             <dt className="text-fg-muted">License</dt>
-            <dd className="text-fg">MIT (see LICENSE)</dd>
+            <dd className="text-fg">FSL-1.1-MIT (see LICENSE)</dd>
           </div>
           <div className="flex justify-between gap-3">
             <dt className="text-fg-muted">Architecture</dt>
