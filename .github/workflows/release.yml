@@ -22,7 +22,7 @@ name: Release
 # optional — the workflow skips its dependent steps when missing.
 #
 # Variables (non-sensitive; appear in logs):
-#   APPLE_SIGNING_IDENTITY     "Developer ID Application: Gordon Beeming (TEAM)"
+#   APPLE_SIGNING_IDENTITY     "Developer ID Application: Gordon Beeming (TEAMID)"
 #   APPLE_ID                   Apple Developer account email
 #   APPLE_TEAM_ID              10-char Apple Team ID
 #   PUBLISH_HOMEBREW           set to "false" on forks to skip tap update
@@ -33,7 +33,10 @@ name: Release
 #   APPLE_CERTIFICATE_PASSWORD password for the .p12
 #   APPLE_PASSWORD             app-specific password for notarytool
 #   HOMEBREW_TAP_DEPLOY_KEY    SSH key with write to gordonbeeming/homebrew-tap
-#   WINGET_PAT                 PAT with `public_repo` for fork of microsoft/winget-pkgs
+#   WINGET_PAT                 PAT for the fork of microsoft/winget-pkgs.
+#                              Classic: `public_repo` scope. Fine-grained:
+#                              restricted to the fork with Contents +
+#                              Pull requests = Read and write.
 on:
   push:
     tags:
@@ -355,7 +358,8 @@ jobs:
           $url = "https://github.com/${{ github.repository }}/releases/download/$tag/$msiName"
 
           # First submission must be manual (`wingetcreate new` against
-          # the v0.1.0 MSI URL). Subsequent releases use `update`.
+          # the first release's MSI URL, e.g. v0.1.0). Subsequent
+          # releases use `update`.
           .\wingetcreate.exe update GordonBeeming.SPECS `
             --version $version `
             --urls $url `
