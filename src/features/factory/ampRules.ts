@@ -20,7 +20,13 @@ export function ampSlotsForBuilding(buildingId: string): number {
 export function clockCapForShards(shards: number): number {
   // Mirrors `validate_clock_against_shards` — 0 shards keeps the
   // machine at the base 100%, each additional shard unlocks 50%.
-  switch (shards) {
+  // Rust clamps shard count to 0..=3 before computing the cap, so
+  // mirror that here: anything <0 maps to 0, anything ≥3 maps to 3.
+  // Without the clamp, a user typing 4 (bypassing the HTML max) would
+  // see a stale 100% cap on the client and a different message on
+  // the server.
+  const clamped = Math.max(0, Math.min(3, Math.floor(shards)));
+  switch (clamped) {
     case 0:
       return 100;
     case 1:

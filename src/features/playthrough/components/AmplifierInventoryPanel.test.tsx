@@ -11,6 +11,18 @@ function renderWithProviders(node: ReactNode) {
 }
 
 beforeEach(() => {
+  // The amplifier-inventory hook is now gated on an active playthrough,
+  // so every test needs `current` to resolve to one before the query
+  // fires. Without this the panel renders forever in its initial-zero
+  // state and the load/submit assertions race.
+  vi.spyOn(playthroughApi, "current").mockResolvedValue({
+    id: "p",
+    displayName: "Run",
+    gameVersion: "1.1",
+    createdAt: "2026-05-10T00:00:00Z",
+    currentTier: 0,
+    currentMilestoneProgress: 0,
+  });
   vi.spyOn(playthroughApi, "getAmplifierInventory").mockResolvedValue({
     somersloopQuantity: 4,
     powerShardQuantity: 2,

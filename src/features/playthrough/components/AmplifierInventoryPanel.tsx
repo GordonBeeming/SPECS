@@ -64,12 +64,15 @@ export function AmplifierInventoryPanel({ onClose }: AmplifierInventoryPanelProp
       <Card
         className="w-full max-w-md"
         // Stop the backdrop click from also closing the modal when the
-        // user clicks inside the card.
+        // user clicks anywhere inside the card. The previous version
+        // only stopped propagation on individual child elements
+        // (header row, form) — clicks that landed on the card's
+        // padding / spacing would still bubble up and dismiss the
+        // dialog. One handler at the Card root covers every reachable
+        // surface.
+        onClick={(e) => e.stopPropagation()}
       >
-        <div
-          className="flex items-start justify-between gap-2"
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div className="flex items-start justify-between gap-2">
           <div>
             <h2 className="text-lg font-semibold text-fg">Amplifier supply</h2>
             <p className="mt-1 text-sm text-fg-muted">
@@ -92,7 +95,6 @@ export function AmplifierInventoryPanel({ onClose }: AmplifierInventoryPanelProp
           onSubmit={onSubmit}
           noValidate
           className="mt-4 grid gap-3"
-          onClick={(e) => e.stopPropagation()}
         >
           <label className="block">
             <span className="text-xs font-medium text-fg-muted">Somersloops</span>

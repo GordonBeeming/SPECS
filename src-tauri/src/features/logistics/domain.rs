@@ -280,8 +280,17 @@ pub fn plan_vehicles(
         if per_vehicle <= 0.0 {
             continue;
         }
-        let fleet = (requested / per_vehicle).ceil() as i64;
-        let fleet = fleet.clamp(1, 8) as u32;
+        let unclamped_fleet = (requested / per_vehicle).ceil() as i64;
+        // Drop plans whose unclamped fleet would exceed the cap —
+        // returning them with `utilisation_pct: 100` would have made
+        // an undersized fleet look viable on the UI ("100% utilisation,
+        // 8 trucks") when in fact it can't meet the requested rate.
+        // If the player needs more than 8 of any one vehicle for this
+        // route, vehicles aren't the right transport at this distance.
+        if unclamped_fleet > 8 {
+            continue;
+        }
+        let fleet = unclamped_fleet.max(1) as u32;
         let total = per_vehicle * fleet as f32;
         let utilisation = ((requested / total) * 100.0).min(100.0);
         let kind = match v.kind {
@@ -694,12 +703,24 @@ mod tests {
     }
 
     #[test]
-    fn vehicle_plans_cap_fleet_at_eight() {
-        // Long route + high request would otherwise produce absurd fleet
-        // counts. Cap is 8 per plan.
+    fn vehicle_plans_drop_when_fleet_would_exceed_cap() {
+        // Long route + high request would otherwise produce absurd
+        // fleet counts. Previously the planner clamped to 8 and
+        // returned plans whose total throughput fell short of
+        // requested — the UI then surfaced them as "100% utilisation"
+        // and the player picked an undersized fleet. Now plans whose
+        // unclamped fleet exceeds 8 get dropped entirely, so vehicles
+        // only appear when they can actually meet the request.
         let plans = plan_vehicles(10_000.0, 50_000, &all_vehicles(), false, 9);
+        // Any plan that did make it through must (a) be at the cap or
+        // below and (b) have total capacity ≥ requested.
         for plan in &plans {
             assert!(plan.segments[0].count <= 8, "fleet too large: {:?}", plan);
+            assert!(
+                plan.total_capacity_per_minute >= 10_000.0,
+                "plan claims viable but undersized: {:?}",
+                plan,
+            );
         }
     }
 }

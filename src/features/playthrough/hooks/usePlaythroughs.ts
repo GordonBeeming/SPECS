@@ -51,16 +51,17 @@ export function useSetCurrentTier() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: async (tier: number) => {
-      // Capture the pre-change tier *now* so the undo reverse can
-      // restore it. Reading from the cache (not the server) keeps the
-      // round-trip count down and matches what the user actually saw
-      // in the header at the moment they bumped the selector.
-      const prev =
-        client.getQueryData<{ currentTier: number } | null>(
-          queryKeys.playthrough.current,
-        )?.currentTier ?? 0;
+      // Capture `prev` from the server *inside* the apply closure so
+      // back-to-back tier changes can't undo to a stale value (if the
+      // cache hadn't refreshed between mutations, the previous version
+      // read a stale tier and the undo would land on the wrong level).
+      // The undo store's `apply` runs once at push-time; we record
+      // `prev` then and close over it for `reverse`.
+      let prev = 0;
       await useUndoStore.getState().push({
         apply: async () => {
+          const detail = await playthroughApi.current();
+          prev = detail?.currentTier ?? 0;
           await playthroughApi.setCurrentTier(tier);
           invalidatePlaythroughs(client);
         },
@@ -100,9 +101,19 @@ export function useImportPlaythrough() {
 }
 
 export function useAmplifierInventory() {
+  // Scope the cache by active playthrough id and gate the fetch on
+  // having one open — same pattern factory/logistics use — so
+  // switching playthroughs doesn't briefly show the previous run's
+  // somersloop count, and an "no active playthrough" error never
+  // sticks in the cache.
+  const playthrough = useCurrentPlaythrough();
   return useQuery({
-    queryKey: queryKeys.playthrough.amplifierInventory,
+    queryKey: [
+      ...queryKeys.playthrough.amplifierInventory,
+      playthrough.data?.id ?? null,
+    ] as const,
     queryFn: playthroughApi.getAmplifierInventory,
+    enabled: !!playthrough.data,
   });
 }
 

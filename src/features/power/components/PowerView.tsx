@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Trash2, Zap } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
@@ -246,7 +246,7 @@ function AddPowerGenForm({
   const generator = (eligibleGenerators ?? []).find((g) => g.id === generatorId);
   const itemsById = new Map(items.data?.map((i) => [i.id, i]) ?? []);
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!generator) {
       setError("Pick a generator.");

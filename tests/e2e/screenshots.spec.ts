@@ -1,6 +1,13 @@
 import { test } from "@playwright/test";
 import { mkdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// `import.meta.dirname` is a recent Node 20+ addition that isn't part
+// of the ESM spec; under Bun/older runners it can be undefined and
+// `resolve(undefined, …)` then throws. The fileURLToPath pattern works
+// everywhere ESM does, matching the rest of the repo's scripts.
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
  * Reference-screenshot suite. Captures both light and dark variants
@@ -15,7 +22,7 @@ import { resolve } from "node:path";
  * binary E2E pass.
  */
 
-const OUT = resolve(import.meta.dirname, "../../docs/screens");
+const OUT = resolve(__dirname, "../../docs/screens");
 mkdirSync(OUT, { recursive: true });
 
 // Only routes whose nav button is visible without an active playthrough.

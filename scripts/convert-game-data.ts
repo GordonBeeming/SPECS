@@ -281,6 +281,19 @@ for (const schem of Object.values(sf.schematics)) {
 
 const referencedItems = new Set<string>();
 
+// Items that the upstream satisfactorytools dump doesn't carry but a
+// 1.0+ generator fuel references. Stamped into the items list later.
+const HAND_AUTHORED_ITEMS: SpecsItem[] = [
+  {
+    id: "Desc_FicsoniumFuelRod_C",
+    name: "Ficsonium Fuel Rod",
+    category: "special",
+    stackSize: 50,
+    isFluid: false,
+  },
+];
+for (const it of HAND_AUTHORED_ITEMS) referencedItems.add(it.id);
+
 // --- Recipe conversion --------------------------------------------------
 
 type SpecsRecipe = {
@@ -357,8 +370,15 @@ type SpecsItem = {
 
 const items: SpecsItem[] = [];
 const itemIds = new Set<string>();
+// Hand-authored entries first so the synth fallback below never picks
+// up a 1.0+ id the upstream dump is missing (Ficsonium Fuel Rod, etc).
+for (const it of HAND_AUTHORED_ITEMS) {
+  items.push(it);
+  itemIds.add(it.id);
+}
 for (const it of Object.values(sf.items)) {
   if (!referencedItems.has(it.className)) continue;
+  if (itemIds.has(it.className)) continue;
   const cat = categorise(it);
   items.push({
     id: it.className,

@@ -1,21 +1,35 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/shared/query/keys";
+import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { powerApi } from "../api";
 import type { CreatePowerGenInput, UpdatePowerGenInput } from "../types";
 
+// Power rows live in the active playthrough's `.specsdb`. Scope every
+// cache key by playthrough id and gate the fetch on having one open,
+// so switching playthroughs doesn't briefly serve the previous run's
+// generator list (especially after import / share copies that can
+// reuse factory ids across playthroughs).
 export function usePowerGens(factoryId: string | null) {
+  const playthrough = useCurrentPlaythrough();
+  const ptId = playthrough.data?.id ?? null;
   return useQuery({
-    queryKey: factoryId ? queryKeys.power.list(factoryId) : ["power", "list", "none"],
+    queryKey: factoryId
+      ? ([...queryKeys.power.list(factoryId), ptId] as const)
+      : (["power", "list", "none", ptId] as const),
     queryFn: () => powerApi.list(factoryId ?? ""),
-    enabled: !!factoryId,
+    enabled: !!factoryId && !!playthrough.data,
   });
 }
 
 export function usePowerBalance(factoryId: string | null) {
+  const playthrough = useCurrentPlaythrough();
+  const ptId = playthrough.data?.id ?? null;
   return useQuery({
-    queryKey: factoryId ? queryKeys.power.balance(factoryId) : ["power", "balance", "none"],
+    queryKey: factoryId
+      ? ([...queryKeys.power.balance(factoryId), ptId] as const)
+      : (["power", "balance", "none", ptId] as const),
     queryFn: () => powerApi.balance(factoryId ?? ""),
-    enabled: !!factoryId,
+    enabled: !!factoryId && !!playthrough.data,
   });
 }
 
