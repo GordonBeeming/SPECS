@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/shared/query/keys";
 import { playthroughApi } from "../api";
-import type { CreatePlaythroughInput } from "../types";
+import type { CreatePlaythroughInput, SetAmplifierInventoryInput } from "../types";
 
 export function usePlaythroughList() {
   return useQuery({
@@ -76,5 +76,23 @@ export function useImportPlaythrough() {
     mutationFn: (vars: { sourcePath: string; displayName: string }) =>
       playthroughApi.import(vars.sourcePath, vars.displayName),
     onSuccess: () => invalidatePlaythroughs(client),
+  });
+}
+
+export function useAmplifierInventory() {
+  return useQuery({
+    queryKey: queryKeys.playthrough.amplifierInventory,
+    queryFn: playthroughApi.getAmplifierInventory,
+  });
+}
+
+export function useSetAmplifierInventory() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SetAmplifierInventoryInput) =>
+      playthroughApi.setAmplifierInventory(input),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: queryKeys.playthrough.amplifierInventory });
+    },
   });
 }

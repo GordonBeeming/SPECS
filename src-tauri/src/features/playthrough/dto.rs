@@ -29,3 +29,22 @@ pub struct CreatePlaythroughInput {
     #[serde(default)]
     pub starting_tier: u8,
 }
+
+/// Per-playthrough Somersloop / power-shard supply the player chooses
+/// to track. Read + written via the inventory_amplifier singleton row
+/// (`id = 1` per migration V0005). Zero on both sides means "I don't
+/// care, just let me amplify" — the UI then suppresses any low-supply
+/// nag.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AmplifierInventory {
+    pub somersloop_quantity: i64,
+    pub power_shard_quantity: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetAmplifierInventoryInput {
+    pub somersloop_quantity: i64,
+    pub power_shard_quantity: i64,
+}

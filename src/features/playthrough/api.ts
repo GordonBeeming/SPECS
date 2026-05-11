@@ -1,8 +1,10 @@
 import { invoke } from "@/shared/tauri/invoke";
 import type {
+  AmplifierInventory,
   CreatePlaythroughInput,
   PlaythroughDetail,
   PlaythroughSummary,
+  SetAmplifierInventoryInput,
 } from "./types";
 
 export const playthroughApi = {
@@ -19,4 +21,8 @@ export const playthroughApi = {
     invoke<string>("export_playthrough", { destinationPath }),
   import: (sourcePath: string, displayName: string) =>
     invoke<PlaythroughSummary>("import_playthrough", { sourcePath, displayName }),
+  getAmplifierInventory: () =>
+    invoke<AmplifierInventory>("get_amplifier_inventory"),
+  setAmplifierInventory: (input: SetAmplifierInventoryInput) =>
+    invoke<AmplifierInventory>("set_amplifier_inventory", { input }),
 };

@@ -10,7 +10,10 @@ use crate::shared::db::playthrough_db::PlaythroughDb;
 use crate::shared::error::{AppError, AppResult};
 use crate::shared::paths::{ensure_dir, playthroughs_dir};
 
-use super::dto::{CreatePlaythroughInput, PlaythroughDetail, PlaythroughSummary};
+use super::dto::{
+    AmplifierInventory, CreatePlaythroughInput, PlaythroughDetail, PlaythroughSummary,
+    SetAmplifierInventoryInput,
+};
 use super::repo;
 use super::state::ActivePlaythrough;
 
@@ -170,6 +173,39 @@ pub fn set_current_tier(
         .ok_or_else(|| AppError::NotFound(format!("playthrough {id} not in registry")))?;
     let detail = db.with(|c| repo::detail_from(summary, c).map_err(AppError::from))?;
     Ok(detail)
+}
+
+#[tauri::command]
+pub fn get_amplifier_inventory(active: State<ActivePlaythrough>) -> AppResult<AmplifierInventory> {
+    let (_, db) = active
+        .snapshot()
+        .ok_or_else(|| AppError::Invalid("no active playthrough".into()))?;
+    let (s, p) = db.with(|c| repo::amplifier_inventory_get(c).map_err(AppError::from))?;
+    Ok(AmplifierInventory {
+        somersloop_quantity: s,
+        power_shard_quantity: p,
+    })
+}
+
+#[tauri::command]
+pub fn set_amplifier_inventory(
+    active: State<ActivePlaythrough>,
+    input: SetAmplifierInventoryInput,
+) -> AppResult<AmplifierInventory> {
+    if input.somersloop_quantity < 0 || input.power_shard_quantity < 0 {
+        return Err(AppError::Invalid("inventory cannot be negative".into()));
+    }
+    let (_, db) = active
+        .snapshot()
+        .ok_or_else(|| AppError::Invalid("no active playthrough".into()))?;
+    db.with(|c| {
+        repo::amplifier_inventory_set(c, input.somersloop_quantity, input.power_shard_quantity)
+            .map_err(AppError::from)
+    })?;
+    Ok(AmplifierInventory {
+        somersloop_quantity: input.somersloop_quantity,
+        power_shard_quantity: input.power_shard_quantity,
+    })
 }
 
 #[tauri::command]

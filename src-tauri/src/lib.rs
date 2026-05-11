@@ -81,6 +81,8 @@ pub fn run() {
             features::playthrough::commands::delete_playthrough,
             features::playthrough::commands::export_playthrough,
             features::playthrough::commands::import_playthrough,
+            features::playthrough::commands::get_amplifier_inventory,
+            features::playthrough::commands::set_amplifier_inventory,
             features::factory::commands::list_factories,
             features::factory::commands::get_factory_detail,
             features::factory::commands::create_factory,

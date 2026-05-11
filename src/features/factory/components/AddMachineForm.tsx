@@ -148,7 +148,7 @@ export function AddMachineForm({ factoryId, onSubmitted }: AddMachineFormProps) 
         <input
           type="number"
           min={1}
-          max={250}
+          max={shardClockCap}
           step={0.1}
           value={clockPct}
           onChange={(e) => setClockPct(Number(e.target.value))}

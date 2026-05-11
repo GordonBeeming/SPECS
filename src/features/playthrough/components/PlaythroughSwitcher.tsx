@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, FolderOpen, Plus, Share2, Trash2 } from "lucide-react";
+import { ChevronDown, FolderOpen, Gauge, Plus, Share2, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import {
   useCurrentPlaythrough,
@@ -8,6 +8,7 @@ import {
   usePlaythroughList,
   useSetCurrentTier,
 } from "../hooks/usePlaythroughs";
+import { AmplifierInventoryPanel } from "./AmplifierInventoryPanel";
 import { CreatePlaythroughModal } from "./CreatePlaythroughModal";
 import { ExportImportModal } from "./ExportImportModal";
 
@@ -20,6 +21,7 @@ export function PlaythroughSwitcher() {
   const [open, setOpen] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [showAmplifier, setShowAmplifier] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const list = usePlaythroughList();
   const current = useCurrentPlaythrough();
@@ -212,12 +214,28 @@ export function PlaythroughSwitcher() {
               <Share2 className="h-4 w-4" />
               Share / Import…
             </button>
+            {current.data && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAmplifier(true);
+                  setOpen(false);
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-fg hover:bg-border"
+              >
+                <Gauge className="h-4 w-4" />
+                Amplifier supply…
+              </button>
+            )}
           </div>
         </div>
       )}
 
       {showCreate && <CreatePlaythroughModal onClose={() => setShowCreate(false)} />}
       {showShare && <ExportImportModal onClose={() => setShowShare(false)} />}
+      {showAmplifier && (
+        <AmplifierInventoryPanel onClose={() => setShowAmplifier(false)} />
+      )}
     </div>
   );
 }

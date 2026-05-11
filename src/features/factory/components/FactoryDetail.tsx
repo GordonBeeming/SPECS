@@ -85,6 +85,7 @@ export function FactoryDetail({ factoryId }: FactoryDetailProps) {
                   <th className="px-3 py-2 text-left font-medium">Building</th>
                   <th className="px-3 py-2 text-right font-medium">Count</th>
                   <th className="px-3 py-2 text-right font-medium">Clock</th>
+                  <th className="px-3 py-2 text-right font-medium">Amp</th>
                   <th className="px-3 py-2 text-right font-medium" />
                 </tr>
               </thead>
@@ -95,6 +96,9 @@ export function FactoryDetail({ factoryId }: FactoryDetailProps) {
                     <td className="px-3 py-2 text-fg-muted">{buildingNames.get(m.buildingId) ?? m.buildingId}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{m.count}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{m.clockPct.toFixed(1)}%</td>
+                    <td className="px-3 py-2 text-right text-xs text-fg-muted tabular-nums">
+                      {formatAmpSummary(m)}
+                    </td>
                     <td className="px-3 py-2 text-right">
                       <button
                         type="button"
