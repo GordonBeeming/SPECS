@@ -10,7 +10,6 @@ import {
   Moon,
   Network,
   Share2,
-  Sparkles,
   Sun,
   TrainTrack,
   Zap,
@@ -35,7 +34,6 @@ import {
 import { PowerView } from "@/features/power/components/PowerView";
 import { ResourcesView } from "@/features/resources/components/ResourcesView";
 import { MapView } from "@/features/map/components/MapView";
-import { PlannerView } from "@/features/planner/components/PlannerView";
 import { useNavStore } from "@/shared/nav-store";
 import { ErrorBoundary } from "@/shared/ui/ErrorBoundary";
 import { useUndoStore } from "@/shared/undo/store";
@@ -50,15 +48,18 @@ type Route =
   | "library"
   | "alts"
   | "resources"
-  | "map"
-  | "planner";
+  | "map";
 
+// The Map is the canvas now — Planner folded into a "New factory"
+// overlay on the map, and the per-resource list still has its own
+// tab for bulk-editing claims. Factory/Power tabs remain so the
+// graph editor and per-machine forms have room to breathe; they
+// can route in from map popovers via the nav store.
 const NAV: ReadonlyArray<{ id: Route; label: string; Icon: typeof BookOpen }> = [
   { id: "home", label: "Home", Icon: LayoutDashboard },
   { id: "map", label: "Map", Icon: Compass },
   { id: "network", label: "Network", Icon: Share2 },
   { id: "resources", label: "Resources", Icon: MapPin },
-  { id: "planner", label: "Planner", Icon: Sparkles },
   { id: "factories", label: "Factories", Icon: FactoryIcon },
   { id: "logistics", label: "Logistics", Icon: Network },
   { id: "trains", label: "Trains", Icon: TrainTrack },
@@ -245,7 +246,6 @@ export function AppShell() {
             {route === "alts" && <AltsView />}
             {route === "resources" && <ResourcesView />}
             {route === "map" && <MapView />}
-            {route === "planner" && <PlannerView />}
             {route === "library" && <LibraryView />}
           </ErrorBoundary>
         </main>

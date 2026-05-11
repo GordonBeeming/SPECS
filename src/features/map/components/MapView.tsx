@@ -20,7 +20,9 @@ import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { Icon } from "@/shared/ui/Icon";
 import { useNavStore } from "@/shared/nav-store";
-import { Factory as FactoryGlyph, Pencil, Unlink, Zap } from "lucide-react";
+import { Factory as FactoryGlyph, Pencil, Sparkles, Unlink, Zap } from "lucide-react";
+
+import { NewFactoryPanel } from "./NewFactoryPanel";
 
 import mapAsset from "@/assets/map/satisfactory-map.webp";
 
@@ -136,6 +138,7 @@ export function MapView() {
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedFactoryId, setSelectedFactoryId] = useState<string | null>(null);
+  const [showNewFactoryPanel, setShowNewFactoryPanel] = useState(false);
   // Active drag-to-link state: the node being dragged + the current
   // cursor position (in MAP_W/MAP_H pixel space) so we can draw a
   // ghost line. `linkHoverFactoryId` is set by FactoryPin mouseenter
@@ -255,14 +258,23 @@ export function MapView() {
               "nearest claimed node" hints.
             </p>
           </div>
-          <label className="flex items-center gap-2 text-xs text-fg-muted">
-            <input
-              type="checkbox"
-              checked={showClaimedToo}
-              onChange={(e) => setShowClaimedToo(e.target.checked)}
-            />
-            Show claimed nodes too
-          </label>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-xs text-fg-muted">
+              <input
+                type="checkbox"
+                checked={showClaimedToo}
+                onChange={(e) => setShowClaimedToo(e.target.checked)}
+              />
+              Show claimed nodes too
+            </label>
+            <Button
+              onClick={() => setShowNewFactoryPanel(true)}
+              aria-label="Plan a new factory chain"
+            >
+              <Sparkles className="h-4 w-4" />
+              New factory
+            </Button>
+          </div>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">
@@ -323,6 +335,17 @@ export function MapView() {
               regardless of pan state. react-zoom-pan-pinch's built-in
               controls are minimal, so we render our own to keep the
               brand styling consistent. */}
+          {showNewFactoryPanel && (
+            <div className="absolute left-3 top-3 z-30">
+              <NewFactoryPanel
+                onClose={() => setShowNewFactoryPanel(false)}
+                onApplied={() => {
+                  void factories.refetch();
+                }}
+              />
+            </div>
+          )}
+
           <div className="absolute right-3 top-3 z-20 flex flex-col gap-1">
             <button
               type="button"
