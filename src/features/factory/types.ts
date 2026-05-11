@@ -102,4 +102,7 @@ export interface UpdateMachineInput {
   useSomersloop?: boolean;
   somersloopSlotsFilled?: number;
   powerShardCount?: number;
+  /** Optional: swap the machine's recipe (and the matching building). */
+  recipeId?: string;
+  buildingId?: string;
 }

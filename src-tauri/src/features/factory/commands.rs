@@ -327,6 +327,7 @@ pub fn add_factory_machine(
 #[tauri::command]
 pub fn update_factory_machine(
     active: State<ActivePlaythrough>,
+    game_data: State<GameData>,
     input: UpdateMachineInput,
 ) -> AppResult<()> {
     validate_count(input.count)?;
@@ -339,14 +340,39 @@ pub fn update_factory_machine(
     validate_clock_against_shards(input.clock_pct, input.power_shard_count)?;
     let db = require_active(&active)?;
     let now = now_iso();
-    let affected = db.with(|c| {
-        repo::machine_update(
-            c, &input.id, input.count, input.clock_pct,
-            input.use_somersloop, input.somersloop_slots_filled, input.power_shard_count,
-            &now,
-        )
-        .map_err(AppError::from)
-    })?;
+    let affected = if let (Some(recipe_id), Some(building_id)) =
+        (input.recipe_id.as_deref(), input.building_id.as_deref())
+    {
+        // Cross-check the recipe/building against the dataset so a
+        // typo or stale id doesn't leave the row in an inconsistent
+        // state.
+        let recipe = game_data
+            .recipe(recipe_id)
+            .ok_or_else(|| AppError::Invalid(format!("unknown recipe: {recipe_id}")))?;
+        if recipe.building_id != building_id {
+            return Err(AppError::Invalid(format!(
+                "recipe {recipe_id} runs in {} not {building_id}",
+                recipe.building_id
+            )));
+        }
+        db.with(|c| {
+            repo::machine_update_with_recipe(
+                c, &input.id, building_id, recipe_id, input.count, input.clock_pct,
+                input.use_somersloop, input.somersloop_slots_filled, input.power_shard_count,
+                &now,
+            )
+            .map_err(AppError::from)
+        })?
+    } else {
+        db.with(|c| {
+            repo::machine_update(
+                c, &input.id, input.count, input.clock_pct,
+                input.use_somersloop, input.somersloop_slots_filled, input.power_shard_count,
+                &now,
+            )
+            .map_err(AppError::from)
+        })?
+    };
     if affected == 0 {
         return Err(AppError::NotFound(format!("machine {} not found", input.id)));
     }

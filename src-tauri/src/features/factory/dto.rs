@@ -163,6 +163,13 @@ pub struct UpdateMachineInput {
     pub somersloop_slots_filled: i64,
     #[serde(default)]
     pub power_shard_count: i64,
+    /// Optional: swap the machine's recipe (and matching building)
+    /// in-place. Backwards-compatible — older callers that omit this
+    /// keep the current recipe.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recipe_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub building_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
