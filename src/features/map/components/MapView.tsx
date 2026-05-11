@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MapPin, Minus, Plus, RotateCcw } from "lucide-react";
 import {
   TransformComponent,
@@ -46,6 +46,41 @@ function markerIconId(resourceItemId: string): string {
 const MAP_W = 2048;
 const MAP_H = 1981;
 
+// localStorage keys for the map filter state — bumped suffix on shape
+// changes if we ever extend what's persisted.
+const STORAGE = {
+  showClaimed: "specs:map:showClaimedToo",
+  hiddenResources: "specs:map:hiddenResources",
+  hiddenPurities: "specs:map:hiddenPurities",
+} as const;
+
+function readBool(key: string, fallback: boolean): boolean {
+  try {
+    const v = localStorage.getItem(key);
+    if (v === null) return fallback;
+    return v === "1";
+  } catch {
+    return fallback;
+  }
+}
+
+function readStringArray(key: string): string[] {
+  try {
+    const v = localStorage.getItem(key);
+    if (!v) return [];
+    const parsed: unknown = JSON.parse(v);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStringArray(key: string, value: string[]): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+}
+
 export function MapView() {
   const playthrough = useCurrentPlaythrough();
   const factories = useFactoryList();
@@ -55,19 +90,43 @@ export function MapView() {
   const wrapRef = useRef<ReactZoomPanPinchRef | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Default to "only show what you can still claim" — the player's
-  // typical question is "where can I drop another extractor?", not
-  // "where are the nodes I've already wired up?".
-  const [showClaimedToo, setShowClaimedToo] = useState(false);
+  // Filter state survives reloads via localStorage — the player set
+  // these to suit how they're working, surfacing a fresh default
+  // every launch would be a step back. Stored globally (not per-
+  // playthrough) because filter intent travels with the user, not
+  // their save file.
+  const [showClaimedToo, setShowClaimedToo] = useState(() =>
+    readBool(STORAGE.showClaimed, false),
+  );
+  const [hiddenResources, setHiddenResourcesState] = useState<Set<string>>(() =>
+    new Set(readStringArray(STORAGE.hiddenResources)),
+  );
+  const [hiddenPurities, setHiddenPuritiesState] = useState<Set<string>>(() =>
+    new Set(readStringArray(STORAGE.hiddenPurities)),
+  );
+  const setHiddenResources: typeof setHiddenResourcesState = (action) => {
+    setHiddenResourcesState((prev) => {
+      const next = typeof action === "function" ? action(prev) : action;
+      writeStringArray(STORAGE.hiddenResources, Array.from(next));
+      return next;
+    });
+  };
+  const setHiddenPurities: typeof setHiddenPuritiesState = (action) => {
+    setHiddenPuritiesState((prev) => {
+      const next = typeof action === "function" ? action(prev) : action;
+      writeStringArray(STORAGE.hiddenPurities, Array.from(next));
+      return next;
+    });
+  };
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE.showClaimed, showClaimedToo ? "1" : "0");
+    } catch {}
+  }, [showClaimedToo]);
+
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedFactoryId, setSelectedFactoryId] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
-
-  // Resources and purities the user has toggled OFF in the legend.
-  // Empty sets = "show everything" so first-paint isn't a wall of
-  // checkboxes — opt out, not opt in.
-  const [hiddenResources, setHiddenResources] = useState<Set<string>>(new Set());
-  const [hiddenPurities, setHiddenPurities] = useState<Set<string>>(new Set());
 
   const resourceTypes = useMemo(() => {
     const m = new Map<string, { id: string; name: string; total: number }>();
