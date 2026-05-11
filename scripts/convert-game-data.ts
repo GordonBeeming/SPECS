@@ -474,6 +474,10 @@ const generators = [
     fuels: [
       { fuelItemId: "Desc_NuclearFuelRod_C", fuelPerMinute: 0.2, supplementalItemId: "Desc_Water_C", supplementalPerMinute: 240 },
       { fuelItemId: "Desc_PlutoniumFuelRod_C", fuelPerMinute: 0.1, supplementalItemId: "Desc_Water_C", supplementalPerMinute: 240 },
+      // Patch 1.0+ rod added on top of the upstream satisfactorytools
+      // dump (still locked to the older ficsmas data). 1 rod / min,
+      // 1000 m³ water — closes the nuclear-waste recycle loop.
+      { fuelItemId: "Desc_FicsoniumFuelRod_C", fuelPerMinute: 1, supplementalItemId: "Desc_Water_C", supplementalPerMinute: 1000, powerMwOverride: 2500 },
     ],
   },
   // Three Geothermal entries by node purity. Output is the *average* power

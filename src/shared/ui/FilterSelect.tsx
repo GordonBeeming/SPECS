@@ -185,7 +185,14 @@ interface DropdownPanelProps {
 function DropdownPanel({ filtered, value, multiple }: DropdownPanelProps) {
   return (
     <ComboboxOptions
-      className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border border-border bg-bg-raised py-1 shadow-lg empty:hidden"
+      // `min-w-full max-w-[28rem]` lets the panel grow wider than the
+      // input when the longest option needs the room (recipe names like
+      // "Reinforced Iron Plate" or generator hints like
+      // "0.20 /min + 240 Water" don't truncate). Capped at 28rem so a
+      // wild filter result can't push it across the whole pane.
+      // `whitespace-nowrap` on the option content (set in the option
+      // markup below) keeps each row on a single line.
+      className="absolute z-50 mt-1 max-h-60 min-w-full max-w-[28rem] overflow-auto rounded-md border border-border bg-bg-raised py-1 shadow-lg empty:hidden"
       modal={false}
     >
       {filtered.length === 0 ? (
@@ -196,7 +203,7 @@ function DropdownPanel({ filtered, value, multiple }: DropdownPanelProps) {
             key={option.value}
             value={option.value}
             className={({ active }) =>
-              `flex cursor-pointer items-center justify-between px-3 py-1.5 text-sm ${
+              `flex cursor-pointer items-center justify-between gap-3 whitespace-nowrap px-3 py-1.5 text-sm ${
                 active ? "bg-primary text-white" : "text-fg"
               }`
             }
@@ -205,13 +212,13 @@ function DropdownPanel({ filtered, value, multiple }: DropdownPanelProps) {
               const selected = value.has(option.value);
               return (
                 <>
-                  <div className="flex flex-1 items-center gap-2 truncate">
+                  <div className="flex flex-1 items-center gap-2">
                     {option.iconId && (
                       <Icon itemId={option.iconId} alt="" className="h-5 w-5 shrink-0" />
                     )}
-                    <span className="truncate">{option.label}</span>
+                    <span>{option.label}</span>
                   </div>
-                  <div className="ml-3 flex items-center gap-2">
+                  <div className="flex items-center gap-2">
                     {option.hint && (
                       <span className="text-xs opacity-70">{option.hint}</span>
                     )}

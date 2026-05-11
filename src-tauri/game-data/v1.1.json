@@ -297,6 +297,13 @@
       "isFluid": false
     },
     {
+      "id": "Desc_FicsoniumFuelRod_C",
+      "name": "Ficsonium Fuel Rod",
+      "category": "special",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
       "id": "Desc_FlowerPetals_C",
       "name": "Flower Petals",
       "category": "raw",
@@ -6500,6 +6507,13 @@
           "fuelPerMinute": 0.1,
           "supplementalItemId": "Desc_Water_C",
           "supplementalPerMinute": 240
+        },
+        {
+          "fuelItemId": "Desc_FicsoniumFuelRod_C",
+          "fuelPerMinute": 1,
+          "supplementalItemId": "Desc_Water_C",
+          "supplementalPerMinute": 1000,
+          "powerMwOverride": 2500
         }
       ]
     },

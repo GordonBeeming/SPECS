@@ -107,8 +107,15 @@ describe("<LibraryView />", () => {
     renderWithProviders(<LibraryView />);
     fireEvent.click(screen.getByRole("tab", { name: "Recipes" }));
     await waitFor(() => {
-      expect(screen.getByText(/30 Iron Ore\/min/)).toBeInTheDocument();
-      expect(screen.getByText(/30 Iron Ingot\/min/)).toBeInTheDocument();
+      // The IO cells are now structured (Icon + qty + name spans) so a
+      // single-text matcher can't see "30 Iron Ore/min" as one string.
+      // Walk via the per-row name; the qty + suffix live next to it.
+      const oreRow = screen.getAllByText("Iron Ore/min")[0].closest("li");
+      expect(oreRow).toHaveTextContent(/30/);
+      expect(oreRow).toHaveTextContent(/Iron Ore\/min/);
+      const ingotRow = screen.getAllByText("Iron Ingot/min")[0].closest("li");
+      expect(ingotRow).toHaveTextContent(/30/);
+      expect(ingotRow).toHaveTextContent(/Iron Ingot\/min/);
       expect(screen.getByText("Smelter")).toBeInTheDocument();
     });
   });

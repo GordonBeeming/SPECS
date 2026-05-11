@@ -1,10 +1,28 @@
+import { Icon } from "@/shared/ui/Icon";
 import { useBuildings, useItems, useRecipes } from "../hooks/useLibrary";
 import type { Recipe } from "../types";
 import { LibraryTable, type Column } from "./LibraryTable";
 import { TierBadge } from "./TierBadge";
 
-function formatIo(io: { itemId: string; perMinute: number }, itemName: (id: string) => string) {
-  return `${io.perMinute.toLocaleString()} ${itemName(io.itemId)}/min`;
+function IoList({
+  io,
+  itemName,
+}: {
+  io: { itemId: string; perMinute: number }[];
+  itemName: (id: string) => string;
+}) {
+  if (io.length === 0) return <span className="text-fg-muted">—</span>;
+  return (
+    <ul className="flex flex-col gap-0.5">
+      {io.map((row) => (
+        <li key={row.itemId} className="flex items-center gap-2 whitespace-nowrap">
+          <Icon itemId={row.itemId} alt="" className="h-4 w-4 shrink-0" />
+          <span className="tabular-nums">{row.perMinute.toLocaleString()}</span>
+          <span>{itemName(row.itemId)}/min</span>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export function RecipesTable() {
@@ -19,9 +37,15 @@ export function RecipesTable() {
 
   const columns: Column<Recipe>[] = [
     {
+      header: "",
+      cell: (r) => (
+        <Icon itemId={r.outputs[0]?.itemId ?? r.id} alt="" className="h-6 w-6" />
+      ),
+    },
+    {
       header: "Name",
       cell: (r) => (
-        <span>
+        <span className="whitespace-nowrap">
           {r.name}
           {r.isAlt && (
             <span className="ml-2 rounded bg-warning/20 px-1.5 py-0.5 text-xs font-medium text-warning">
@@ -31,14 +55,22 @@ export function RecipesTable() {
         </span>
       ),
     },
-    { header: "Building", cell: (r) => buildingName(r.buildingId) },
+    {
+      header: "Building",
+      cell: (r) => (
+        <span className="inline-flex items-center gap-2 whitespace-nowrap">
+          <Icon itemId={r.buildingId} alt="" className="h-4 w-4 shrink-0" />
+          {buildingName(r.buildingId)}
+        </span>
+      ),
+    },
     {
       header: "Inputs",
-      cell: (r) => r.inputs.map((io) => formatIo(io, itemName)).join(" + ") || "—",
+      cell: (r) => <IoList io={r.inputs} itemName={itemName} />,
     },
     {
       header: "Outputs",
-      cell: (r) => r.outputs.map((io) => formatIo(io, itemName)).join(" + "),
+      cell: (r) => <IoList io={r.outputs} itemName={itemName} />,
     },
     { header: "Cycle (s)", cell: (r) => r.cycleSeconds.toFixed(1), align: "right" },
     { header: "Unlocks at", cell: (r) => <TierBadge unlockTier={r.unlockTier} />, align: "right" },

@@ -34,11 +34,27 @@ for (const it of dataset.items ?? []) ids.push(it.id);
 for (const b of dataset.buildings ?? []) ids.push(b.id);
 for (const g of dataset.generators ?? []) ids.push(g.id);
 
-// SatisfactoryTools' naming convention: lowercase, underscores → dashes,
-// then suffix `_64.png` for the small variant.
+// SatisfactoryTools' naming convention: every asset prefix is `desc-`
+// (even for buildings, generators, recipes — the project keys
+// everything off the descriptor class name internally). Strip the
+// SPECS-side `Build_` / `Recipe_` prefix and the trailing `_C`, then
+// rebuild as `desc-…-c_64.png`. The class names already carry their
+// own `_C` suffix, so naively appending `-c` would give us `-c-c`.
+// Manual aliases for SPECS-side ids whose canonical asset lives at a
+// different upstream slug (purity variants share one art asset, etc).
+const ALIAS: Record<string, string> = {
+  Build_GeneratorGeoThermal_Impure_C: "desc-generatorgeothermal-c_64.png",
+  Build_GeneratorGeoThermal_Normal_C: "desc-generatorgeothermal-c_64.png",
+  Build_GeneratorGeoThermal_Pure_C: "desc-generatorgeothermal-c_64.png",
+};
+
 function urlFor(id: string): string {
-  const slug = id.toLowerCase().replace(/_/g, "-");
-  return `${BASE}/${slug}_64.png`;
+  if (ALIAS[id]) return `${BASE}/${ALIAS[id]}`;
+  const stripped = id
+    .replace(/^(Desc_|Build_|Recipe_|BP_)/i, "")
+    .replace(/_C$/i, "");
+  const slug = stripped.toLowerCase().replace(/_/g, "-");
+  return `${BASE}/desc-${slug}-c_64.png`;
 }
 
 let fetched = 0;
