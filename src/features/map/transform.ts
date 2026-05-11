@@ -17,21 +17,46 @@ export const WORLD_BOUNDS = {
   yMax: 375000,
 } as const;
 
+/**
+ * SCIM's tile pyramid bakes a fixed `extraBackgroundSize` padding on
+ * each side at every zoom level — the playable world doesn't fill
+ * the tiles; it sits in a centered inner rect. From their JS:
+ *
+ *     backgroundSize = 32768  // world pixels
+ *     extraBackgroundSize = 4096  // padding each side
+ *     // total raster = 32768 + 2×4096 = 40960
+ *
+ * So 4096 / 40960 = 0.1 of the image on each side is "outside the
+ * world" padding, regardless of which zoom you stitched at. Bake
+ * that into worldToPct so pixel offsets land on the right map
+ * features.
+ */
+export const IMAGE_INSET_PCT = 4096 / 40960;
+
 export function worldToPct(worldX: number, worldY: number): { xPct: number; yPct: number } {
-  // SCIM's bounds put north at yMin (-375k) and south at yMax (+375k),
-  // so the y mapping is a straight ratio — no flip — because the
-  // image's top (yPct 0) lines up with the world's smallest y.
-  const xPct =
+  // SCIM puts north at yMin and south at yMax, so y is a straight
+  // ratio with no flip. The IMAGE_INSET_PCT shifts pct=0 from the
+  // image's left edge to where the world's western boundary lives,
+  // and the (1 - 2×inset) factor compresses the world range into
+  // the playable inner rect rather than the full image.
+  const innerScale = 1 - 2 * IMAGE_INSET_PCT;
+  const xWorldPct =
     (worldX - WORLD_BOUNDS.xMin) / (WORLD_BOUNDS.xMax - WORLD_BOUNDS.xMin);
-  const yPct =
+  const yWorldPct =
     (worldY - WORLD_BOUNDS.yMin) / (WORLD_BOUNDS.yMax - WORLD_BOUNDS.yMin);
-  return { xPct, yPct };
+  return {
+    xPct: IMAGE_INSET_PCT + xWorldPct * innerScale,
+    yPct: IMAGE_INSET_PCT + yWorldPct * innerScale,
+  };
 }
 
 export function pctToWorld(xPct: number, yPct: number): { worldX: number; worldY: number } {
+  const innerScale = 1 - 2 * IMAGE_INSET_PCT;
+  const xWorldPct = (xPct - IMAGE_INSET_PCT) / innerScale;
+  const yWorldPct = (yPct - IMAGE_INSET_PCT) / innerScale;
   return {
-    worldX: xPct * (WORLD_BOUNDS.xMax - WORLD_BOUNDS.xMin) + WORLD_BOUNDS.xMin,
-    worldY: yPct * (WORLD_BOUNDS.yMax - WORLD_BOUNDS.yMin) + WORLD_BOUNDS.yMin,
+    worldX: xWorldPct * (WORLD_BOUNDS.xMax - WORLD_BOUNDS.xMin) + WORLD_BOUNDS.xMin,
+    worldY: yWorldPct * (WORLD_BOUNDS.yMax - WORLD_BOUNDS.yMin) + WORLD_BOUNDS.yMin,
   };
 }
 
