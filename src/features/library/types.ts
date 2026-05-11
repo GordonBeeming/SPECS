@@ -82,3 +82,34 @@ export interface LibrarySummary {
   recipeCount: number;
   milestoneCount: number;
 }
+
+export type GeneratorCategory = "burner" | "fluid" | "nuclear" | "geothermal";
+
+export interface GeneratorFuel {
+  fuelItemId: string;
+  fuelPerMinute: number;
+  supplementalItemId?: string;
+  supplementalPerMinute?: number;
+  powerMwOverride?: number;
+}
+
+export interface Generator {
+  id: string;
+  name: string;
+  category: GeneratorCategory;
+  powerMw: number;
+  unlockTier: number;
+  fuels: GeneratorFuel[];
+}
+
+export type VehicleKind = "tractor" | "truck" | "drone";
+
+export interface TransportVehicle {
+  id: string;
+  name: string;
+  kind: VehicleKind;
+  slots: number;
+  baseItemsPerMinute: number;
+  batteryPerKm: number;
+  unlockTier: number;
+}

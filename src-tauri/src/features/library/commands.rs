@@ -2,7 +2,7 @@ use tauri::State;
 
 use crate::shared::error::AppResult;
 use crate::shared::gamedata::types::{
-    BeltTier, Building, Item, Milestone, PipeTier, Recipe,
+    BeltTier, Building, Generator, Item, Milestone, PipeTier, Recipe, TransportVehicle,
 };
 use crate::shared::gamedata::GameData;
 
@@ -54,6 +54,18 @@ pub fn library_pipe_tiers(game_data: State<GameData>) -> AppResult<Vec<PipeTier>
     let mut out = game_data.pipe_tiers().to_vec();
     out.sort_by_key(|p| p.mark);
     Ok(out)
+}
+
+#[tauri::command]
+pub fn library_generators(game_data: State<GameData>) -> AppResult<Vec<Generator>> {
+    Ok(game_data.generators().to_vec())
+}
+
+#[tauri::command]
+pub fn library_transport_vehicles(
+    game_data: State<GameData>,
+) -> AppResult<Vec<TransportVehicle>> {
+    Ok(game_data.transport_vehicles().to_vec())
 }
 
 #[cfg(test)]

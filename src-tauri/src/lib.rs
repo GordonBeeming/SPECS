@@ -72,6 +72,8 @@ pub fn run() {
             features::library::commands::library_milestones,
             features::library::commands::library_belt_tiers,
             features::library::commands::library_pipe_tiers,
+            features::library::commands::library_generators,
+            features::library::commands::library_transport_vehicles,
             features::playthrough::commands::create_playthrough,
             features::playthrough::commands::list_playthroughs,
             features::playthrough::commands::open_playthrough,

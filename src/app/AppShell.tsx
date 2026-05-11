@@ -10,6 +10,7 @@ import {
   Share2,
   Sun,
   TrainTrack,
+  Zap,
 } from "lucide-react";
 import { AboutModal } from "@/features/about/components/AboutModal";
 import { Button } from "@/shared/ui/Button";
@@ -23,8 +24,9 @@ import { TrainRoutesView } from "@/features/trains/components/TrainRoutesView";
 import { NetworkView } from "@/features/network/components/NetworkView";
 import { AltsView } from "@/features/alts/components/AltsView";
 import { PlaythroughSwitcher } from "@/features/playthrough/components/PlaythroughSwitcher";
+import { PowerView } from "@/features/power/components/PowerView";
 
-type Route = "home" | "factories" | "logistics" | "trains" | "network" | "library" | "alts";
+type Route = "home" | "factories" | "logistics" | "trains" | "power" | "network" | "library" | "alts";
 
 const NAV: ReadonlyArray<{ id: Route; label: string; Icon: typeof BookOpen }> = [
   { id: "home", label: "Home", Icon: LayoutDashboard },
@@ -32,6 +34,7 @@ const NAV: ReadonlyArray<{ id: Route; label: string; Icon: typeof BookOpen }> = 
   { id: "factories", label: "Factories", Icon: FactoryIcon },
   { id: "logistics", label: "Logistics", Icon: Network },
   { id: "trains", label: "Trains", Icon: TrainTrack },
+  { id: "power", label: "Power", Icon: Zap },
   { id: "alts", label: "Alts", Icon: FlaskConical },
   { id: "library", label: "Library", Icon: BookOpen },
 ];
@@ -94,6 +97,7 @@ export function AppShell() {
           {route === "factories" && <FactoryListView />}
           {route === "logistics" && <LogisticsListView />}
           {route === "trains" && <TrainRoutesView />}
+          {route === "power" && <PowerView />}
           {route === "alts" && <AltsView />}
           {route === "library" && <LibraryView />}
         </main>
