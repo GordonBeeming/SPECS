@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Sparkles, X } from "lucide-react";
 
 import { useItems, useRecipes } from "@/features/library/hooks/useLibrary";
-import { useFactoryList } from "@/features/factory/hooks/useFactories";
+import { useAddMachine, useCreateFactory, useFactoryList } from "@/features/factory/hooks/useFactories";
 import { useResourceNodes } from "@/features/resources/hooks/useResources";
 import { plannerApi } from "@/features/planner/api";
 import type {
@@ -41,14 +41,22 @@ export function NewFactoryPanel({ onClose, onApplied }: NewFactoryPanelProps) {
   const recipes = useRecipes();
   const factories = useFactoryList();
   const nodes = useResourceNodes();
+  const createFactory = useCreateFactory();
+  const addMachine = useAddMachine();
 
   const [target, setTarget] = useState<string | null>(null);
   const [targetIpm, setTargetIpm] = useState(60);
   const [namingPrefix, setNamingPrefix] = useState("");
+  // Default = single factory. The chain mode (one factory per stage)
+  // is overkill when the player just wants 'a Rotor factory I can
+  // drag supply into' and was producing 4-stage stacks for things
+  // like Rotor that overwhelmed the canvas.
+  const [buildFullChain, setBuildFullChain] = useState(false);
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<DeriveChainResult | null>(null);
   const [applyPending, setApplyPending] = useState(false);
   const [applied, setApplied] = useState<string[] | null>(null);
+  const [singleError, setSingleError] = useState<string | null>(null);
 
   // Build the same tier-grouped, supply-aware target-item list the
   // standalone planner used — keeps the picker behaviour identical
@@ -118,6 +126,99 @@ export function NewFactoryPanel({ onClose, onApplied }: NewFactoryPanelProps) {
     }
   };
 
+  /**
+   * Single-factory placement — picks the best recipe for the target
+   * (non-alt preferred, highest output rate) and creates one factory
+   * with one machine row sized to hit the target ipm. No chain. The
+   * player wires inputs in afterwards by dragging nodes / factories.
+   */
+  const placeSingle = async () => {
+    if (!target || !items.data || !recipes.data) return;
+    setApplyPending(true);
+    setSingleError(null);
+    try {
+      const item = items.data.find((i) => i.id === target);
+      const candidates = recipes.data
+        .filter(
+          (r) =>
+            !r.id.startsWith("Recipe_Unpackage") &&
+            r.outputs.some((o) => o.itemId === target),
+        )
+        .map((r) => {
+          const out = r.outputs.find((o) => o.itemId === target);
+          return { r, rate: out?.perMinute ?? 0 };
+        })
+        .filter(({ rate }) => rate > 0)
+        .sort((a, b) => {
+          if (a.r.isAlt !== b.r.isAlt) return a.r.isAlt ? 1 : -1;
+          return b.rate - a.rate;
+        });
+      const chosen = candidates[0];
+      if (!chosen) {
+        setSingleError("No recipe produces this item.");
+        return;
+      }
+      const perMachine = chosen.rate;
+      let machineCount = Math.max(1, Math.ceil(targetIpm / perMachine));
+      let clockPct = (targetIpm / (machineCount * perMachine)) * 100;
+      if (clockPct < 1) clockPct = 1;
+      while (clockPct > 250 && machineCount < 10000) {
+        machineCount += 1;
+        clockPct = (targetIpm / (machineCount * perMachine)) * 100;
+      }
+      const factoryName =
+        namingPrefix.trim() ||
+        `${item?.name ?? target} factory`;
+      const f = await createFactory.mutateAsync({ name: factoryName });
+      await addMachine.mutateAsync({
+        factoryId: f.id,
+        buildingId: chosen.r.buildingId,
+        recipeId: chosen.r.id,
+        count: machineCount,
+        clockPct,
+        useSomersloop: false,
+        somersloopSlotsFilled: 0,
+        powerShardCount: 0,
+      });
+      setApplied([f.id]);
+      await factories.refetch();
+      onApplied();
+    } catch (e) {
+      setSingleError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setApplyPending(false);
+    }
+  };
+
+  const placeAnyway = async () => {
+    if (!target) return;
+    setApplyPending(true);
+    try {
+      // Re-derive with bypass so we get a full ChainPlan (the
+      // Insufficient result the user is staring at doesn't carry
+      // the plan), then apply it. Net effect: pins land on the
+      // map immediately and the user binds nodes in via drag-to-
+      // link to satisfy the gap.
+      const r = await plannerApi.derive({
+        targetItemId: target,
+        targetIpm,
+        bypassSupply: true,
+      });
+      if (r.kind === "ok") {
+        const a = await plannerApi.apply({
+          plan: r.plan,
+          namingPrefix: namingPrefix.trim() || r.plan.targetItemName,
+          defaultLinkDistanceM: 1000,
+        });
+        setApplied(a.factoryIds);
+        await factories.refetch();
+        onApplied();
+      }
+    } finally {
+      setApplyPending(false);
+    }
+  };
+
   return (
     <Card className="w-[380px] p-4 shadow-xl">
       <div className="flex items-start justify-between gap-2">
@@ -174,16 +275,50 @@ export function NewFactoryPanel({ onClose, onApplied }: NewFactoryPanelProps) {
             />
           </label>
         </div>
-        <Button
-          onClick={derive}
-          disabled={!target || pending}
-          className="mt-1 w-full"
-        >
-          {pending ? "Deriving…" : "Derive chain"}
-        </Button>
+        <label className="mt-1 flex items-center gap-2 text-[11px] text-fg-muted">
+          <input
+            type="checkbox"
+            checked={buildFullChain}
+            onChange={(e) => {
+              setBuildFullChain(e.target.checked);
+              setResult(null);
+              setApplied(null);
+              setSingleError(null);
+            }}
+          />
+          Auto-build supply chain (one factory per stage)
+        </label>
+        {buildFullChain ? (
+          <Button
+            onClick={() => void derive()}
+            disabled={!target || pending}
+            className="mt-1 w-full"
+          >
+            {pending ? "Deriving…" : "Derive chain"}
+          </Button>
+        ) : (
+          <Button
+            onClick={() => void placeSingle()}
+            disabled={!target || applyPending}
+            className="mt-1 w-full"
+          >
+            {applyPending ? "Placing…" : "Place factory"}
+          </Button>
+        )}
+        {singleError && (
+          <div role="alert" className="mt-2 text-xs text-danger">
+            {singleError}
+          </div>
+        )}
+        {applied && !buildFullChain && (
+          <div className="mt-2 text-xs text-success">
+            ✓ Factory placed — drag the pin where you want it, then drag
+            claimed nodes onto it.
+          </div>
+        )}
       </div>
 
-      {result?.kind === "err" && (
+      {buildFullChain && result?.kind === "err" && (
         <PanelError
           error={result.error}
           items={items.data ?? []}
@@ -192,9 +327,11 @@ export function NewFactoryPanel({ onClose, onApplied }: NewFactoryPanelProps) {
             await nodes.refetch();
             await derive();
           }}
+          onPlaceAnyway={placeAnyway}
+          placeAnywayPending={applyPending}
         />
       )}
-      {result?.kind === "ok" && (
+      {buildFullChain && result?.kind === "ok" && (
         <PanelPreview
           plan={result.plan}
           onApply={() => apply(result.plan)}

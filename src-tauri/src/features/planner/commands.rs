@@ -14,7 +14,7 @@ use crate::features::resource_nodes::repo as nodes_repo;
 use crate::shared::error::{AppError, AppResult};
 use crate::shared::gamedata::GameData;
 
-use super::domain::derive_chain;
+use super::domain::derive_chain_with_options;
 use super::dto::{
     ApplyChainPlanInput, ApplyChainPlanResult, DeriveChainInput, DeriveChainResult,
 };
@@ -59,12 +59,13 @@ pub fn planner_derive_chain(
     let claims = db.with(|c| nodes_repo::claims_all(c).map_err(AppError::from))?;
     let supply = nodes_domain::available_supply(&claims, &game_data);
 
-    match derive_chain(
+    match derive_chain_with_options(
         &input.target_item_id,
         input.target_ipm,
         &unlocked,
         &supply,
         &game_data,
+        input.bypass_supply,
     ) {
         Ok(plan) => Ok(DeriveChainResult::Ok { plan }),
         Err(error) => Ok(DeriveChainResult::Err { error }),

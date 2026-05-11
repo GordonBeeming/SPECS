@@ -43,6 +43,8 @@ export type DeriveChainResult =
 export interface DeriveChainInput {
   targetItemId: string;
   targetIpm: number;
+  /** Build the plan even with insufficient supply — pins land first, supply bound after. */
+  bypassSupply?: boolean;
 }
 
 export interface ApplyChainPlanInput {

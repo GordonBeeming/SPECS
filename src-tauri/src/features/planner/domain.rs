@@ -389,6 +389,17 @@ pub fn derive_chain(
     available_supply: &HashMap<String, f32>,
     game_data: &GameData,
 ) -> Result<ChainPlan, PlannerError> {
+    derive_chain_with_options(target_item_id, target_ipm, unlocked_alts, available_supply, game_data, false)
+}
+
+pub fn derive_chain_with_options(
+    target_item_id: &str,
+    target_ipm: f32,
+    unlocked_alts: &HashSet<String>,
+    available_supply: &HashMap<String, f32>,
+    game_data: &GameData,
+    bypass_supply: bool,
+) -> Result<ChainPlan, PlannerError> {
     if game_data.item(target_item_id).is_none() {
         return Err(PlannerError::UnknownTarget {
             item_id: target_item_id.to_string(),
@@ -426,16 +437,20 @@ pub fn derive_chain(
 
     // Compare raw demand to the supply pool. If anything is short,
     // surface the gap — the UI shows it as "needs 240 Water/min,
-    // claim a water well".
-    let mut missing: HashMap<String, f32> = HashMap::new();
-    for (item, demand) in &raw_demand {
-        let supply = *available_supply.get(item).unwrap_or(&0.0);
-        if *demand > supply + 1e-3 {
-            missing.insert(item.clone(), demand - supply);
+    // claim a water well". When `bypass_supply` is set, skip the
+    // gate so the chain materialises anyway (the player can wire
+    // nodes in afterwards).
+    if !bypass_supply {
+        let mut missing: HashMap<String, f32> = HashMap::new();
+        for (item, demand) in &raw_demand {
+            let supply = *available_supply.get(item).unwrap_or(&0.0);
+            if *demand > supply + 1e-3 {
+                missing.insert(item.clone(), demand - supply);
+            }
         }
-    }
-    if !missing.is_empty() {
-        return Err(PlannerError::Insufficient { missing });
+        if !missing.is_empty() {
+            return Err(PlannerError::Insufficient { missing });
+        }
     }
 
     // Phase 2: build one ChainStage per visited item in leaves-first

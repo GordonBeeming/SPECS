@@ -81,6 +81,13 @@ pub enum PlannerError {
 pub struct DeriveChainInput {
     pub target_item_id: String,
     pub target_ipm: f32,
+    /// When true, build the plan even if raw supply doesn't cover
+    /// the chain's demand. The UI surfaces this as 'Place anyway' so
+    /// the player can put pins on the map immediately and bind nodes
+    /// in afterwards instead of being blocked until they've claimed
+    /// every required raw.
+    #[serde(default)]
+    pub bypass_supply: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
