@@ -15,4 +15,8 @@ export const playthroughApi = {
   setCurrentTier: (tier: number) =>
     invoke<PlaythroughDetail>("set_current_tier", { tier }),
   delete: (id: string) => invoke<void>("delete_playthrough", { id }),
+  export: (destinationPath: string) =>
+    invoke<string>("export_playthrough", { destinationPath }),
+  import: (sourcePath: string, displayName: string) =>
+    invoke<PlaythroughSummary>("import_playthrough", { sourcePath, displayName }),
 };

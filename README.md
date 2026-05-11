@@ -26,15 +26,29 @@ Done:
 - **Phase 4** — Factories with per-machine config (building + recipe + count
   + clock 1–250%), tier-gated type-to-filter recipe picker, per-item ledger
   (produced / consumed / net) and aggregate power readout.
+- **Phase 5** — Cross-factory logistics links + transport planner: ranked
+  belt and pipe plans for a given (item, ipm, distance, unlocked tier),
+  rendered as a radio-group picker with locked-tier callouts.
+- **Phase 6** — Train routes carrying multiple links. Cycle-time math
+  pinned to wiki capacities; route editor with reorderable stops.
+- **Phase 7** — React Flow network canvas: factories as nodes,
+  logistics links as edges with kind-coloured strokes and capacity-
+  scaled widths.
+- **Phase 8** — Hard Drive alt-recipe checklist + opt-in Somersloop /
+  power-shard amplification per machine, with the wiki's
+  `clock^1.321928` × `(1 + amp_ratio)^2` power curve.
+- **Phase 9** — Power planner: per-factory generators (Biomass, Coal,
+  Fuel, Nuclear) with fuel consumption and `factory_power_balance`
+  cross-referencing the machine ledger.
+- **Phase 10** — Export / import `.specsdb` files (WAL-safe via
+  `VACUUM INTO`; validated by opening a copy + verifying the seeded
+  progress row). Undo/redo deferred to a later milestone.
 
 Next:
 
-- Phase 5 — cross-factory logistics links + transport planner (the
-  differentiator: ranked belt/pipe/vehicle/train/drone plans).
-- Phase 6 — train routes; Phase 7 — React Flow network view; Phase 8 —
-  alternate recipes + Somersloop (opt-in); Phase 9 — power planner;
-  Phase 10 — undo/redo + import/export; Phase 11 — branding + game icons;
-  Phase 12 — signed CI bundles.
+- **Phase 11** — Branding polish + bundled game-icon pack
+  (per Coffee Stain's fan-content policy) + reference screenshots.
+- **Phase 12** — CI/CD + signed macOS / Windows / Linux bundles.
 
 See [`docs/vsa/`](./docs/vsa/) for the architecture and
 [`DESIGN.md`](./DESIGN.md) for visual standards.

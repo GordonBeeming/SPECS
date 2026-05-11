@@ -189,6 +189,167 @@ pub fn delete_playthrough(
     Ok(())
 }
 
+fn require_absolute_path(path: &PathBuf, label: &str) -> AppResult<()> {
+    if !path.is_absolute() {
+        return Err(AppError::Invalid(format!(
+            "{label} must be an absolute path (got {})",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+/// Verify a freshly-opened playthrough DB has the singleton
+/// `progress.id = 1` row that every real playthrough seeds during
+/// `create_playthrough`. Without this an arbitrary SQLite file (or
+/// even an empty file with the migrations re-applied via
+/// `CREATE TABLE IF NOT EXISTS`) would pass validation and then
+/// blow up at first open with a "no progress row" error.
+fn verify_playthrough_seeded(db: &PlaythroughDb) -> AppResult<()> {
+    db.with(|c| {
+        let count: i64 = c
+            .query_row("SELECT COUNT(*) FROM progress WHERE id = 1", [], |r| r.get(0))
+            .map_err(|e| AppError::from(anyhow::Error::from(e)))?;
+        if count == 0 {
+            return Err(AppError::Invalid(
+                "source file has the playthrough schema but is missing the seeded progress row"
+                    .into(),
+            ));
+        }
+        Ok(())
+    })
+}
+
+/// Copy the active playthrough's `.specsdb` file to a destination
+/// path. Uses SQLite's `VACUUM INTO` so the destination is a full,
+/// WAL-checkpointed snapshot — `std::fs::copy` would silently miss
+/// committed transactions still in the `-wal` sidecar when the DB is
+/// open. The React side supplies an absolute path; relative paths are
+/// rejected because they'd resolve against the Tauri working
+/// directory which the user doesn't control.
+#[tauri::command]
+pub fn export_playthrough(
+    active: State<ActivePlaythrough>,
+    app_db: State<AppDb>,
+    destination_path: String,
+) -> AppResult<String> {
+    let dest = PathBuf::from(&destination_path);
+    require_absolute_path(&dest, "destination_path")?;
+    let id = active
+        .id()
+        .ok_or_else(|| AppError::Invalid("no active playthrough".into()))?;
+    let source_str = app_db
+        .with(|c| repo::registry_get_path(c, &id).map_err(AppError::from))?
+        .ok_or_else(|| AppError::NotFound(format!("playthrough {id} not in registry")))?;
+    if let Some(parent) = dest.parent() {
+        if !parent.as_os_str().is_empty() {
+            ensure_dir(parent).map_err(AppError::from)?;
+        }
+    }
+    if dest.exists() {
+        // VACUUM INTO refuses to overwrite — surface a friendly error
+        // before SQLite returns the "output file already exists" code.
+        return Err(AppError::Invalid(format!(
+            "destination file already exists: {}",
+            dest.display()
+        )));
+    }
+    let source_path = PathBuf::from(&source_str);
+    let conn = rusqlite::Connection::open(&source_path).map_err(|e| {
+        AppError::Internal(format!(
+            "failed to open source DB {}: {e}",
+            source_path.display()
+        ))
+    })?;
+    let dest_str = dest.to_string_lossy().to_string();
+    conn.execute("VACUUM INTO ?1", rusqlite::params![dest_str])
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "VACUUM INTO {} failed: {e}",
+                dest.display()
+            ))
+        })?;
+    Ok(destination_path)
+}
+
+/// Import a `.specsdb` from anywhere on disk into the managed
+/// playthroughs directory. Validates by copying to the final
+/// destination first and opening the *copy* — `PlaythroughDb::open`
+/// runs migrations and sets WAL pragmas, both of which would mutate
+/// the source if used for in-place validation. The validation also
+/// checks the seeded `progress.id = 1` row so an arbitrary SQLite
+/// file can't pass `CREATE TABLE IF NOT EXISTS` and end up registered.
+#[tauri::command]
+pub fn import_playthrough(
+    handle: AppHandle,
+    app_db: State<AppDb>,
+    source_path: String,
+    display_name: String,
+) -> AppResult<PlaythroughSummary> {
+    validate_name(&display_name)?;
+    let source = PathBuf::from(&source_path);
+    require_absolute_path(&source, "source_path")?;
+    if !source.exists() {
+        return Err(AppError::Invalid(format!(
+            "source file does not exist: {}",
+            source.display()
+        )));
+    }
+    if source.extension().and_then(|s| s.to_str()) != Some("specsdb") {
+        return Err(AppError::Invalid(
+            "source file must have a .specsdb extension".into(),
+        ));
+    }
+
+    let pt_dir = playthroughs_dir(&handle).map_err(AppError::from)?;
+    ensure_dir(&pt_dir).map_err(AppError::from)?;
+    let id = Uuid::new_v4().to_string();
+    let dest = pt_dir.join(format!("{id}.specsdb"));
+
+    // Copy first so any mutation from migrations or WAL pragmas hits
+    // the managed copy, not the user's original file. If validation
+    // fails we delete the copy (best-effort) before bailing.
+    std::fs::copy(&source, &dest).map_err(|e| {
+        AppError::Internal(format!(
+            "failed to copy {} -> {}: {e}",
+            source.display(),
+            dest.display()
+        ))
+    })?;
+
+    let validation = PlaythroughDb::open(&dest)
+        .map_err(|e| {
+            AppError::Invalid(format!(
+                "source file isn't a valid playthrough .specsdb: {e:#}"
+            ))
+        })
+        .and_then(|db| verify_playthrough_seeded(&db));
+    if let Err(err) = validation {
+        let _ = std::fs::remove_file(&dest);
+        return Err(err);
+    }
+
+    let now = now_iso();
+    app_db.with(|c| {
+        repo::registry_insert(
+            c,
+            &id,
+            display_name.trim(),
+            &dest.to_string_lossy(),
+            SCHEMA_VERSION,
+            &now,
+        )
+        .map_err(AppError::from)
+    })?;
+    Ok(PlaythroughSummary {
+        id,
+        display_name: display_name.trim().to_string(),
+        created_at: now.clone(),
+        last_opened_at: Some(now),
+        schema_version: SCHEMA_VERSION,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     //! These tests exercise the validators and the wired-together repo flow
