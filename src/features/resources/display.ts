@@ -19,9 +19,10 @@ export function nodeDisplayLabel(node: ResourceNodeRow, index: number): string {
  */
 export function coordChip(x: number, y: number): string {
   // Unreal world coords are stored in cm — divide by 100,000 to land
-  // on kilometres for human-readable distances.
+  // on kilometres for human-readable distances. SCIM's convention
+  // puts +x = east, +y = south (north is the smaller y).
   const km = (v: number) => (v / 100000).toFixed(1);
   const ew = x >= 0 ? "E" : "W";
-  const ns = y >= 0 ? "N" : "S"; // world +y is in-game North
+  const ns = y >= 0 ? "S" : "N";
   return `${km(Math.abs(x))}km ${ew} · ${km(Math.abs(y))}km ${ns}`;
 }

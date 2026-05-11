@@ -43,8 +43,13 @@ function markerIconId(resourceItemId: string): string {
   return resourceItemId;
 }
 
-const MAP_W = 2048;
-const MAP_H = 1981;
+// Image dimensions of the bundled WebP. Must stay in lockstep with
+// `scripts/fetch-map.ts` (currently stitches SCIM's zoom-4 tile grid
+// = 10×10 of 256 px = 2560×2560). The world-coord transform in
+// `transform.ts` is independent of this — pct-of-image gets multiplied
+// by these to land on pixel offsets inside the canvas.
+const MAP_W = 2560;
+const MAP_H = 2560;
 
 // localStorage keys for the map filter state — bumped suffix on shape
 // changes if we ever extend what's persisted.

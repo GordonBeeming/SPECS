@@ -3,20 +3,20 @@ import { pctToWorld, WORLD_BOUNDS, worldDistance, worldToPct } from "./transform
 
 describe("map transform", () => {
   it("maps top-left world bound to the image's top-left corner", () => {
-    const { xPct, yPct } = worldToPct(WORLD_BOUNDS.xMin, WORLD_BOUNDS.yMax);
+    const { xPct, yPct } = worldToPct(WORLD_BOUNDS.xMin, WORLD_BOUNDS.yMin);
     expect(xPct).toBeCloseTo(0, 5);
     expect(yPct).toBeCloseTo(0, 5);
   });
 
   it("maps bottom-right world bound to the image's bottom-right corner", () => {
-    const { xPct, yPct } = worldToPct(WORLD_BOUNDS.xMax, WORLD_BOUNDS.yMin);
+    const { xPct, yPct } = worldToPct(WORLD_BOUNDS.xMax, WORLD_BOUNDS.yMax);
     expect(xPct).toBeCloseTo(1, 5);
     expect(yPct).toBeCloseTo(1, 5);
   });
 
-  it("flips the y axis so in-game North maps to image up", () => {
-    const north = worldToPct(0, WORLD_BOUNDS.yMax);
-    const south = worldToPct(0, WORLD_BOUNDS.yMin);
+  it("renders SCIM's yMin (north) at the top of the image", () => {
+    const north = worldToPct(0, WORLD_BOUNDS.yMin);
+    const south = worldToPct(0, WORLD_BOUNDS.yMax);
     expect(north.yPct).toBeLessThan(south.yPct);
   });
 

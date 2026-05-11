@@ -1,35 +1,37 @@
 /**
  * In-game world coordinates → bundled map image coordinates.
  *
- * Satisfactory's world is roughly 750 km × 750 km in Unreal units
- * (~1 cm per unit). The bundled `satisfactory-map.webp` was produced
- * from the community high-res map; its bounds aren't perfectly
- * documented anywhere, so the constants below come from empirical
- * alignment against the SCIM node catalog (node coords range from
- * roughly (-282k, -314k) to (406k, 302k)). If pins drift, tweak
- * these — the math is unit-agnostic and a small offset / scale
- * change is enough to re-align without touching the renderer.
+ * Bounds taken verbatim from SCIM's leaflet config (their bundle
+ * exposes `mappingBoundWest/East/North/South`); since
+ * `scripts/fetch-map.ts` stitches SCIM's own tile pyramid for the
+ * map image, the bundled WebP and these bounds are aligned to a
+ * fraction of a pixel.
+ *
+ * Don't tweak these in isolation — they belong with the tile image
+ * the script produces. Change one and you have to change the other.
  */
 export const WORLD_BOUNDS = {
-  xMin: -324698,
-  xMax: 425302,
+  xMin: -324698.832031,
+  xMax: 425301.832031,
   yMin: -375000,
   yMax: 375000,
 } as const;
 
 export function worldToPct(worldX: number, worldY: number): { xPct: number; yPct: number } {
+  // SCIM's bounds put north at yMin (-375k) and south at yMax (+375k),
+  // so the y mapping is a straight ratio — no flip — because the
+  // image's top (yPct 0) lines up with the world's smallest y.
   const xPct =
     (worldX - WORLD_BOUNDS.xMin) / (WORLD_BOUNDS.xMax - WORLD_BOUNDS.xMin);
-  // In-game +y is North; map +y is South — flip so North is up.
   const yPct =
-    (WORLD_BOUNDS.yMax - worldY) / (WORLD_BOUNDS.yMax - WORLD_BOUNDS.yMin);
+    (worldY - WORLD_BOUNDS.yMin) / (WORLD_BOUNDS.yMax - WORLD_BOUNDS.yMin);
   return { xPct, yPct };
 }
 
 export function pctToWorld(xPct: number, yPct: number): { worldX: number; worldY: number } {
   return {
     worldX: xPct * (WORLD_BOUNDS.xMax - WORLD_BOUNDS.xMin) + WORLD_BOUNDS.xMin,
-    worldY: WORLD_BOUNDS.yMax - yPct * (WORLD_BOUNDS.yMax - WORLD_BOUNDS.yMin),
+    worldY: yPct * (WORLD_BOUNDS.yMax - WORLD_BOUNDS.yMin) + WORLD_BOUNDS.yMin,
   };
 }
 
