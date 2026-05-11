@@ -117,6 +117,9 @@ pub fn run() {
             features::power::commands::factory_power_balance,
             features::alts::commands::list_unlocked_alt_recipes,
             features::alts::commands::toggle_alt_recipe,
+            features::resource_nodes::commands::list_resource_nodes,
+            features::resource_nodes::commands::set_node_claim,
+            features::resource_nodes::commands::clear_node_claim,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

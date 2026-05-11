@@ -10,4 +10,5 @@ pub mod library;
 pub mod logistics;
 pub mod playthrough;
 pub mod power;
+pub mod resource_nodes;
 pub mod trains;
