@@ -120,6 +120,7 @@ pub fn run() {
             features::resource_nodes::commands::list_resource_nodes,
             features::resource_nodes::commands::set_node_claim,
             features::resource_nodes::commands::clear_node_claim,
+            features::planner::commands::planner_derive_chain,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -196,12 +196,53 @@ impl GameData {
     /// uses this to enumerate candidate recipes per stage without a
     /// linear scan of the full recipe list. Returns an empty slice for
     /// raw resources (no recipe produces Iron Ore directly).
-    #[allow(dead_code)]
     pub fn recipes_producing(&self, item_id: &str) -> Vec<&Recipe> {
         match self.inner.recipes_by_output_item.get(item_id) {
             Some(idxs) => idxs.iter().map(|i| &self.inner.file.recipes[*i]).collect(),
             None => Vec::new(),
         }
+    }
+
+    /// True if no recipe in the dataset produces this item.
+    /// (Currently only a sanity helper — the planner reaches its
+    /// termination condition via `is_extracted_resource` below
+    /// because several "natural" items show up as recipe byproducts
+    /// elsewhere.)
+    #[allow(dead_code)]
+    pub fn is_raw_resource(&self, item_id: &str) -> bool {
+        self.inner
+            .recipes_by_output_item
+            .get(item_id)
+            .map(|v| v.is_empty())
+            .unwrap_or(true)
+    }
+
+    /// True for items that the game exclusively sources from
+    /// extractors / wells / vents — Iron Ore, Water, Crude Oil, etc.
+    /// They may *also* appear as recipe byproducts (Water from
+    /// Battery production, Crude Oil from various refines) but the
+    /// planner should still constrain on claimed supply: a player
+    /// without a Water Extractor can't realistically run a Pure Iron
+    /// Ingot chain just because Battery production also drips water
+    /// out the side.
+    pub fn is_extracted_resource(&self, item_id: &str) -> bool {
+        matches!(
+            item_id,
+            "Desc_OreIron_C"
+                | "Desc_OreCopper_C"
+                | "Desc_OreGold_C"
+                | "Desc_Stone_C"
+                | "Desc_Coal_C"
+                | "Desc_Sulfur_C"
+                | "Desc_OreBauxite_C"
+                | "Desc_RawQuartz_C"
+                | "Desc_OreUranium_C"
+                | "Desc_SAM_C"
+                | "Desc_LiquidOil_C"
+                | "Desc_Water_C"
+                | "Desc_NitrogenGas_C"
+                | "Desc_Geyser_C"
+        )
     }
 }
 
