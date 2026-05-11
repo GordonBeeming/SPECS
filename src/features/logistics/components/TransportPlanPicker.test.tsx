@@ -1,9 +1,27 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 
+import { libraryApi } from "@/features/library/api";
 import type { TransportPlan } from "../types";
 import { TransportPlanPicker, serialisePlan } from "./TransportPlanPicker";
+
+function renderWithProviders(node: ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
+}
+
+beforeEach(() => {
+  // The picker calls `useTransportVehicles` so it can render vehicle names
+  // alongside segment counts. The existing belt/pipe-focused tests don't
+  // care about the result; mock to an empty list to keep the React Query
+  // requirement satisfied without changing assertions.
+  vi.spyOn(libraryApi, "transportVehicles").mockResolvedValue([]);
+});
+
+afterEach(() => vi.restoreAllMocks());
 
 function plan(overrides: Partial<TransportPlan> = {}): TransportPlan {
   return {
@@ -53,14 +71,14 @@ describe("<TransportPlanPicker />", () => {
   it("invokes onPick with the chosen plan when a radio is clicked", async () => {
     const onPick = vi.fn();
     const p = plan();
-    render(<TransportPlanPicker plans={[p]} selectedJson={null} onPick={onPick} />);
+    renderWithProviders(<TransportPlanPicker plans={[p]} selectedJson={null} onPick={onPick} />);
     await userEvent.click(screen.getByRole("radio"));
     expect(onPick).toHaveBeenCalledWith(p);
   });
 
   it("marks the matching radio checked based on serialised JSON", () => {
     const p = plan();
-    render(
+    renderWithProviders(
       <TransportPlanPicker plans={[p]} selectedJson={serialisePlan(p)} onPick={() => {}} />,
     );
     expect(screen.getByRole("radio")).toBeChecked();
@@ -68,7 +86,35 @@ describe("<TransportPlanPicker />", () => {
 
   it("uses the pipe noun for fluid plans", () => {
     const p = plan({ kind: "pipe", segments: [{ mark: 2, count: 1, perUnitCapacity: 600, unlockTier: 6 }] });
-    render(<TransportPlanPicker plans={[p]} selectedJson={null} onPick={() => {}} />);
+    renderWithProviders(<TransportPlanPicker plans={[p]} selectedJson={null} onPick={() => {}} />);
     expect(screen.getByText("1× Mk2 pipes")).toBeInTheDocument();
+  });
+
+  it("renders vehicle plans with the vehicle name and battery cost", async () => {
+    vi.spyOn(libraryApi, "transportVehicles").mockResolvedValueOnce([
+      {
+        id: "Build_DroneTransport_C",
+        name: "Drone",
+        kind: "drone",
+        slots: 9,
+        baseItemsPerMinute: 250,
+        batteryPerKm: 1,
+        unlockTier: 7,
+      },
+    ]);
+    const dronePlan = plan({
+      kind: "drone",
+      segments: [{ mark: 0, count: 2, perUnitCapacity: 125, unlockTier: 7 }],
+      totalCapacityPerMinute: 250,
+      utilisationPct: 100,
+      minUnlockTier: 7,
+      vehicleId: "Build_DroneTransport_C",
+      batteryPerMinute: 8,
+    });
+    renderWithProviders(
+      <TransportPlanPicker plans={[dronePlan]} selectedJson={null} onPick={() => {}} />,
+    );
+    expect(await screen.findByText("2× Drone")).toBeInTheDocument();
+    expect(screen.getByText(/8.0 batteries/)).toBeInTheDocument();
   });
 });

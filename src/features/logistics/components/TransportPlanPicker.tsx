@@ -1,5 +1,6 @@
-import { Lock } from "lucide-react";
+import { Battery, Lock } from "lucide-react";
 
+import { useTransportVehicles } from "@/features/library/hooks/useLibrary";
 import type { TransportPlan } from "../types";
 
 interface TransportPlanPickerProps {
@@ -19,6 +20,9 @@ interface TransportPlanPickerProps {
  * without juggling separate "selected plan index" state.
  */
 export function TransportPlanPicker({ plans, selectedJson, onPick }: TransportPlanPickerProps) {
+  const vehicles = useTransportVehicles();
+  const vehicleNames = new Map(vehicles.data?.map((v) => [v.id, v.name]) ?? []);
+
   if (plans.length === 0) {
     return (
       <div className="rounded-md border border-dashed border-border p-3 text-sm text-fg-muted">
@@ -50,11 +54,11 @@ export function TransportPlanPicker({ plans, selectedJson, onPick }: TransportPl
                 onChange={() => onPick(plan)}
                 disabled={plan.locked}
                 className="h-4 w-4"
-                aria-label={summariseSegments(plan)}
+                aria-label={summariseSegments(plan, vehicleNames)}
               />
               <div className="flex-1">
                 <div className="flex items-center gap-2 text-sm font-medium text-fg">
-                  <span>{summariseSegments(plan)}</span>
+                  <span>{summariseSegments(plan, vehicleNames)}</span>
                   {plan.locked && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-xs text-warning">
                       <Lock className="h-3 w-3" />
@@ -62,9 +66,17 @@ export function TransportPlanPicker({ plans, selectedJson, onPick }: TransportPl
                     </span>
                   )}
                 </div>
-                <div className="mt-0.5 text-xs text-fg-muted tabular-nums">
-                  {plan.totalCapacityPerMinute.toFixed(0)} {plan.kind === "pipe" ? "m³" : "ipm"}{" "}
-                  capacity · {plan.utilisationPct.toFixed(0)}% used
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-muted tabular-nums">
+                  <span>
+                    {plan.totalCapacityPerMinute.toFixed(0)} {plan.kind === "pipe" ? "m³" : "ipm"}{" "}
+                    capacity · {plan.utilisationPct.toFixed(0)}% used
+                  </span>
+                  {plan.batteryPerMinute !== undefined && plan.batteryPerMinute > 0 && (
+                    <span className="inline-flex items-center gap-1 text-warning">
+                      <Battery className="h-3 w-3" />
+                      {plan.batteryPerMinute.toFixed(1)} batteries / min
+                    </span>
+                  )}
                 </div>
               </div>
             </label>
@@ -76,11 +88,27 @@ export function TransportPlanPicker({ plans, selectedJson, onPick }: TransportPl
 }
 
 /**
- * Compact human label for a plan: "2× Mk6 belts" or
- * "1× Mk6 + 1× Mk1 belts". The `kind` is appended once at the end so
- * mixed-tier plans don't repeat "belts" or "pipes" per segment.
+ * Compact human label for a plan: "2× Mk6 belts", "1× Mk6 + 1× Mk1 belts",
+ * or "3× Truck (Build_Truck_C)" for vehicle plans.
  */
-function summariseSegments(plan: TransportPlan): string {
+function summariseSegments(
+  plan: TransportPlan,
+  vehicleNames: Map<string, string>,
+): string {
+  if (
+    plan.kind === "truck" ||
+    plan.kind === "tractor" ||
+    plan.kind === "drone"
+  ) {
+    const name = plan.vehicleId
+      ? vehicleNames.get(plan.vehicleId) ?? plan.vehicleId
+      : plan.kind;
+    const count = plan.segments[0]?.count ?? 1;
+    return `${count}× ${name}`;
+  }
+  if (plan.kind === "train") {
+    return "Attach to existing train route";
+  }
   const parts = plan.segments.map((s) => `${s.count}× Mk${s.mark}`);
   const noun = plan.kind === "pipe" ? "pipes" : "belts";
   return `${parts.join(" + ")} ${noun}`;
@@ -92,7 +120,10 @@ function summariseSegments(plan: TransportPlan): string {
  * `transport_plan_json`) immune to hash-map ordering changes.
  */
 export function serialisePlan(plan: TransportPlan): string {
-  return JSON.stringify({
+  // Conditional fields only land in the JSON when they're non-null,
+  // matching the Rust DTO's `skip_serializing_if = Option::is_none`
+  // so the same string round-trips through the database verbatim.
+  const out: Record<string, unknown> = {
     kind: plan.kind,
     segments: plan.segments.map((s) => ({
       mark: s.mark,
@@ -104,5 +135,8 @@ export function serialisePlan(plan: TransportPlan): string {
     utilisationPct: plan.utilisationPct,
     minUnlockTier: plan.minUnlockTier,
     locked: plan.locked,
-  });
+  };
+  if (plan.vehicleId !== undefined) out.vehicleId = plan.vehicleId;
+  if (plan.batteryPerMinute !== undefined) out.batteryPerMinute = plan.batteryPerMinute;
+  return JSON.stringify(out);
 }

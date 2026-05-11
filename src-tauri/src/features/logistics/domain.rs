@@ -249,7 +249,70 @@ fn build_plan(
         utilisation_pct: utilisation,
         min_unlock_tier,
         locked,
+        vehicle_id: None,
+        battery_per_minute: None,
     }
+}
+
+/// Vehicle / drone plans. Unlike belts and pipes, vehicle throughput
+/// depends on the route distance: `base_items_per_minute` is the per-
+/// vehicle rate at a canonical ~1 km route, and longer routes scale
+/// inversely (a truck doing a 5 km round trip moves a fifth as much
+/// as one doing a 1 km loop). The planner picks the smallest fleet
+/// that meets the request, capped at 8 vehicles per plan so the UI
+/// doesn't dangle absurd fleet counts when the route is hopelessly
+/// long.
+pub fn plan_vehicles(
+    requested: f32,
+    distance_m: i64,
+    vehicles: &[crate::shared::gamedata::types::TransportVehicle],
+    is_fluid: bool,
+    unlocked_tier: u8,
+) -> Vec<TransportPlan> {
+    if is_fluid || requested <= 0.0 || distance_m <= 0 || vehicles.is_empty() {
+        return Vec::new();
+    }
+    let distance_km = (distance_m as f32) / 1000.0;
+    let scale = if distance_km <= 1.0 { 1.0 } else { 1.0 / distance_km };
+    let mut plans: Vec<TransportPlan> = Vec::new();
+    for v in vehicles {
+        let per_vehicle = v.base_items_per_minute * scale;
+        if per_vehicle <= 0.0 {
+            continue;
+        }
+        let fleet = (requested / per_vehicle).ceil() as i64;
+        let fleet = fleet.clamp(1, 8) as u32;
+        let total = per_vehicle * fleet as f32;
+        let utilisation = ((requested / total) * 100.0).min(100.0);
+        let kind = match v.kind {
+            crate::shared::gamedata::types::VehicleKind::Tractor => TransportKind::Tractor,
+            crate::shared::gamedata::types::VehicleKind::Truck => TransportKind::Truck,
+            crate::shared::gamedata::types::VehicleKind::Drone => TransportKind::Drone,
+        };
+        let battery = if v.battery_per_km > 0.0 {
+            // Round trip distance × battery cost × fleet — what the player
+            // needs to supply at the launchpad.
+            Some(v.battery_per_km * (distance_km * 2.0) * fleet as f32)
+        } else {
+            None
+        };
+        plans.push(TransportPlan {
+            kind,
+            segments: vec![TransportSegment {
+                mark: 0,
+                count: fleet,
+                per_unit_capacity: per_vehicle,
+                unlock_tier: v.unlock_tier,
+            }],
+            total_capacity_per_minute: total,
+            utilisation_pct: utilisation,
+            min_unlock_tier: v.unlock_tier,
+            locked: v.unlock_tier > unlocked_tier,
+            vehicle_id: Some(v.id.clone()),
+            battery_per_minute: battery,
+        });
+    }
+    plans
 }
 
 /// Sort + deduplicate + cap. Plans are ranked by:
@@ -265,6 +328,13 @@ fn build_plan(
 /// a request (e.g. 271 ipm at tier 0) that produces 8+ locked plans
 /// out-ranking the only buildable option (5× Mk1) — the UI would show
 /// "here are some plans" with nothing the player can actually build.
+/// Public wrapper used by `plan_logistics` after it merges vehicle plans
+/// into the belt/pipe result. Keeps the truncation + unlocked-rescue
+/// behaviour consistent across plan kinds.
+pub fn finalise_plans_public(plans: Vec<TransportPlan>) -> Vec<TransportPlan> {
+    finalise_plans(plans)
+}
+
 fn finalise_plans(mut plans: Vec<TransportPlan>) -> Vec<TransportPlan> {
     plans.sort_by(rank_plan);
 
@@ -317,7 +387,41 @@ fn rank_plan(a: &TransportPlan, b: &TransportPlan) -> std::cmp::Ordering {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shared::gamedata::types::{BeltTier, PipeTier};
+    use crate::shared::gamedata::types::{
+        BeltTier, PipeTier, TransportVehicle, VehicleKind,
+    };
+
+    fn all_vehicles() -> Vec<TransportVehicle> {
+        vec![
+            TransportVehicle {
+                id: "Build_Tractor_C".into(),
+                name: "Tractor".into(),
+                kind: VehicleKind::Tractor,
+                slots: 25,
+                base_items_per_minute: 60.0,
+                battery_per_km: 0.0,
+                unlock_tier: 3,
+            },
+            TransportVehicle {
+                id: "Build_Truck_C".into(),
+                name: "Truck".into(),
+                kind: VehicleKind::Truck,
+                slots: 48,
+                base_items_per_minute: 120.0,
+                battery_per_km: 0.0,
+                unlock_tier: 5,
+            },
+            TransportVehicle {
+                id: "Build_DroneTransport_C".into(),
+                name: "Drone".into(),
+                kind: VehicleKind::Drone,
+                slots: 9,
+                base_items_per_minute: 250.0,
+                battery_per_km: 1.0,
+                unlock_tier: 7,
+            },
+        ]
+    }
 
     /// Wiki-pinned belt capacities — Mk1 = 60 ipm, doubling-ish through Mk6 = 1200.
     /// Unlock tiers from the milestone unlock table.
@@ -518,5 +622,84 @@ mod tests {
         let plans = plan_pipes(600.0, &all_pipes(), 4);
         let mk2 = plans.iter().find(|p| p.segments[0].mark == 2);
         assert!(mk2.is_some_and(|p| p.locked && p.min_unlock_tier == 6));
+    }
+
+    // ---- Vehicle plans ----
+
+    #[test]
+    fn vehicle_plans_at_one_km_use_base_capacity_directly() {
+        // 1 km route ⇒ per-vehicle throughput == base. 120 ipm of iron
+        // plate over 1 km → 1× Truck at 100% utilisation.
+        let plans = plan_vehicles(120.0, 1000, &all_vehicles(), false, 9);
+        let truck = plans
+            .iter()
+            .find(|p| p.kind == TransportKind::Truck)
+            .expect("truck plan");
+        assert_eq!(truck.segments[0].count, 1);
+        assert!((truck.utilisation_pct - 100.0).abs() < 0.01);
+        assert_eq!(truck.vehicle_id.as_deref(), Some("Build_Truck_C"));
+    }
+
+    #[test]
+    fn vehicle_plans_scale_capacity_inversely_with_distance() {
+        // 5 km route → each truck does 120 / 5 = 24 ipm. 120 ipm
+        // requested needs ceil(120/24) = 5 trucks.
+        let plans = plan_vehicles(120.0, 5000, &all_vehicles(), false, 9);
+        let truck = plans
+            .iter()
+            .find(|p| p.kind == TransportKind::Truck)
+            .expect("truck plan");
+        assert_eq!(truck.segments[0].count, 5);
+    }
+
+    #[test]
+    fn drone_plans_report_battery_consumption() {
+        // 2 km route at 1 battery/km → 4 batteries/min per drone round-
+        // trip. With 250 ipm baseline and a 2 km route, per-drone rate is
+        // 125 ipm so a 250 ipm request fits in 2 drones → 8 batt/min total.
+        let plans = plan_vehicles(250.0, 2000, &all_vehicles(), false, 9);
+        let drone = plans
+            .iter()
+            .find(|p| p.kind == TransportKind::Drone)
+            .expect("drone plan");
+        assert_eq!(drone.segments[0].count, 2);
+        let batt = drone.battery_per_minute.expect("drone has battery cost");
+        // 1 batt/km × 4 km round trip × 2 drones = 8
+        assert!((batt - 8.0).abs() < 0.01, "got {}", batt);
+    }
+
+    #[test]
+    fn vehicle_plans_lock_high_tier_vehicles_appropriately() {
+        // Tier 4 player — Truck (5) and Drone (7) are both locked, Tractor (3) is not.
+        let plans = plan_vehicles(60.0, 1000, &all_vehicles(), false, 4);
+        let tractor = plans
+            .iter()
+            .find(|p| p.kind == TransportKind::Tractor)
+            .expect("tractor plan");
+        assert!(!tractor.locked);
+        let truck = plans
+            .iter()
+            .find(|p| p.kind == TransportKind::Truck)
+            .expect("truck plan");
+        assert!(truck.locked);
+    }
+
+    #[test]
+    fn vehicle_plans_skip_fluids() {
+        // Vehicles don't haul fluids in SPECS' model — pipes are the only
+        // option for fluids. plan_vehicles must return empty even with
+        // valid distance + ipm when the item is_fluid.
+        let plans = plan_vehicles(100.0, 1000, &all_vehicles(), true, 9);
+        assert!(plans.is_empty());
+    }
+
+    #[test]
+    fn vehicle_plans_cap_fleet_at_eight() {
+        // Long route + high request would otherwise produce absurd fleet
+        // counts. Cap is 8 per plan.
+        let plans = plan_vehicles(10_000.0, 50_000, &all_vehicles(), false, 9);
+        for plan in &plans {
+            assert!(plan.segments[0].count <= 8, "fleet too large: {:?}", plan);
+        }
     }
 }

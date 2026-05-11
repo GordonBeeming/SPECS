@@ -91,6 +91,16 @@ pub struct TransportPlan {
     /// `true` if any segment's unlock tier is above the playthrough's
     /// current tier. The UI greys these out and explains the gate.
     pub locked: bool,
+    /// For vehicle plans (Truck/Tractor/Drone), the game-data vehicle id
+    /// this plan is built on so the React side can render the vehicle's
+    /// display name. `None` for belt/pipe plans.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vehicle_id: Option<String>,
+    /// Drone plans surface battery draw here so the UI can warn
+    /// "needs ~12 batteries / min you'll have to supply somewhere".
+    /// `None` for non-drone plans.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub battery_per_minute: Option<f32>,
 }
 
 /// New link request from the React side. The user has already picked a
