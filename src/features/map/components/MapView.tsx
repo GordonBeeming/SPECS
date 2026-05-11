@@ -367,7 +367,7 @@ export function MapView() {
                     const tooltip = `${node.resourceItemName} · ${node.purity}${
                       node.claim
                         ? ` · ${node.itemsPerMinute.toFixed(0)} ipm`
-                        : " · click to claim"
+                        : " · click to bind or drag onto a factory"
                     }`;
                     return (
                       <button
@@ -381,13 +381,6 @@ export function MapView() {
                           top: `${yPct * MAP_H}px`,
                           width: size,
                           height: size,
-                          // The purity glow doubles as a ring so each
-                          // node still reads as "Pure / Normal /
-                          // Impure" at a glance even with the icon
-                          // taking the centre. Unclaimed gets the
-                          // glow at 70% opacity to keep claimed
-                          // nodes visually dominant when both layers
-                          // are visible.
                           boxShadow:
                             PURITY_GLOW[node.purity as keyof typeof PURITY_GLOW],
                           opacity: node.claim ? 1 : 0.78,
@@ -537,11 +530,15 @@ interface FactoryPinProps {
   factory: { id: string; name: string; worldX: number; worldY: number; iconId?: string };
   /** True if this factory has any power_gen rows — surfaces a ⚡ corner badge so power-bearing factories read distinctly. */
   hasPower?: boolean;
+  /** True while the user is dragging a node-link towards this pin so we can highlight it as the drop target. */
+  linkHover?: boolean;
   dragging: boolean;
   onDragStart: () => void;
   onDragEnd: (pt: { x: number; y: number }) => void;
   /** Fires when the mouseup happens within `CLICK_THRESHOLD_PX` of mousedown — treat as a click, not a drag. */
   onClick: () => void;
+  onLinkHoverEnter?: () => void;
+  onLinkHoverLeave?: () => void;
   /** Reads the current zoom scale from the wrapper so pixel deltas
       from drag events translate into world deltas correctly. */
   currentScale: () => number;
@@ -669,7 +666,17 @@ function InputLinesLayer({
   );
 }
 
-function FactoryPin({ factory, hasPower, onDragStart, onDragEnd, onClick, currentScale }: FactoryPinProps) {
+function FactoryPin({
+  factory,
+  hasPower,
+  linkHover,
+  onDragStart,
+  onDragEnd,
+  onClick,
+  onLinkHoverEnter,
+  onLinkHoverLeave,
+  currentScale,
+}: FactoryPinProps) {
   const { xPct, yPct } = worldToPct(factory.worldX, factory.worldY);
   const startRef = useRef<{
     x: number;
@@ -688,9 +695,15 @@ function FactoryPin({ factory, hasPower, onDragStart, onDragEnd, onClick, curren
   return (
     <button
       type="button"
-      className="specs-map-pin absolute -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-md border-2 border-primary bg-bg-raised/95 px-2 py-1 text-[11px] font-medium text-fg shadow-sm hover:bg-bg-raised active:cursor-grabbing"
+      className={`specs-map-pin absolute -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-md border-2 px-2 py-1 text-[11px] font-medium text-fg shadow-sm active:cursor-grabbing ${
+        linkHover
+          ? "border-success bg-success/30 scale-110"
+          : "border-primary bg-bg-raised/95 hover:bg-bg-raised"
+      }`}
       style={{ left: `${px}px`, top: `${py}px` }}
       title={`${factory.name} — click for details, drag to move`}
+      onMouseEnter={onLinkHoverEnter}
+      onMouseLeave={onLinkHoverLeave}
       onMouseDown={(e) => {
         e.preventDefault();
         e.stopPropagation();
