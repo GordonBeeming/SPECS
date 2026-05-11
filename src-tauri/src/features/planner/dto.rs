@@ -89,3 +89,26 @@ pub enum DeriveChainResult {
     Ok { plan: ChainPlan },
     Err { error: PlannerError },
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyChainPlanInput {
+    pub plan: ChainPlan,
+    /// Used as the factory name prefix: factories land as
+    /// "<prefix> — <recipe name>". Trimmed; defaults to the target
+    /// item's name when empty.
+    pub naming_prefix: String,
+    /// Distance in metres baked into the auto-generated logistics
+    /// links between consecutive stages. Defaults to 1000 m on the
+    /// React side.
+    pub default_link_distance_m: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyChainPlanResult {
+    /// Factory ids created, in stage order.
+    pub factory_ids: Vec<String>,
+    /// Logistics link ids created.
+    pub link_ids: Vec<String>,
+}
