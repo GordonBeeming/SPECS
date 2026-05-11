@@ -101,6 +101,11 @@ pub fn run() {
             features::trains::commands::delete_train_route,
             features::trains::commands::attach_link_to_route,
             features::trains::commands::detach_link_from_route,
+            features::power::commands::list_power_gens,
+            features::power::commands::add_power_gen,
+            features::power::commands::update_power_gen,
+            features::power::commands::remove_power_gen,
+            features::power::commands::factory_power_balance,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
