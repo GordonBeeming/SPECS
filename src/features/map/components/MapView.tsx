@@ -140,7 +140,7 @@ export function MapView() {
               // default 0.2 is huge on a Mac trackpad (every scroll
               // event is a "tick"), so a regular two-finger flick
               // zooms 5×+ in a single frame. 0.03 keeps zoom smooth.
-              wheel={{ step: 0.03, smoothStep: 0.003 }}
+              wheel={{ step: 0.03 }}
               doubleClick={{ disabled: true }}
               // Only drag the canvas when the user grabs the background
               // — clicks on markers/pins shouldn't initiate a pan.
