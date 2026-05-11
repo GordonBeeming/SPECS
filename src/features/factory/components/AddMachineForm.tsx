@@ -126,6 +126,10 @@ export function AddMachineForm({ factoryId, onSubmitted }: AddMachineFormProps) 
               value: r.id,
               label: r.name + (r.isAlt ? " (alt)" : ""),
               hint: buildingsById.get(r.buildingId)?.name,
+              // The recipe's primary output is what the player thinks of
+              // as "this row" — show that item's icon next to the name so
+              // the picker reads visually like the in-game build menu.
+              iconId: r.outputs[0]?.itemId,
             }))}
           />
         </div>

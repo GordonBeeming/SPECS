@@ -6,6 +6,7 @@ import type {
   AddMachineInput,
   CreateFactoryInput,
   RenameFactoryInput,
+  SetFactoryIconInput,
   UpdateMachineInput,
 } from "../types";
 
@@ -57,6 +58,14 @@ export function useRenameFactory() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (input: RenameFactoryInput) => factoryApi.rename(input),
+    onSuccess: (factory) => invalidateAll(client, factory.id),
+  });
+}
+
+export function useSetFactoryIcon() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SetFactoryIconInput) => factoryApi.setIcon(input),
     onSuccess: (factory) => invalidateAll(client, factory.id),
   });
 }

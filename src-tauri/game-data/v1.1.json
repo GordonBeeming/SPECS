@@ -2763,7 +2763,7 @@
       "name": "Packaged Turbofuel",
       "buildingId": "Build_Packager_C",
       "isAlt": false,
-      "unlockTier": 3,
+      "unlockTier": 0,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -4131,7 +4131,7 @@
       "name": "Alternate: Biocoal",
       "buildingId": "Build_ConstructorMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 3,
       "cycleSeconds": 8,
       "inputs": [
         {
@@ -4175,7 +4175,7 @@
       "name": "Alternate: Bolted Iron Plate",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 2,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -4199,7 +4199,7 @@
       "name": "Alternate: Cast Screw",
       "buildingId": "Build_ConstructorMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 1,
       "cycleSeconds": 24,
       "inputs": [
         {
@@ -4219,7 +4219,7 @@
       "name": "Alternate: Caterium Circuit Board",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 48,
       "inputs": [
         {
@@ -4243,7 +4243,7 @@
       "name": "Alternate: Caterium Computer",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 16,
       "inputs": [
         {
@@ -4271,7 +4271,7 @@
       "name": "Alternate: Caterium Wire",
       "buildingId": "Build_ConstructorMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 3,
       "cycleSeconds": 4,
       "inputs": [
         {
@@ -4291,7 +4291,7 @@
       "name": "Alternate: Charcoal",
       "buildingId": "Build_ConstructorMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 3,
       "cycleSeconds": 4,
       "inputs": [
         {
@@ -4311,7 +4311,7 @@
       "name": "Alternate: Cheap Silica",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 4,
       "cycleSeconds": 16,
       "inputs": [
         {
@@ -4463,7 +4463,7 @@
       "name": "Alternate: Compacted Coal",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 3,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -4487,7 +4487,7 @@
       "name": "Alternate: Compacted Steel Ingot",
       "buildingId": "Build_FoundryMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 4,
       "cycleSeconds": 16,
       "inputs": [
         {
@@ -4587,7 +4587,7 @@
       "name": "Alternate: Crystal Beacon",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 4,
       "cycleSeconds": 120,
       "inputs": [
         {
@@ -4615,7 +4615,7 @@
       "name": "Alternate: Crystal Computer",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 64,
       "inputs": [
         {
@@ -4763,7 +4763,7 @@
       "name": "Alternate: Electromagnetic Connection Rod",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 7,
       "cycleSeconds": 15,
       "inputs": [
         {
@@ -4787,7 +4787,7 @@
       "name": "Alternate: Encased Industrial Pipe",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 4,
       "cycleSeconds": 15,
       "inputs": [
         {
@@ -4847,7 +4847,7 @@
       "name": "Alternate: Fine Black Powder",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 4,
       "cycleSeconds": 16,
       "inputs": [
         {
@@ -4871,7 +4871,7 @@
       "name": "Alternate: Fine Concrete",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 4,
       "cycleSeconds": 24,
       "inputs": [
         {
@@ -4923,7 +4923,7 @@
       "name": "Alternate: Fused Quickwire",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 3,
       "cycleSeconds": 8,
       "inputs": [
         {
@@ -4971,7 +4971,7 @@
       "name": "Alternate: Heat Exchanger",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 7,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -5027,7 +5027,7 @@
       "name": "Alternate: Heavy Encased Frame",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 4,
       "cycleSeconds": 64,
       "inputs": [
         {
@@ -5115,7 +5115,7 @@
       "name": "Alternate: Infused Uranium Cell",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 7,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -5207,7 +5207,7 @@
       "name": "Alternate: Insulated Cable",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -5231,7 +5231,7 @@
       "name": "Alternate: Insulated Crystal Oscillator",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 32,
       "inputs": [
         {
@@ -5259,7 +5259,7 @@
       "name": "Alternate: Iron Alloy Ingot",
       "buildingId": "Build_FoundryMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 1,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -5283,7 +5283,7 @@
       "name": "Alternate: Iron Wire",
       "buildingId": "Build_ConstructorMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 1,
       "cycleSeconds": 24,
       "inputs": [
         {
@@ -5379,7 +5379,7 @@
       "name": "Alternate: Polyester Fabric",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 3,
       "cycleSeconds": 2,
       "inputs": [
         {
@@ -5543,7 +5543,7 @@
       "name": "Alternate: Quickwire Cable",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 24,
       "inputs": [
         {
@@ -5567,7 +5567,7 @@
       "name": "Alternate: Quickwire Stator",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 4,
       "cycleSeconds": 15,
       "inputs": [
         {
@@ -5591,7 +5591,7 @@
       "name": "Alternate: Radio Connection Unit",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 7,
       "cycleSeconds": 16,
       "inputs": [
         {
@@ -5651,7 +5651,7 @@
       "name": "Alternate: Recycled Plastic",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -5699,7 +5699,7 @@
       "name": "Alternate: Rigour Motor",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 4,
       "cycleSeconds": 48,
       "inputs": [
         {
@@ -5751,7 +5751,7 @@
       "name": "Alternate: Silicon Circuit Board",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 24,
       "inputs": [
         {
@@ -5775,7 +5775,7 @@
       "name": "Alternate: Silicon High-Speed Connector",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 40,
       "inputs": [
         {
@@ -5827,7 +5827,7 @@
       "name": "Alternate: Solid Steel Ingot",
       "buildingId": "Build_FoundryMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 4,
       "cycleSeconds": 3,
       "inputs": [
         {
@@ -5939,7 +5939,7 @@
       "name": "Alternate: Steel Rotor",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 4,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -5963,7 +5963,7 @@
       "name": "Alternate: Steel Screw",
       "buildingId": "Build_ConstructorMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 4,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -5983,7 +5983,7 @@
       "name": "Alternate: Steeled Frame",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 4,
       "cycleSeconds": 60,
       "inputs": [
         {
@@ -6007,7 +6007,7 @@
       "name": "Alternate: Stitched Iron Plate",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 2,
       "cycleSeconds": 32,
       "inputs": [
         {
@@ -6095,7 +6095,7 @@
       "name": "Alternate: Turbo Electric Motor",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 7,
       "cycleSeconds": 64,
       "inputs": [
         {
@@ -6183,7 +6183,7 @@
       "name": "Alternate: Uranium Fuel Unit",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 7,
       "cycleSeconds": 300,
       "inputs": [
         {
@@ -6239,7 +6239,7 @@
       "name": "Turbofuel",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 3,
       "cycleSeconds": 16,
       "inputs": [
         {

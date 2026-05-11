@@ -10,7 +10,7 @@ use crate::shared::gamedata::GameData;
 
 use super::dto::{
     AddMachineInput, CreateFactoryInput, Factory, FactoryDetail, FactoryLedger, FactoryMachine,
-    ItemFlow, RenameFactoryInput, UpdateMachineInput,
+    ItemFlow, RenameFactoryInput, SetFactoryIconInput, UpdateMachineInput,
 };
 use super::domain::{machine_power_mw_amp, recipe_io_flows_amp};
 use super::repo;
@@ -130,6 +130,12 @@ pub fn create_factory(
     let trimmed_name = input.name.trim().to_string();
     let trimmed_notes = input.notes.as_deref().map(str::trim).map(str::to_string);
     let trimmed_color = input.color.as_deref().map(str::trim).map(str::to_string);
+    let trimmed_icon = input
+        .icon_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
     db.with(|c| {
         repo::factory_insert(
             c,
@@ -137,6 +143,7 @@ pub fn create_factory(
             &trimmed_name,
             trimmed_color.as_deref(),
             trimmed_notes.as_deref(),
+            trimmed_icon.as_deref(),
             &now,
         )
         .map_err(AppError::from)
@@ -157,6 +164,29 @@ pub fn rename_factory(
     let now = now_iso();
     let trimmed = input.name.trim().to_string();
     db.with(|c| repo::factory_rename(c, &input.id, &trimmed, &now).map_err(AppError::from))?;
+    db.with(|c| repo::factory_get(c, &input.id).map_err(AppError::from))?
+        .ok_or_else(|| AppError::NotFound(format!("factory {} not found", input.id)))
+}
+
+#[tauri::command]
+pub fn set_factory_icon(
+    active: State<ActivePlaythrough>,
+    input: SetFactoryIconInput,
+) -> AppResult<Factory> {
+    let db = require_active(&active)?;
+    let now = now_iso();
+    let trimmed = input
+        .icon_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    let affected = db.with(|c| {
+        repo::factory_set_icon(c, &input.id, trimmed.as_deref(), &now).map_err(AppError::from)
+    })?;
+    if affected == 0 {
+        return Err(AppError::NotFound(format!("factory {} not found", input.id)));
+    }
     db.with(|c| repo::factory_get(c, &input.id).map_err(AppError::from))?
         .ok_or_else(|| AppError::NotFound(format!("factory {} not found", input.id)))
 }

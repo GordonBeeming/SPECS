@@ -18,13 +18,14 @@ import { resolve } from "node:path";
 const OUT = resolve(import.meta.dirname, "../../docs/screens");
 mkdirSync(OUT, { recursive: true });
 
+// Only routes whose nav button is visible without an active playthrough.
+// Library and Home both render from the bundled dataset; the others
+// (Factories, Power, etc.) hide their nav entry until a playthrough is
+// open, which a browser-only Playwright run can't satisfy. Production
+// data captures need a packaged binary E2E pass.
 const ROUTES = [
   { id: "home", nav: "Home" },
   { id: "library", nav: "Library" },
-  { id: "alts", nav: "Alts" },
-  { id: "factories", nav: "Factories" },
-  { id: "power", nav: "Power" },
-  { id: "network", nav: "Network" },
 ] as const;
 
 for (const route of ROUTES) {

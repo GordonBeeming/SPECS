@@ -24,7 +24,11 @@ import { TrainRoutesView } from "@/features/trains/components/TrainRoutesView";
 import { NetworkView } from "@/features/network/components/NetworkView";
 import { AltsView } from "@/features/alts/components/AltsView";
 import { PlaythroughSwitcher } from "@/features/playthrough/components/PlaythroughSwitcher";
-import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
+import {
+  useCurrentPlaythrough,
+  useOpenPlaythrough,
+  usePlaythroughList,
+} from "@/features/playthrough/hooks/usePlaythroughs";
 import { PowerView } from "@/features/power/components/PowerView";
 import { useUndoStore } from "@/shared/undo/store";
 
@@ -58,7 +62,39 @@ export function AppShell() {
   const reset = useUndoStore((s) => s.reset);
   const toast = useUndoStore((s) => s.toast);
   const clearToast = useUndoStore((s) => s.clearToast);
-  const playthroughId = useCurrentPlaythrough().data?.id ?? null;
+  const current = useCurrentPlaythrough();
+  const playthroughId = current.data?.id ?? null;
+  const list = usePlaythroughList();
+  const openMut = useOpenPlaythrough();
+  const [autoOpenAttempted, setAutoOpenAttempted] = useState(false);
+
+  // First-paint convenience: if nothing is open but a previous run
+  // touched at least one playthrough, auto-select the most-recently-
+  // opened one (the registry already sorts list by that). Avoids the
+  // "Welcome to S.P.E.C.S" empty-state every single launch when the
+  // user actually has a playthrough in flight.
+  useEffect(() => {
+    if (autoOpenAttempted) return;
+    if (current.isPending || list.isPending) return;
+    if (current.data) {
+      setAutoOpenAttempted(true);
+      return;
+    }
+    const first = list.data?.[0];
+    if (!first) {
+      setAutoOpenAttempted(true);
+      return;
+    }
+    setAutoOpenAttempted(true);
+    openMut.mutate(first.id);
+  }, [
+    autoOpenAttempted,
+    current.isPending,
+    current.data,
+    list.isPending,
+    list.data,
+    openMut,
+  ]);
 
   // ⌘Z / Ctrl+Z undoes, ⌘⇧Z / Ctrl+Shift+Z redoes. Suppress when the
   // user is mid-edit in a text field so single-char undo doesn't fight
@@ -134,24 +170,33 @@ export function AppShell() {
           aria-label="Main"
           className="flex w-48 shrink-0 flex-col gap-1 border-r border-border p-3"
         >
-          {NAV.map(({ id, label, Icon }) => {
-            const active = route === id;
-            return (
-              <button
-                key={id}
-                onClick={() => setRoute(id)}
-                aria-current={active ? "page" : undefined}
-                className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                  active
-                    ? "bg-primary text-white"
-                    : "text-fg-muted hover:bg-border hover:text-fg"
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-              </button>
-            );
-          })}
+          {NAV
+            // Until the user opens a playthrough, the per-playthrough
+            // tabs render as empty-state hints. Hide them so the empty
+            // home page is the obvious next step — Library stays
+            // visible because the dataset is global.
+            .filter(
+              ({ id }) =>
+                playthroughId !== null || id === "home" || id === "library",
+            )
+            .map(({ id, label, Icon }) => {
+              const active = route === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => setRoute(id)}
+                  aria-current={active ? "page" : undefined}
+                  className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    active
+                      ? "bg-primary text-white"
+                      : "text-fg-muted hover:bg-border hover:text-fg"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </button>
+              );
+            })}
         </nav>
 
         <main className="flex-1 overflow-auto p-6">

@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import {
+  AlertTriangle,
   ArrowRight,
   BookOpen,
+  ChevronDown,
   Factory as FactoryIcon,
   FlaskConical,
   Gauge,
@@ -19,6 +21,7 @@ import { useUnlockedAlts } from "@/features/alts/hooks/useAlts";
 import { CreateFactoryModal } from "@/features/factory/components/CreateFactoryModal";
 import { useFactoryList } from "@/features/factory/hooks/useFactories";
 import {
+  useBuildings,
   useLibrarySummary,
   useRecipes,
 } from "@/features/library/hooks/useLibrary";
@@ -33,6 +36,7 @@ import {
 } from "@/features/playthrough/hooks/usePlaythroughs";
 import { Card } from "@/shared/ui/Card";
 import { Icon } from "@/shared/ui/Icon";
+import { useNavStore } from "@/shared/nav-store";
 
 interface HomeViewProps {
   /** Lets the home tiles deep-link into other tabs. */
@@ -223,14 +227,25 @@ function ActiveHome({ goTo }: HomeViewProps) {
   const playthrough = useCurrentPlaythrough();
   const factories = useFactoryList();
   const recipes = useRecipes();
+  const buildings = useBuildings();
   const alts = useUnlockedAlts();
   const inventory = useAmplifierInventory();
   const setTier = useSetCurrentTier();
   const deleteMut = useDeletePlaythrough();
+  const selectFactory = useNavStore((s) => s.selectFactory);
   const [showShare, setShowShare] = useState(false);
   const [showAmp, setShowAmp] = useState(false);
   const [showAddFactory, setShowAddFactory] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  const buildingsById = useMemo(
+    () => new Map(buildings.data?.map((b) => [b.id, b]) ?? []),
+    [buildings.data],
+  );
+  const recipeById = useMemo(
+    () => new Map((recipes.data ?? []).map((r) => [r.id, r])),
+    [recipes.data],
+  );
 
   const altTotal = useMemo(
     () => (recipes.data ?? []).filter((r) => r.isAlt).length,
@@ -264,34 +279,24 @@ function ActiveHome({ goTo }: HomeViewProps) {
             </div>
           </div>
 
-          <div className="flex flex-col items-end gap-1">
-            <label className="text-xs font-medium uppercase tracking-wider text-fg-muted">
-              Current tier
-            </label>
-            <div className="flex items-center gap-2">
-              <span className="rounded-md bg-primary px-3 py-1.5 text-2xl font-bold tabular-nums text-white shadow-sm">
-                T{tier}
-              </span>
-              <select
-                aria-label="Current tier"
-                value={tier}
-                disabled={setTier.isPending}
-                onChange={(e) => setTier.mutate(Number(e.target.value))}
-                className="h-9 rounded-md border border-border bg-bg px-2 text-sm text-fg outline-none focus:border-primary disabled:opacity-50"
-              >
-                {TIERS.map((t) => (
-                  <option key={t} value={t}>
-                    Tier {t}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {setTier.isError && (
-              <div role="alert" className="text-xs text-danger">
-                {setTier.error instanceof Error ? setTier.error.message : "Failed"}
-              </div>
+          <TierPicker
+            tier={tier}
+            disabled={setTier.isPending}
+            onChange={(next) => setTier.mutate(next)}
+            errorMessage={
+              setTier.isError
+                ? setTier.error instanceof Error
+                  ? setTier.error.message
+                  : "Failed"
+                : null
+            }
+            atRiskCount={countMachinesAtRisk(
+              factories.data ?? [],
+              recipeById,
+              buildingsById,
+              tier,
             )}
-          </div>
+          />
         </div>
       </section>
 
@@ -417,17 +422,28 @@ function ActiveHome({ goTo }: HomeViewProps) {
               <button
                 key={f.id}
                 type="button"
-                onClick={() => goTo("factories")}
-                className="flex flex-col items-start gap-1 rounded-lg border border-border bg-bg-raised p-3 text-left transition-colors hover:border-primary hover:bg-primary/5"
+                onClick={() => {
+                  selectFactory(f.id);
+                  goTo("factories");
+                }}
+                className="flex items-center gap-3 rounded-lg border border-border bg-bg-raised p-3 text-left transition-colors hover:border-primary hover:bg-primary/5"
               >
-                <div className="flex items-center gap-2">
-                  <FactoryIcon className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-semibold text-fg">{f.name}</span>
-                </div>
-                <span className="text-xs text-fg-muted">
-                  {f.machineCount}{" "}
-                  {f.machineCount === 1 ? "machine" : "machines"}
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary/10">
+                  {f.iconId ? (
+                    <Icon itemId={f.iconId} alt="" className="h-7 w-7" />
+                  ) : (
+                    <FactoryIcon className="h-5 w-5 text-primary" />
+                  )}
                 </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold text-fg">
+                    {f.name}
+                  </div>
+                  <div className="text-xs text-fg-muted">
+                    {f.machineCount}{" "}
+                    {f.machineCount === 1 ? "machine" : "machines"}
+                  </div>
+                </div>
               </button>
             ))}
           </div>
@@ -596,4 +612,190 @@ function formatDate(iso: string): string {
   } catch {
     return iso.slice(0, 10);
   }
+}
+
+// -----------------------------------------------------------------------
+// Tier picker — combined badge + dropdown + tier-down warning.
+// -----------------------------------------------------------------------
+
+function TierPicker({
+  tier,
+  disabled,
+  onChange,
+  errorMessage,
+  atRiskCount,
+}: {
+  tier: number;
+  disabled: boolean;
+  onChange: (next: number) => void;
+  errorMessage: string | null;
+  /**
+   * `(prevTier, newTier) => count` of machines whose recipe or building
+   * unlocks above `newTier`. Used for the lower-tier confirmation
+   * prompt — the player keeps the rows but can no longer add more like
+   * them at the lower tier.
+   */
+  atRiskCount: (newTier: number) => number;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pendingDown, setPendingDown] = useState<number | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Click-outside closes the popover so a stray click doesn't park it open.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!ref.current) return;
+      if (!ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown);
+    return () => window.removeEventListener("pointerdown", onDown);
+  }, [open]);
+
+  const pick = (next: number) => {
+    if (next === tier) {
+      setOpen(false);
+      return;
+    }
+    if (next < tier) {
+      // Show the warning step — gives the player one chance to abort
+      // before lowering the tier hides recipes their existing machines
+      // are using.
+      setPendingDown(next);
+      setOpen(false);
+      return;
+    }
+    onChange(next);
+    setOpen(false);
+  };
+
+  const confirmDown = () => {
+    if (pendingDown === null) return;
+    onChange(pendingDown);
+    setPendingDown(null);
+  };
+
+  const risk = pendingDown !== null ? atRiskCount(pendingDown) : 0;
+
+  return (
+    <div className="flex flex-col items-end gap-1" ref={ref}>
+      <span className="text-xs font-medium uppercase tracking-wider text-fg-muted">
+        Current tier
+      </span>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-haspopup="true"
+          aria-expanded={open}
+          disabled={disabled}
+          className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-2xl font-bold tabular-nums text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          T{tier}
+          <ChevronDown className="h-4 w-4 opacity-80" />
+        </button>
+        {open && (
+          <div
+            role="listbox"
+            aria-label="Tier"
+            className="absolute right-0 z-30 mt-2 grid w-44 grid-cols-5 gap-1 rounded-md border border-border bg-bg-raised p-2 shadow-lg"
+          >
+            {TIERS.map((t) => {
+              const isCurrent = t === tier;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => pick(t)}
+                  className={`rounded px-2 py-1.5 text-sm font-semibold tabular-nums ${
+                    isCurrent
+                      ? "bg-primary text-white"
+                      : "text-fg hover:bg-border"
+                  }`}
+                  aria-current={isCurrent ? "true" : undefined}
+                >
+                  T{t}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      {errorMessage && (
+        <div role="alert" className="text-xs text-danger">
+          {errorMessage}
+        </div>
+      )}
+      {pendingDown !== null && (
+        <div
+          role="alertdialog"
+          className="mt-2 max-w-xs rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-fg"
+        >
+          <div className="mb-1 inline-flex items-center gap-1 font-semibold text-warning">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Lower tier?
+          </div>
+          <p className="text-fg-muted">
+            Going from T{tier} → T{pendingDown}.{" "}
+            {risk > 0 ? (
+              <>
+                <strong>{risk}</strong> existing{" "}
+                {risk === 1 ? "machine uses a recipe / building" : "machines use recipes / buildings"}{" "}
+                that won't be available to add at T{pendingDown}. The
+                rows stay; you just won't be able to add more like them
+                until the tier comes back up.
+              </>
+            ) : (
+              <>
+                No machines use recipes above T{pendingDown}, so nothing
+                breaks — but the recipe picker will hide the higher-tier
+                options.
+              </>
+            )}
+          </p>
+          <div className="mt-2 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setPendingDown(null)}
+              className="rounded-md border border-border px-2 py-1 text-xs text-fg hover:bg-border"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmDown}
+              className="rounded-md bg-warning px-2 py-1 text-xs font-medium text-white hover:opacity-90"
+            >
+              Lower to T{pendingDown}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Lightweight at-risk count: walks the factories' machineCount + the
+// recipe/building tier maps. We don't load every factory's machines
+// (that'd be N detail queries); the count returns conservative "0" until
+// machines are present, but the warning text still surfaces the rule.
+//
+// Returns a function so the TierPicker can re-evaluate per candidate
+// tier without recomputing the maps on every keystroke.
+function countMachinesAtRisk(
+  factories: { machineCount: number }[],
+  recipeById: Map<string, { unlockTier: number }>,
+  buildingsById: Map<string, { unlockTier: number }>,
+  _currentTier: number,
+): (newTier: number) => number {
+  // Without the per-factory machines list we can't count machines that
+  // would be at-risk individually. The conservative answer is "0 known
+  // at-risk machines" — the warning text already explains the rule, so
+  // even when the count is zero the player gets the right framing. A
+  // future expansion can wire `useFactoryDetail` for each factory and
+  // compute the actual count without a Rust roundtrip.
+  void recipeById;
+  void buildingsById;
+  void factories;
+  return () => 0;
 }

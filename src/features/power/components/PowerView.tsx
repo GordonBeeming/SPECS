@@ -287,6 +287,7 @@ function AddPowerGenForm({
               itemsById.get(f.supplementalItemId)?.name ?? f.supplementalItemId
             }`
           : ""),
+      iconId: f.fuelItemId,
     })) ?? [];
 
   const serverError = add.error instanceof Error ? add.error.message : null;
@@ -313,6 +314,7 @@ function AddPowerGenForm({
               value: g.id,
               label: g.name,
               hint: `${g.powerMw} MW · T${g.unlockTier}`,
+              iconId: g.id,
             }))}
           />
         </div>

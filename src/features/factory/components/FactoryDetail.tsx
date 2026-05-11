@@ -1,7 +1,13 @@
 import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Factory as FactoryGlyph, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
-import { useFactoryDetail, useRemoveMachine } from "../hooks/useFactories";
+import { Icon } from "@/shared/ui/Icon";
+import { IconPicker } from "@/shared/ui/IconPicker";
+import {
+  useFactoryDetail,
+  useRemoveMachine,
+  useSetFactoryIcon,
+} from "../hooks/useFactories";
 import { useBuildings, useItems, useRecipes } from "@/features/library/hooks/useLibrary";
 import { AddMachineForm } from "./AddMachineForm";
 import { FactoryLedgerTable } from "./FactoryLedgerTable";
@@ -29,7 +35,9 @@ export function FactoryDetail({ factoryId }: FactoryDetailProps) {
   const recipes = useRecipes();
   const buildings = useBuildings();
   const removeMachine = useRemoveMachine(factoryId);
+  const setIcon = useSetFactoryIcon();
   const [showAdd, setShowAdd] = useState(false);
+  const [editingIcon, setEditingIcon] = useState(false);
 
   if (detail.isError) {
     return (
@@ -50,15 +58,47 @@ export function FactoryDetail({ factoryId }: FactoryDetailProps) {
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-auto">
-      <header className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-fg">{factory.name}</h2>
-          {factory.notes && <p className="mt-1 text-sm text-fg-muted">{factory.notes}</p>}
+      <header className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setEditingIcon((v) => !v)}
+            aria-label="Change factory icon"
+            className="group relative flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-border bg-bg-raised hover:border-primary"
+          >
+            {factory.iconId ? (
+              <Icon itemId={factory.iconId} alt="" className="h-9 w-9" />
+            ) : (
+              <FactoryGlyph className="h-6 w-6 text-fg-muted" />
+            )}
+            <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-white opacity-0 transition-opacity group-hover:opacity-100">
+              <Pencil className="h-2.5 w-2.5" />
+            </span>
+          </button>
+          <div>
+            <h2 className="text-xl font-semibold text-fg">{factory.name}</h2>
+            {factory.notes && <p className="mt-1 text-sm text-fg-muted">{factory.notes}</p>}
+          </div>
         </div>
         <div className="text-right text-xs text-fg-muted tabular-nums">
           {machines.length} {machines.length === 1 ? "machine" : "machines"} · {ledger.powerMw.toFixed(1)}&nbsp;MW
         </div>
       </header>
+
+      {editingIcon && (
+        <section className="rounded-md border border-border bg-bg-raised p-3">
+          <IconPicker
+            value={factory.iconId ?? null}
+            suggested={(buildings.data ?? []).map((b) => b.id)}
+            onChange={(next) => {
+              setIcon.mutate(
+                { id: factory.id, iconId: next },
+                { onSuccess: () => setEditingIcon(false) },
+              );
+            }}
+          />
+        </section>
+      )}
 
       <section>
         <div className="mb-2 flex items-center justify-between">

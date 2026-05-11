@@ -254,7 +254,16 @@ const INCLUDED_BUILDINGS = Object.keys(BUILDING_NAMES);
 
 const recipeTier = new Map<string, number>();
 for (const schem of Object.values(sf.schematics)) {
-  if (schem.type !== "EST_Milestone" && schem.type !== "EST_MAM") continue;
+  // EST_Alternate carries the tier at which the alt's Hard Drive can be
+  // scanned in the MAM, which is the right "you can unlock this now"
+  // signal for SPECS' tier-gated alt checklist — without it every alt
+  // shows up at T0 even though most need a higher-tier Hard Drive node.
+  if (
+    schem.type !== "EST_Milestone" &&
+    schem.type !== "EST_MAM" &&
+    schem.type !== "EST_Alternate"
+  )
+    continue;
   const t = schem.tier ?? 0;
   for (const r of schem.unlock?.recipes ?? []) {
     // First-write wins so a recipe shared across milestones gets its
@@ -314,11 +323,12 @@ for (const r of Object.values(sf.recipes)) {
   const descBuildingId = r.producedIn.find((b) => INCLUDED_BUILDINGS.includes(b)) ?? r.producedIn[0];
   const buildingId = BUILD_ID_BY_DESC[descBuildingId] ?? descBuildingId;
 
-  // Alt recipes are scanned independently of milestone tiers — pin to 0 so
-  // the player can unlock as soon as they have scanned the Hard Drive.
-  // Base recipes inherit the earliest milestone tier we found that lists
-  // them; fall back to 0 if none.
-  const unlockTier = r.alternate ? 0 : recipeTier.get(r.className) ?? 0;
+  // Alts AND base recipes both look up their tier from the schematic
+  // map — for alts the map keyed by EST_Alternate above, for base
+  // recipes by EST_Milestone / EST_MAM. Falls back to 0 only when no
+  // schematic references the recipe (rare; usually means a freebie
+  // start recipe).
+  const unlockTier = recipeTier.get(r.className) ?? 0;
 
   recipes.push({
     id: r.className,

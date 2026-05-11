@@ -7,12 +7,18 @@ import {
   ComboboxOptions,
 } from "@headlessui/react";
 import { Check, ChevronDown, X } from "lucide-react";
+import { Icon } from "./Icon";
 
 export interface FilterOption {
   value: string;
   label: string;
   /** Optional secondary text rendered to the right of the label. */
   hint?: string;
+  /**
+   * Optional game-data icon id (`Desc_*_C` / `Build_*_C`). When set, the
+   * row shows the matching satisfactorytools icon next to the label.
+   */
+  iconId?: string;
 }
 
 interface BaseProps {
@@ -171,7 +177,12 @@ function DropdownPanel({ filtered, value, multiple }: DropdownPanelProps) {
               const selected = value.has(option.value);
               return (
                 <>
-                  <span className="flex-1 truncate">{option.label}</span>
+                  <div className="flex flex-1 items-center gap-2 truncate">
+                    {option.iconId && (
+                      <Icon itemId={option.iconId} alt="" className="h-5 w-5 shrink-0" />
+                    )}
+                    <span className="truncate">{option.label}</span>
+                  </div>
                   <div className="ml-3 flex items-center gap-2">
                     {option.hint && (
                       <span className="text-xs opacity-70">{option.hint}</span>

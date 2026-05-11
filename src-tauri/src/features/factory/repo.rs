@@ -13,18 +13,20 @@ fn clock_pct_from_x100(v: i64) -> f32 {
 
 // ---- Factory CRUD ----
 
+#[allow(clippy::too_many_arguments)]
 pub fn factory_insert(
     conn: &Connection,
     id: &str,
     name: &str,
     color: Option<&str>,
     notes: Option<&str>,
+    icon_id: Option<&str>,
     now: &str,
 ) -> Result<()> {
     conn.execute(
-        "INSERT INTO factory (id, name, color, notes, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)",
-        params![id, name, color, notes, now, now],
+        "INSERT INTO factory (id, name, color, notes, icon_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
+        params![id, name, color, notes, icon_id, now, now],
     )?;
     Ok(())
 }
@@ -37,6 +39,19 @@ pub fn factory_rename(conn: &Connection, id: &str, name: &str, now: &str) -> Res
     Ok(())
 }
 
+pub fn factory_set_icon(
+    conn: &Connection,
+    id: &str,
+    icon_id: Option<&str>,
+    now: &str,
+) -> Result<usize> {
+    conn.execute(
+        "UPDATE factory SET icon_id = ?, updated_at = ? WHERE id = ?",
+        params![icon_id, now, id],
+    )
+    .map_err(anyhow::Error::from)
+}
+
 pub fn factory_delete(conn: &Connection, id: &str) -> Result<()> {
     conn.execute("DELETE FROM factory WHERE id = ?", [id])?;
     Ok(())
@@ -44,7 +59,7 @@ pub fn factory_delete(conn: &Connection, id: &str) -> Result<()> {
 
 pub fn factory_list(conn: &Connection) -> Result<Vec<Factory>> {
     let mut stmt = conn.prepare(
-        "SELECT f.id, f.name, f.world_x, f.world_y, f.color, f.notes,
+        "SELECT f.id, f.name, f.world_x, f.world_y, f.color, f.notes, f.icon_id,
                 f.created_at, f.updated_at,
                 (SELECT COUNT(*) FROM factory_machine m WHERE m.factory_id = f.id) AS machine_count
          FROM factory f
@@ -58,9 +73,10 @@ pub fn factory_list(conn: &Connection) -> Result<Vec<Factory>> {
             world_y: r.get(3)?,
             color: r.get(4)?,
             notes: r.get(5)?,
-            created_at: r.get(6)?,
-            updated_at: r.get(7)?,
-            machine_count: r.get(8)?,
+            icon_id: r.get(6)?,
+            created_at: r.get(7)?,
+            updated_at: r.get(8)?,
+            machine_count: r.get(9)?,
         })
     })?;
     let mut out = Vec::new();
@@ -72,7 +88,7 @@ pub fn factory_list(conn: &Connection) -> Result<Vec<Factory>> {
 
 pub fn factory_get(conn: &Connection, id: &str) -> Result<Option<Factory>> {
     let mut stmt = conn.prepare(
-        "SELECT f.id, f.name, f.world_x, f.world_y, f.color, f.notes,
+        "SELECT f.id, f.name, f.world_x, f.world_y, f.color, f.notes, f.icon_id,
                 f.created_at, f.updated_at,
                 (SELECT COUNT(*) FROM factory_machine m WHERE m.factory_id = f.id) AS machine_count
          FROM factory f WHERE f.id = ?",
@@ -85,9 +101,10 @@ pub fn factory_get(conn: &Connection, id: &str) -> Result<Option<Factory>> {
             world_y: r.get(3)?,
             color: r.get(4)?,
             notes: r.get(5)?,
-            created_at: r.get(6)?,
-            updated_at: r.get(7)?,
-            machine_count: r.get(8)?,
+            icon_id: r.get(6)?,
+            created_at: r.get(7)?,
+            updated_at: r.get(8)?,
+            machine_count: r.get(9)?,
         })
     })?;
     Ok(rows.next().transpose()?)
@@ -207,8 +224,8 @@ mod tests {
     fn factory_insert_and_list_and_count_machines() {
         let pt = db();
         pt.with(|c| {
-            factory_insert(c, "f1", "Iron Plant", None, None, "2026-05-10T00:00:00Z").unwrap();
-            factory_insert(c, "f2", "Copper Plant", None, None, "2026-05-10T00:00:01Z").unwrap();
+            factory_insert(c, "f1", "Iron Plant", None, None, None, "2026-05-10T00:00:00Z").unwrap();
+            factory_insert(c, "f2", "Copper Plant", None, None, None, "2026-05-10T00:00:01Z").unwrap();
             machine_insert(c, "m1", "f1", "Build_SmelterMk1_C", "Recipe_IronIngot_C",
                            4, 100.0, false, 0, 0, "2026-05-10T00:00:02Z").unwrap();
             let factories = factory_list(c).unwrap();
@@ -225,7 +242,7 @@ mod tests {
     fn factory_rename_updates_name_and_timestamp() {
         let pt = db();
         pt.with(|c| {
-            factory_insert(c, "f1", "Old", None, None, "2026-05-10T00:00:00Z").unwrap();
+            factory_insert(c, "f1", "Old", None, None, None, "2026-05-10T00:00:00Z").unwrap();
             factory_rename(c, "f1", "New", "2026-05-10T01:00:00Z").unwrap();
             let f = factory_get(c, "f1").unwrap().unwrap();
             assert_eq!(f.name, "New");
@@ -237,7 +254,7 @@ mod tests {
     fn factory_delete_cascades_to_machines() {
         let pt = db();
         pt.with(|c| {
-            factory_insert(c, "f1", "X", None, None, "2026-05-10T00:00:00Z").unwrap();
+            factory_insert(c, "f1", "X", None, None, None, "2026-05-10T00:00:00Z").unwrap();
             machine_insert(c, "m1", "f1", "Build_SmelterMk1_C", "Recipe_IronIngot_C",
                            1, 100.0, false, 0, 0, "2026-05-10T00:00:00Z").unwrap();
             factory_delete(c, "f1").unwrap();
@@ -250,7 +267,7 @@ mod tests {
     fn machine_update_round_trips_clock_with_two_decimal_precision() {
         let pt = db();
         pt.with(|c| {
-            factory_insert(c, "f1", "X", None, None, "2026-05-10T00:00:00Z").unwrap();
+            factory_insert(c, "f1", "X", None, None, None, "2026-05-10T00:00:00Z").unwrap();
             machine_insert(c, "m1", "f1", "Build_SmelterMk1_C", "Recipe_IronIngot_C",
                            1, 100.0, false, 0, 0, "2026-05-10T00:00:00Z").unwrap();
             machine_update(c, "m1", 3, 247.5, false, 0, 0, "2026-05-10T00:01:00Z").unwrap();
@@ -266,7 +283,7 @@ mod tests {
     fn machine_check_constraint_rejects_clock_outside_1_to_250() {
         let pt = db();
         pt.with(|c| {
-            factory_insert(c, "f1", "X", None, None, "2026-05-10T00:00:00Z").unwrap();
+            factory_insert(c, "f1", "X", None, None, None, "2026-05-10T00:00:00Z").unwrap();
             // 0% is out of range (CHECK is BETWEEN 100 AND 25000 on x100).
             let too_low = machine_insert(c, "m1", "f1", "B", "R", 1, 0.0, false, 0, 0, "n");
             assert!(too_low.is_err(), "0% clock should be rejected by CHECK");
