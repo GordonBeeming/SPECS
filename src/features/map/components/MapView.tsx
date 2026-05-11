@@ -468,21 +468,48 @@ export function MapView() {
                     />
                   ))}
 
-                  {/* Power-gen pins. Each generator with its own
-                      world coords renders independently; the ones
-                      without coords fall through to their parent
-                      factory's pin and stay invisible here. */}
-                  {(powerGens.data ?? [])
-                    .filter((g) => g.worldX != null && g.worldY != null)
-                    .map((g) => {
+                  {/* Power-gen pins. Generators with their own
+                      coords render where placed; generators without
+                      coords get a fanned-out fallback around their
+                      parent factory so the player can see them
+                      individually and drag any one out to set its
+                      real position (otherwise N generators in one
+                      factory all stack invisibly on the factory's
+                      pin). The fan radius scales gently with the
+                      number of unplaced siblings. */}
+                  {(() => {
+                    const all = powerGens.data ?? [];
+                    // Group unplaced gens per factory so each gets
+                    // a fan around its parent.
+                    const unplacedByFactory = new Map<string, number>();
+                    return all.map((g) => {
                       const gen = generators.data?.find((x) => x.id === g.generatorId);
                       const parent = (factories.data ?? []).find((f) => f.id === g.factoryId);
                       const name =
                         gen?.name ?? g.generatorId.replace(/_C$/, "").replace(/^Build_/, "");
+                      let renderX = g.worldX ?? null;
+                      let renderY = g.worldY ?? null;
+                      if ((renderX == null || renderY == null) && parent) {
+                        const idx = unplacedByFactory.get(parent.id) ?? 0;
+                        unplacedByFactory.set(parent.id, idx + 1);
+                        // ~3000 world units per step is a small
+                        // visible offset at typical zoom; circle of
+                        // 8 fits before overlap matters.
+                        const angle = (idx / 8) * Math.PI * 2;
+                        const r = 4000 + Math.floor(idx / 8) * 3000;
+                        renderX = parent.worldX + Math.cos(angle) * r;
+                        renderY = parent.worldY + Math.sin(angle) * r;
+                      }
+                      if (renderX == null || renderY == null) return null;
                       return (
                         <PowerGenPin
                           key={g.id}
-                          gen={g}
+                          gen={{
+                            id: g.id,
+                            generatorId: g.generatorId,
+                            worldX: renderX,
+                            worldY: renderY,
+                          }}
                           name={`${g.count}× ${name}`}
                           parentName={parent?.name ?? "—"}
                           dragging={dragging === `gen-${g.id}`}
@@ -505,7 +532,8 @@ export function MapView() {
                           currentScale={() => wrapRef.current?.state.scale ?? 1}
                         />
                       );
-                    })}
+                    });
+                  })()}
                 </div>
               </TransformComponent>
             </TransformWrapper>
