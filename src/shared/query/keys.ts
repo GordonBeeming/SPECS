@@ -34,4 +34,7 @@ export const queryKeys = {
     list: ["trains", "list"] as const,
     detail: (id: string) => ["trains", "detail", id] as const,
   },
+  alts: {
+    list: ["alts", "list"] as const,
+  },
 };

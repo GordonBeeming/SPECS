@@ -108,6 +108,8 @@ pub fn run() {
             features::power::commands::update_power_gen,
             features::power::commands::remove_power_gen,
             features::power::commands::factory_power_balance,
+            features::alts::commands::list_unlocked_alt_recipes,
+            features::alts::commands::toggle_alt_recipe,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

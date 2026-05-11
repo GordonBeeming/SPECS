@@ -22,6 +22,10 @@ export interface FactoryMachine {
   count: number;
   /** percent — 1.0 to 250.0 */
   clockPct: number;
+  /** Phase 8: opt-in amplification. Both default false/0 on existing rows. */
+  useSomersloop: boolean;
+  somersloopSlotsFilled: number;
+  powerShardCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -64,10 +68,17 @@ export interface AddMachineInput {
   recipeId: string;
   count: number;
   clockPct: number;
+  /** Defaults to false on the Rust side; omit when not amplifying. */
+  useSomersloop?: boolean;
+  somersloopSlotsFilled?: number;
+  powerShardCount?: number;
 }
 
 export interface UpdateMachineInput {
   id: string;
   count: number;
   clockPct: number;
+  useSomersloop?: boolean;
+  somersloopSlotsFilled?: number;
+  powerShardCount?: number;
 }
