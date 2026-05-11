@@ -118,6 +118,22 @@ pub struct SetFactoryPositionInput {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SetMachineLayoutInput {
+    pub machine_id: String,
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineLayout {
+    pub machine_id: String,
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AddMachineInput {
     pub factory_id: String,
     pub building_id: String,

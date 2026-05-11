@@ -27,6 +27,15 @@ export function useFactoryList() {
   });
 }
 
+export function useMachineLayouts(factoryId: string | null | undefined) {
+  const playthrough = useCurrentPlaythrough();
+  return useQuery({
+    queryKey: ["factory", "machine-layouts", factoryId ?? "", playthrough.data?.id ?? null] as const,
+    queryFn: () => factoryApi.listMachineLayouts(factoryId!),
+    enabled: !!factoryId && !!playthrough.data,
+  });
+}
+
 export function useFactoryDetail(id: string | null | undefined) {
   const playthrough = useCurrentPlaythrough();
   return useQuery({

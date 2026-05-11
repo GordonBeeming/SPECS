@@ -9,8 +9,9 @@ use crate::shared::error::{AppError, AppResult};
 use crate::shared::gamedata::GameData;
 
 use super::dto::{
-    AddMachineInput, CreateFactoryInput, Factory, FactoryDetail, FactoryLedger, FactoryMachine, SetFactoryPositionInput,
-    ItemFlow, RenameFactoryInput, SetFactoryIconInput, UpdateMachineInput,
+    AddMachineInput, CreateFactoryInput, Factory, FactoryDetail, FactoryLedger, FactoryMachine,
+    ItemFlow, MachineLayout, RenameFactoryInput, SetFactoryIconInput, SetFactoryPositionInput,
+    SetMachineLayoutInput, UpdateMachineInput,
 };
 use super::domain::{machine_power_mw_amp, recipe_io_flows_amp};
 use super::repo;
@@ -166,6 +167,37 @@ pub fn rename_factory(
     db.with(|c| repo::factory_rename(c, &input.id, &trimmed, &now).map_err(AppError::from))?;
     db.with(|c| repo::factory_get(c, &input.id).map_err(AppError::from))?
         .ok_or_else(|| AppError::NotFound(format!("factory {} not found", input.id)))
+}
+
+#[tauri::command]
+pub fn set_machine_layout(
+    active: State<ActivePlaythrough>,
+    input: SetMachineLayoutInput,
+) -> AppResult<()> {
+    if !input.x.is_finite() || !input.y.is_finite() {
+        return Err(AppError::Invalid("layout coords must be finite".into()));
+    }
+    let db = require_active(&active)?;
+    let now = now_iso();
+    db.with(|c| {
+        repo::machine_layout_upsert(c, &input.machine_id, input.x, input.y, &now)
+            .map_err(AppError::from)
+    })
+}
+
+#[tauri::command]
+pub fn list_machine_layouts(
+    active: State<ActivePlaythrough>,
+    factory_id: String,
+) -> AppResult<Vec<MachineLayout>> {
+    let db = require_active(&active)?;
+    let rows = db.with(|c| {
+        repo::machine_layouts_for_factory(c, &factory_id).map_err(AppError::from)
+    })?;
+    Ok(rows
+        .into_iter()
+        .map(|(machine_id, x, y)| MachineLayout { machine_id, x, y })
+        .collect())
 }
 
 #[tauri::command]

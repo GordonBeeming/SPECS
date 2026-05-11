@@ -93,6 +93,8 @@ pub fn run() {
             features::factory::commands::rename_factory,
             features::factory::commands::set_factory_icon,
             features::factory::commands::set_factory_position,
+            features::factory::commands::set_machine_layout,
+            features::factory::commands::list_machine_layouts,
             features::factory::commands::delete_factory,
             features::factory::commands::add_factory_machine,
             features::factory::commands::update_factory_machine,
