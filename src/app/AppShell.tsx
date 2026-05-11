@@ -5,6 +5,7 @@ import {
   FlaskConical,
   Info,
   LayoutDashboard,
+  MapPin,
   Moon,
   Network,
   Share2,
@@ -30,6 +31,7 @@ import {
   usePlaythroughList,
 } from "@/features/playthrough/hooks/usePlaythroughs";
 import { PowerView } from "@/features/power/components/PowerView";
+import { ResourcesView } from "@/features/resources/components/ResourcesView";
 import { useUndoStore } from "@/shared/undo/store";
 
 type Route =
@@ -40,11 +42,13 @@ type Route =
   | "power"
   | "network"
   | "library"
-  | "alts";
+  | "alts"
+  | "resources";
 
 const NAV: ReadonlyArray<{ id: Route; label: string; Icon: typeof BookOpen }> = [
   { id: "home", label: "Home", Icon: LayoutDashboard },
   { id: "network", label: "Network", Icon: Share2 },
+  { id: "resources", label: "Resources", Icon: MapPin },
   { id: "factories", label: "Factories", Icon: FactoryIcon },
   { id: "logistics", label: "Logistics", Icon: Network },
   { id: "trains", label: "Trains", Icon: TrainTrack },
@@ -207,6 +211,7 @@ export function AppShell() {
           {route === "trains" && <TrainRoutesView />}
           {route === "power" && <PowerView />}
           {route === "alts" && <AltsView />}
+          {route === "resources" && <ResourcesView />}
           {route === "library" && <LibraryView />}
         </main>
       </div>
