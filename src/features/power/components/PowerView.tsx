@@ -1,5 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { Trash2, Zap } from "lucide-react";
+import { Pencil, Trash2, Zap } from "lucide-react";
+import { EditPowerGenModal } from "./EditPowerGenModal";
+import type { PowerGen } from "../types";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { FilterSelect } from "@/shared/ui/FilterSelect";
@@ -84,6 +86,7 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
   const items = useItems();
   const playthrough = useCurrentPlaythrough();
   const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<PowerGen | null>(null);
 
   const generatorsById = useMemo(
     () => new Map(generators.data?.map((g) => [g.id, g]) ?? []),
@@ -176,22 +179,32 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
                         {g.clockPct.toFixed(1)}%
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (
-                              confirm(
-                                `Remove this ${gen?.name ?? "generator"} row?`,
-                              )
-                            ) {
-                              remove.mutate(g.id);
-                            }
-                          }}
-                          aria-label="Remove generator"
-                          className="rounded-md p-1.5 text-fg-muted hover:bg-danger/20 hover:text-danger"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setEditing(g)}
+                            aria-label="Edit generator"
+                            className="rounded-md p-1.5 text-fg-muted hover:bg-border hover:text-fg"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (
+                                confirm(
+                                  `Remove this ${gen?.name ?? "generator"} row?`,
+                                )
+                              ) {
+                                remove.mutate(g.id);
+                              }
+                            }}
+                            aria-label="Remove generator"
+                            className="rounded-md p-1.5 text-fg-muted hover:bg-danger/20 hover:text-danger"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -201,6 +214,23 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
           </div>
         )}
       </Card>
+
+      {editing && (() => {
+        const gen = generatorsById.get(editing.generatorId);
+        const fuelOptions = (gen?.fuels ?? []).map((f) => ({
+          id: f.fuelItemId,
+          name: itemsById.get(f.fuelItemId)?.name ?? f.fuelItemId,
+        }));
+        return (
+          <EditPowerGenModal
+            factoryId={factoryId}
+            gen={editing}
+            generatorName={gen?.name ?? editing.generatorId}
+            fuelOptions={fuelOptions}
+            onClose={() => setEditing(null)}
+          />
+        );
+      })()}
 
       {balance.data && balance.data.fuelFlows.length > 0 && (
         <Card>
