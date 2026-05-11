@@ -38,9 +38,18 @@ name: Release
 #                              restricted to the fork with Contents +
 #                              Pull requests = Read and write.
 on:
-  push:
-    tags:
-      - 'v*'
+  # Fires once you click "Publish release" in the GitHub UI (or via
+  # `gh release create vX.Y.Z`). Pre-requisite: tag the commit and
+  # draft a release first — the workflow bundles, signs, uploads
+  # artifacts, and refreshes Homebrew + winget on `release.published`.
+  #
+  # We deliberately do NOT use `push: tags:` here because that trigger
+  # creates phantom 0-second "failure" records for every branch push
+  # that touches this file (a GitHub Actions quirk — the run never
+  # executes a job but the failure shows in the Actions tab and reads
+  # as broken). Tying to the release event sidesteps the noise.
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -176,7 +185,11 @@ jobs:
             this run had Apple Developer secrets configured.
             Windows ships unsigned (SmartScreen warns once;
             "More info → Run anyway"). Linux runs as-is.
-          releaseDraft: true
+          # The release is created + published by the human before
+          # this workflow fires (release.published trigger). tauri-action
+          # uploads into the existing release by tag, so neither
+          # `releaseDraft` nor `prerelease` apply here.
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.platform.args }}
 
