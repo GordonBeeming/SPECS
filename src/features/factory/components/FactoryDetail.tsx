@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Factory as FactoryGlyph, Pencil, Zap } from "lucide-react";
+import { Factory as FactoryGlyph, Pencil, Sparkles, Zap } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import { Icon } from "@/shared/ui/Icon";
 import { IconPicker } from "@/shared/ui/IconPicker";
@@ -13,6 +13,7 @@ import { useBuildings, useItems, useRecipes } from "@/features/library/hooks/use
 import { AddMachineForm } from "./AddMachineForm";
 import { FactoryGraphView } from "./FactoryGraphView";
 import { FactoryLedgerTable } from "./FactoryLedgerTable";
+import { FactoryTargetPanel } from "./FactoryTargetPanel";
 
 interface FactoryDetailProps {
   factoryId: string;
@@ -26,6 +27,7 @@ export function FactoryDetail({ factoryId }: FactoryDetailProps) {
   const layouts = useMachineLayouts(factoryId);
   const setIcon = useSetFactoryIcon();
   const [showAdd, setShowAdd] = useState(false);
+  const [showTarget, setShowTarget] = useState(false);
   const [editingIcon, setEditingIcon] = useState(false);
 
   // Memoise the lookup Maps + layout Map BEFORE any early return so
@@ -127,12 +129,29 @@ export function FactoryDetail({ factoryId }: FactoryDetailProps) {
         </section>
       )}
 
+      {showTarget && (
+        <FactoryTargetPanel
+          factoryId={factoryId}
+          onClose={() => setShowTarget(false)}
+        />
+      )}
+
       <section>
         <div className="mb-2 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-fg-muted uppercase tracking-wide">Machines</h3>
-          <Button onClick={() => setShowAdd((v) => !v)} variant={showAdd ? "ghost" : "primary"}>
-            {showAdd ? "Cancel" : "Add machine"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setShowTarget((v) => !v)}
+              className="px-2 py-1 text-xs"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {showTarget ? "Hide target" : "Build to target"}
+            </Button>
+            <Button onClick={() => setShowAdd((v) => !v)} variant={showAdd ? "ghost" : "primary"}>
+              {showAdd ? "Cancel" : "Add machine"}
+            </Button>
+          </div>
         </div>
         {showAdd && (
           <div className="mb-3">
