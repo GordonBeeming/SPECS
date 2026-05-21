@@ -16,10 +16,10 @@ import type {
 } from "@/features/planner/types";
 
 const items = [
-  { id: "Desc_IronPlate_C", name: "Iron Plate", category: "part" as const, unlockTier: 0 },
-  { id: "Desc_IronIngot_C", name: "Iron Ingot", category: "part" as const, unlockTier: 0 },
-  { id: "Desc_ModularFrame_C", name: "Modular Frame", category: "part" as const, unlockTier: 1 },
-  { id: "Desc_OreIron_C", name: "Iron Ore", category: "raw" as const, unlockTier: 0 },
+  { id: "Desc_IronPlate_C", name: "Iron Plate", category: "part" as const, stackSize: 200, isFluid: false },
+  { id: "Desc_IronIngot_C", name: "Iron Ingot", category: "part" as const, stackSize: 200, isFluid: false },
+  { id: "Desc_ModularFrame_C", name: "Modular Frame", category: "part" as const, stackSize: 100, isFluid: false },
+  { id: "Desc_OreIron_C", name: "Iron Ore", category: "raw" as const, stackSize: 100, isFluid: false },
 ];
 
 const recipes = [
@@ -50,14 +50,20 @@ const factories = [
   {
     id: "fac-frames",
     name: "Frames v1",
-    color: null, notes: null, iconId: null,
-    createdAt: "2026-05-21T00:00:00Z", updatedAt: "2026-05-21T00:00:00Z",
+    worldX: 0,
+    worldY: 0,
+    createdAt: "2026-05-21T00:00:00Z",
+    updatedAt: "2026-05-21T00:00:00Z",
+    machineCount: 0,
   },
   {
     id: "fac-plates",
     name: "Plates v1",
-    color: null, notes: null, iconId: null,
-    createdAt: "2026-05-21T00:00:00Z", updatedAt: "2026-05-21T00:00:00Z",
+    worldX: 0,
+    worldY: 0,
+    createdAt: "2026-05-21T00:00:00Z",
+    updatedAt: "2026-05-21T00:00:00Z",
+    machineCount: 0,
   },
 ];
 

@@ -13,7 +13,6 @@ import "@xyflow/react/dist/style.css";
 // dagre ships as CJS — `import * as` keeps the namespace shape stable
 // whether Vite pre-bundles it as default or named exports.
 import * as dagreNs from "dagre";
-import { Pencil } from "lucide-react";
 
 // Handle either binding shape Vite hands us — pre-bundled CJS modules
 // surface either as default or as namespace-with-default depending on
@@ -24,14 +23,16 @@ const dagre: typeof import("dagre") =
 
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Icon } from "@/shared/ui/Icon";
-import { ConfirmDeleteButton } from "@/shared/ui/ConfirmDeleteButton";
 import { useRecipes } from "@/features/library/hooks/useLibrary";
 import { factoryApi } from "../api";
-import { useRemoveMachine } from "../hooks/useFactories";
-import type { FactoryMachine } from "../types";
-import { ampSlotsForBuilding } from "../ampRules";
-import { EditMachineModal } from "./EditMachineModal";
+import { useRemoveMachine, useUpdateMachine } from "../hooks/useFactories";
+import type { FactoryMachine, UpdateMachineInput } from "../types";
+import {
+  MachineNodeCard,
+  NODE_HEIGHT,
+  NODE_WIDTH,
+  NODE_WIDTH_EDITING,
+} from "./MachineNode";
 
 interface FactoryGraphViewProps {
   factoryId: string;
@@ -41,9 +42,6 @@ interface FactoryGraphViewProps {
   layouts: Map<string, { x: number; y: number }>;
 }
 
-const NODE_WIDTH = 240;
-const NODE_HEIGHT = 110;
-
 // `Node<TData>` from xyflow requires `TData extends Record<string, unknown>`
 // so we model the payload via a type alias rather than an interface — TS
 // interfaces don't widen to index signatures the same way.
@@ -51,71 +49,34 @@ type MachineNodeData = {
   machine: FactoryMachine;
   buildingName: string;
   recipeName: string;
+  editing: boolean;
+  updating: boolean;
   onEdit: () => void;
+  onCancelEdit: () => void;
   onRemove: () => void;
+  onUpdate: (patch: UpdateMachineInput) => void;
 } & Record<string, unknown>;
 
 type FlowNode = Node<MachineNodeData, "machine">;
 
 function MachineNode({ data }: { data: MachineNodeData }) {
-  const { machine, buildingName, recipeName, onEdit, onRemove } = data;
-  const slots = ampSlotsForBuilding(machine.buildingId);
-  const amp =
-    machine.useSomersloop && machine.somersloopSlotsFilled > 0
-      ? `${machine.somersloopSlotsFilled}/${slots}× S`
-      : null;
   return (
-    <div
-      className="rounded-md border border-border bg-bg-raised p-3 text-xs shadow-sm"
-      style={{ width: NODE_WIDTH }}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <Icon itemId={machine.buildingId} alt={buildingName} className="h-5 w-5" />
-          <span className="truncate font-medium text-fg">{recipeName}</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={onEdit}
-            aria-label="Edit machine"
-            className="rounded p-1 text-fg-muted hover:bg-border hover:text-fg"
-          >
-            <Pencil className="h-3 w-3" />
-          </button>
-          <ConfirmDeleteButton onConfirm={onRemove} label="Remove machine" />
-        </div>
-      </div>
-      <div className="mt-1 text-fg-muted">{buildingName}</div>
-      <div className="mt-2 grid grid-cols-3 gap-1 tabular-nums">
-        <div>
-          <div className="text-[10px] uppercase tracking-wide text-fg-muted">count</div>
-          <div className="font-semibold text-fg">{machine.count}</div>
-        </div>
-        <div>
-          <div className="text-[10px] uppercase tracking-wide text-fg-muted">clock</div>
-          <div className="font-semibold text-fg">{machine.clockPct.toFixed(0)}%</div>
-        </div>
-        <div>
-          <div className="text-[10px] uppercase tracking-wide text-fg-muted">amp</div>
-          <div className="font-semibold text-fg">
-            {amp ?? (machine.powerShardCount > 0 ? `${machine.powerShardCount}× PS` : "—")}
-          </div>
-        </div>
-      </div>
-    </div>
+    <MachineNodeCard
+      machine={data.machine}
+      buildingName={data.buildingName}
+      recipeName={data.recipeName}
+      editing={data.editing}
+      onEdit={data.onEdit}
+      onCancelEdit={data.onCancelEdit}
+      onRemove={data.onRemove}
+      onUpdate={data.onUpdate}
+      updating={data.updating}
+    />
   );
 }
 
 const nodeTypes = { machine: MachineNode };
 
-/**
- * Dagre layered layout. Nodes flow left → right grouped by which
- * machine feeds which. We don't actually have a "feeds" relationship
- * at the machine level (those happen at the factory boundary via
- * logistics_link), so the auto layout is a grid; persisted positions
- * override it once the user drags.
- */
 function autoLayout(machines: FactoryMachine[]): Map<string, { x: number; y: number }> {
   // dagre is a CJS dep — if its interop binding goes sideways under a
   // particular bundler config the `graphlib` access throws. Fall back
@@ -150,20 +111,23 @@ function autoLayout(machines: FactoryMachine[]): Map<string, { x: number; y: num
 function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }: FactoryGraphViewProps) {
   const recipes = useRecipes();
   const removeMachine = useRemoveMachine(factoryId);
+  const updateMachine = useUpdateMachine(factoryId);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // The mutation object's reference changes every render, but
-  // `mutate` is what we actually need inside the node's onRemove
-  // callback. Stash it in a ref so closing over it doesn't make
-  // initialNodes unstable and trigger an infinite setNodes loop
-  // through xyflow's StoreUpdater.
+  // Stash mutation callbacks in refs so memoised node-data don't churn.
   const removeRef = useRef(removeMachine.mutate);
   useEffect(() => {
     removeRef.current = removeMachine.mutate;
   }, [removeMachine.mutate]);
+  const updateRef = useRef(updateMachine.mutate);
+  useEffect(() => {
+    updateRef.current = updateMachine.mutate;
+  }, [updateMachine.mutate]);
   const editRef = useRef<(id: string) => void>(() => {});
+  const cancelEditRef = useRef<() => void>(() => {});
   useEffect(() => {
     editRef.current = (id) => setEditingId(id);
+    cancelEditRef.current = () => setEditingId(null);
   });
 
   const computedLayout = useMemo(() => autoLayout(machines), [machines]);
@@ -173,30 +137,43 @@ function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }
       const fromUser = layouts.get(m.id);
       const pos = fromUser ?? computedLayout.get(m.id) ?? { x: 0, y: 0 };
       const recipeName = recipeNames.get(m.recipeId) ?? m.recipeId;
+      const isEditing = editingId === m.id;
       return {
         id: m.id,
         type: "machine" as const,
         position: pos,
+        // xyflow uses the stored width for edge anchor calcs; expand
+        // when in edit mode so the wider editor card doesn't clip edges.
+        width: isEditing ? NODE_WIDTH_EDITING : NODE_WIDTH,
         data: {
           machine: m,
           buildingName: buildingNames.get(m.buildingId) ?? m.buildingId,
           recipeName,
+          editing: isEditing,
+          updating: isEditing && updateMachine.isPending,
           onEdit: () => editRef.current(m.id),
-          // Two-click confirm lives in MachineNode itself (Tauri 2
-          // suppresses window.confirm so the dialog never showed) —
-          // just hand the actual mutation through.
+          onCancelEdit: () => cancelEditRef.current(),
           onRemove: () => removeRef.current(m.id),
+          onUpdate: (patch: UpdateMachineInput) =>
+            updateRef.current(patch, {
+              onSuccess: () => setEditingId(null),
+            }),
         },
       };
     });
-  }, [machines, layouts, computedLayout, buildingNames, recipeNames]);
+  }, [
+    machines,
+    layouts,
+    computedLayout,
+    buildingNames,
+    recipeNames,
+    editingId,
+    updateMachine.isPending,
+  ]);
 
   // Derive edges from the recipe graph — for any two machines where the
   // upstream's recipe outputs an item that the downstream's recipe takes
-  // as input, draw a chevroned edge. This is a heuristic (machines on
-  // the same factory aren't formally "linked"), but it gives the graph
-  // its visual meaning until a future commit introduces real machine-
-  // to-machine routing.
+  // as input, draw a chevroned edge.
   const initialEdges: Edge[] = useMemo(() => {
     if (!recipes.data) return [];
     const recipeById = new Map(recipes.data.map((r) => [r.id, r]));
@@ -232,22 +209,11 @@ function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }
     setNodes(initialNodes);
   }, [initialNodes, setNodes]);
 
-  // useEdgesState only seeds on first mount, so without this the
-  // edge set is frozen at the recipes.data === undefined snapshot
-  // (empty array). Re-derive whenever the recipe-driven dependency
-  // graph changes — covers both the initial load and add/remove
-  // machine paths.
   useEffect(() => {
     setEdges(initialEdges);
   }, [initialEdges, setEdges]);
 
-  // After a drag-save, mark the factory.layout cache stale so any
-  // subsequent re-render (e.g. add/remove machine triggers a
-  // refetch and rehydrates from `layouts`) reads the freshly-saved
-  // coordinates instead of stomping them back to a cached value.
   const queryClient = useQueryClient();
-
-  const editingMachine = machines.find((m) => m.id === editingId) ?? null;
 
   return (
     <div className="h-[560px] w-full rounded-md border border-border">
@@ -266,10 +232,6 @@ function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }
               y: node.position.y,
             })
             .then(() => {
-              // useMachineLayouts is the rehydration source on
-              // factory-detail re-renders — without this any
-              // subsequent add/remove machine would refetch the
-              // pre-drag layout and visually snap the node back.
               queryClient.invalidateQueries({
                 queryKey: ["factory", "machine-layouts", factoryId],
               });
@@ -279,15 +241,6 @@ function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }
         <Background />
         <Controls />
       </ReactFlow>
-      {editingMachine && (
-        <EditMachineModal
-          factoryId={factoryId}
-          machine={editingMachine}
-          recipeName={recipeNames.get(editingMachine.recipeId) ?? editingMachine.recipeId}
-          buildingName={buildingNames.get(editingMachine.buildingId) ?? editingMachine.buildingId}
-          onClose={() => setEditingId(null)}
-        />
-      )}
     </div>
   );
 }
