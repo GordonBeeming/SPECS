@@ -34,6 +34,31 @@ fn item_is_pinned_to_factory(item_id: &str, sources: &[InputSource]) -> bool {
         .any(|s| s.item_id == item_id && matches!(s.source, InputSourceKind::Factory { .. }))
 }
 
+/// Unpackage recipes are inverse-utility — they only exist to recover
+/// the underlying liquid/gas from a packaged form (e.g. unpacking
+/// "Packaged Alumina" back into "Alumina Solution"). Including them as
+/// candidates produces a cycle the moment a chain consumes the liquid:
+/// the picker sees an Unpackage recipe with a high output rate, picks
+/// it, then recurses into the Packaged form, whose only recipe needs
+/// the original liquid back. Filtered out wholesale here for the same
+/// reason `PlannerView` (the cross-factory picker) hides them.
+fn is_inverse_recipe(recipe_id: &str) -> bool {
+    recipe_id.starts_with("Recipe_Unpackage")
+}
+
+fn chain_candidates<'a>(
+    item_id: &str,
+    unlocked: &HashSet<String>,
+    game_data: &'a GameData,
+) -> Vec<&'a Recipe> {
+    game_data
+        .recipes_producing(item_id)
+        .into_iter()
+        .filter(|r| !is_inverse_recipe(&r.id))
+        .filter(|r| !r.is_alt || unlocked.contains(&r.id))
+        .collect()
+}
+
 /// Pick the "best" candidate recipe for an item. The greedy rule is:
 /// highest per-machine output rate of the target item, so the chain
 /// uses the fewest machines for the demand. Standard recipes win ties
@@ -96,11 +121,7 @@ fn supply_viable_for_item(
         return ok;
     }
 
-    let candidates: Vec<&Recipe> = game_data
-        .recipes_producing(item_id)
-        .into_iter()
-        .filter(|r| !r.is_alt || unlocked.contains(&r.id))
-        .collect();
+    let candidates = chain_candidates(item_id, unlocked, game_data);
     if candidates.is_empty() {
         visiting.remove(item_id);
         cache.insert(item_id.to_string(), false);
@@ -158,11 +179,7 @@ fn structurally_viable_for_item(
         return true;
     }
 
-    let candidates: Vec<&Recipe> = game_data
-        .recipes_producing(item_id)
-        .into_iter()
-        .filter(|r| !r.is_alt || unlocked.contains(&r.id))
-        .collect();
+    let candidates = chain_candidates(item_id, unlocked, game_data);
     if candidates.is_empty() {
         visiting.remove(item_id);
         cache.insert(item_id.to_string(), false);
@@ -236,11 +253,7 @@ fn collect_demands(
     // between alts on different paths.
     let picked_recipe_id = item_recipes.get(item_id).cloned();
 
-    let all_unlocked: Vec<&Recipe> = game_data
-        .recipes_producing(item_id)
-        .into_iter()
-        .filter(|r| !r.is_alt || unlocked.contains(&r.id))
-        .collect();
+    let all_unlocked = chain_candidates(item_id, unlocked, game_data);
 
     // Prefer recipes whose every input is supply-viable. If none are,
     // fall back to structurally viable so the chain still builds; the
@@ -459,12 +472,12 @@ fn allocate_imports(
     (resolved, gap)
 }
 
-/// Entry point — derive a full upstream chain for `target_item_id` at
-/// `target_ipm`. The chain is supply-aware: it only picks recipes
-/// whose inputs trace back to either claimed raw supply or other
-/// viable recipes. If anything is missing, returns
-/// `PlannerError::Insufficient { missing, imports }`.
-pub fn derive_chain(
+/// Convenience wrapper around `derive_chain_with_options` for the
+/// no-sources / no-bypass case. Test-only: command-layer callers go
+/// through `derive_chain_with_options` directly so they can pass
+/// pinned sources + bypass flags without juggling defaults.
+#[cfg(test)]
+fn derive_chain(
     target_item_id: &str,
     target_ipm: f32,
     unlocked_alts: &HashSet<String>,
@@ -881,6 +894,53 @@ mod tests {
         )
         .unwrap();
         assert!(!plan.imports.is_empty());
+    }
+
+    #[test]
+    fn cycle_detected_error_serialises_with_camelcase_item_id() {
+        // Defence-in-depth: a cycleDetected error rendered in the UI
+        // was showing "involving — please report." with the item id
+        // missing. The Rust value has the id, so the regression here
+        // is on the JSON shape — the UI binds `itemId`, and serde's
+        // `rename_all = "camelCase"` must rename `item_id` to match.
+        let err = PlannerError::CycleDetected {
+            item_id: "Desc_AluminaSolution_C".into(),
+        };
+        let json = serde_json::to_string(&err).expect("serialise");
+        assert!(json.contains("\"itemId\":\"Desc_AluminaSolution_C\""), "got {json}");
+        assert!(json.contains("\"kind\":\"cycleDetected\""), "got {json}");
+    }
+
+    #[test]
+    fn unpackage_recipes_are_skipped_so_alumina_chains_dont_cycle() {
+        // Regression for the cycle bug: without filtering Unpackage_*
+        // recipes the planner picked `Recipe_UnpackageAlumina_C` to
+        // produce Alumina Solution (high per-machine output rate),
+        // which needs Packaged Alumina, whose only producer needs
+        // Alumina Solution back. Now the planner falls back to the
+        // direct Bauxite+Water recipe and the chain resolves.
+        //
+        // Empty supply forces the structural-viable path — that's
+        // where the cycle originally surfaced (no `available_supply`
+        // means no recipe is supply-viable, so all picks happen via
+        // the structural fallback).
+        let gd = GameData::from_bundled().unwrap();
+        let supply = HashMap::new();
+        let plan = derive_chain_with_options(
+            "Desc_AluminumPlate_C",
+            60.0,
+            &unlocked(),
+            &supply,
+            &[],
+            &gd,
+            true, // bypass_supply — we just want the chain to build
+        )
+        .expect("Alclad Aluminum Sheet must derive without cycles");
+        assert!(
+            plan.stages.iter().all(|s| !is_inverse_recipe(&s.recipe_id)),
+            "no stage should use an Unpackage_* recipe"
+        );
+        assert!(plan.stages.len() >= 4, "expected a multi-stage chain");
     }
 
     #[test]

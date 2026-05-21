@@ -104,8 +104,13 @@ pub struct ChainPlan {
 /// Errors a derive_chain call can return. Distinct variants so the UI
 /// can route each to a different surface (insufficient supply → claim
 /// more nodes; no recipe → out of dataset; cycle → bug report).
+///
+/// `rename_all = "camelCase"` on an enum only renames variant names —
+/// fields inside variant bodies need `rename_all_fields` to flow the
+/// convention through. Without it, `item_id` shipped to the React
+/// side as `item_id` and the error banner rendered with an empty id.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase", tag = "kind")]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "kind")]
 pub enum PlannerError {
     /// Target item id isn't in the dataset.
     UnknownTarget { item_id: String },
