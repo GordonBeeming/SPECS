@@ -99,6 +99,13 @@ pub struct ChainPlan {
     /// in-factory apply path turns each into a logistics link.
     #[serde(default)]
     pub imports: Vec<ResolvedImport>,
+    /// Total demand for each pinned item across the whole chain.
+    /// Surfaced separately so the UI can show "you pinned at cap 60
+    /// but the chain needs 100" warnings without the planner having
+    /// to error out — sum of `imports[*].resolved_ipm` for the item
+    /// is the bound-capped amount; the difference is the gap.
+    #[serde(default)]
+    pub pinned_demand: HashMap<String, f32>,
 }
 
 /// Errors a derive_chain call can return. Distinct variants so the UI

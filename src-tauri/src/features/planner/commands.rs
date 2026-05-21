@@ -316,6 +316,7 @@ mod tests {
             total_power_mw: 4.0 * stage_recipes.len() as f32,
             raw_demand: Default::default(),
             imports: vec![],
+            pinned_demand: Default::default(),
         }
     }
 

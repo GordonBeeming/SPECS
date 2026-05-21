@@ -43,6 +43,13 @@ export interface ChainPlan {
   rawDemand: Record<string, number>;
   /** Factory-kind imports the planner resolved against pinned sources. */
   imports: ResolvedImport[];
+  /**
+   * Total demand the chain places on each pinned item (before capping).
+   * Compare against `sum(imports.where(itemId).resolvedIpm)` to surface
+   * "you pinned at cap 60 but the chain needs 100" warnings without the
+   * planner having to error out.
+   */
+  pinnedDemand: Record<string, number>;
 }
 
 /**

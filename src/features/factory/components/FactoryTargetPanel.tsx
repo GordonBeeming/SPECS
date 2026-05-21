@@ -156,10 +156,15 @@ export function FactoryTargetPanel({ factoryId, onClose }: FactoryTargetPanelPro
     setApplyError(null);
     setStaleAfterTargetEdit(false);
     try {
+      // Always bypass the supply gate when designing — the panel shows
+      // the full chain plus warnings instead of walling the user off.
+      // Real structural errors (cycles, unknown targets) still come
+      // back as Err and render the strip.
       const r = await plannerApi.derive({
         targetItemId: target,
         targetIpm,
         sources: pinsToSources(nextPins),
+        bypassSupply: true,
       });
       setResult(r);
     } finally {
@@ -229,12 +234,43 @@ export function FactoryTargetPanel({ factoryId, onClose }: FactoryTargetPanelPro
     void derive(next);
   };
 
-  const importGapForItem = (itemId: string): number => {
-    if (result?.kind === "err" && result.error.kind === "insufficient") {
-      return result.error.imports[itemId] ?? 0;
+  /**
+   * The plan-as-warning pattern — derive_chain is always called with
+   * bypass_supply: true so we get a full ChainPlan; here we compute
+   * the diagnostics the user needs to see.
+   */
+  const warnings = useMemo(() => {
+    if (result?.kind !== "ok") return null;
+    const rawGaps: Array<{ itemId: string; itemName: string; gap: number }> = [];
+    const claimedSupply = new Map<string, number>();
+    for (const n of nodes.data ?? []) {
+      if (!n.claim) continue;
+      claimedSupply.set(
+        n.resourceItemId,
+        (claimedSupply.get(n.resourceItemId) ?? 0) + n.itemsPerMinute,
+      );
     }
-    return 0;
-  };
+    for (const [itemId, demand] of Object.entries(result.plan.rawDemand)) {
+      const supplied = claimedSupply.get(itemId) ?? 0;
+      if (demand > supplied + 1e-3) {
+        const itemName = items.data?.find((i) => i.id === itemId)?.name ?? itemId;
+        rawGaps.push({ itemId, itemName, gap: demand - supplied });
+      }
+    }
+    const importGaps: Array<{ itemId: string; itemName: string; gap: number }> = [];
+    for (const [itemId, demand] of Object.entries(result.plan.pinnedDemand)) {
+      const allocated = result.plan.imports
+        .filter((i) => i.itemId === itemId)
+        .reduce((sum, i) => sum + i.resolvedIpm, 0);
+      if (demand > allocated + 1e-3) {
+        const itemName =
+          items.data?.find((i) => i.id === itemId)?.name ?? itemId;
+        importGaps.push({ itemId, itemName, gap: demand - allocated });
+      }
+    }
+    if (rawGaps.length === 0 && importGaps.length === 0) return null;
+    return { rawGaps, importGaps };
+  }, [result, nodes.data, items.data]);
 
   const factoryNameFor = (id: string) =>
     factories.data?.find((f) => f.id === id)?.name;
@@ -318,7 +354,8 @@ export function FactoryTargetPanel({ factoryId, onClose }: FactoryTargetPanelPro
           <ul className="mt-2 space-y-2">
             {pinnableItems.map(({ itemId, itemName, demand }) => {
               const pinRows = pins[itemId] ?? [];
-              const gap = importGapForItem(itemId);
+              const gap =
+                warnings?.importGaps.find((g) => g.itemId === itemId)?.gap ?? 0;
               return (
                 <li
                   key={itemId}
@@ -399,9 +436,10 @@ export function FactoryTargetPanel({ factoryId, onClose }: FactoryTargetPanelPro
                     </div>
                   )}
                   {gap > 0 && (
-                    <p className="mt-1 text-xs text-danger">
-                      Short by {gap.toFixed(1)}/min — raise a cap or pin
-                      another source.
+                    <p className="mt-1 text-xs text-amber-500">
+                      Heads up — short by {gap.toFixed(1)}/min. Raise a cap,
+                      pin another source, or apply anyway and source the
+                      rest later.
                     </p>
                   )}
                 </li>
@@ -411,8 +449,44 @@ export function FactoryTargetPanel({ factoryId, onClose }: FactoryTargetPanelPro
         </div>
       )}
 
-      {/* Preview / error */}
+      {/* Structural errors (cycles, unknown target) still wall off — there's
+          no plan to show. Supply/import gaps are surfaced as warnings
+          alongside the full preview below. */}
       {result?.kind === "err" && <PlannerErrorStrip error={result.error} />}
+
+      {result?.kind === "ok" && warnings && (
+        <div className="mt-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+          <p className="font-semibold text-amber-500">
+            Heads up — this build isn't fully supplied yet
+          </p>
+          <p className="mt-1 text-xs text-fg-muted">
+            The chain below is what the planner derived. You can swap
+            recipes, pin sources, and apply anyway — these are gaps to
+            close, not blockers.
+          </p>
+          {warnings.rawGaps.length > 0 && (
+            <ul className="mt-2 space-y-0.5 text-xs">
+              {warnings.rawGaps.map(({ itemId, itemName, gap }) => (
+                <li key={itemId} className="tabular-nums">
+                  {itemName} — short {Math.ceil(gap)}/min raw supply (claim
+                  more nodes)
+                </li>
+              ))}
+            </ul>
+          )}
+          {warnings.importGaps.length > 0 && (
+            <ul className="mt-2 space-y-0.5 text-xs">
+              {warnings.importGaps.map(({ itemId, itemName, gap }) => (
+                <li key={itemId} className="tabular-nums">
+                  {itemName} — pinned sources short {gap.toFixed(1)}/min
+                  (raise a cap or pin another source)
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       {result?.kind === "ok" && (
         <div className="mt-4">
           <ChainPreview

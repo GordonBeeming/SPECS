@@ -617,6 +617,7 @@ pub fn derive_chain_with_options(
         total_power_mw,
         raw_demand,
         imports: resolved_imports,
+        pinned_demand: imported_demand,
     })
 }
 

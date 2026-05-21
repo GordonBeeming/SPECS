@@ -51,6 +51,7 @@ function plan(overrides: Partial<ChainPlan> = {}): ChainPlan {
     totalPowerMw: 18,
     rawDemand: { Desc_OreIron_C: 45 },
     imports: [],
+    pinnedDemand: {},
     ...overrides,
   };
 }

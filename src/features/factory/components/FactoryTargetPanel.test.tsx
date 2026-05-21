@@ -121,6 +121,7 @@ const okPlan: ChainPlan = {
   totalPowerMw: 285,
   rawDemand: { Desc_OreIron_C: 180 },
   imports: [],
+  pinnedDemand: {},
 };
 
 const plannedWithImport: ChainPlan = {
