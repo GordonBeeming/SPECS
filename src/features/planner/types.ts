@@ -91,6 +91,12 @@ export interface DeriveChainInput {
   bypassSupply?: boolean;
   /** User-pinned input sources. Omit or empty for default back-to-raw behaviour. */
   sources?: InputSource[];
+  /**
+   * The recipes the user has chosen for each item, keyed by item id
+   * → recipe id. Omit (or set empty) for the planner's auto-pick.
+   * Invalid entries are silently ignored by the Rust side.
+   */
+  recipes?: Record<string, string>;
 }
 
 export interface ApplyChainPlanInput {

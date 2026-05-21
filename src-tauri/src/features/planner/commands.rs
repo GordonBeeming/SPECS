@@ -66,6 +66,7 @@ pub fn planner_derive_chain(
         &unlocked,
         &supply,
         &input.sources,
+        &input.recipes,
         &game_data,
         input.bypass_supply,
     ) {

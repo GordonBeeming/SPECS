@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { ChainPreview } from "./ChainPreview";
 import type { ChainPlan } from "../types";
@@ -118,6 +119,57 @@ describe("<ChainPreview />", () => {
     // 45 ipm needed, 120 ipm supplied → green chip ("text-success").
     const chip = screen.getByTitle(/Need 45 ipm/);
     expect(chip.querySelector(".text-success")).not.toBeNull();
+  });
+
+  it("renders a recipe picker per stage when onSwapRecipe is provided", async () => {
+    const onSwap = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <ChainPreview
+        plan={plan()}
+        onSwapRecipe={onSwap}
+        recipes={[
+          {
+            id: "Recipe_IngotIron_C",
+            name: "Iron Ingot",
+            buildingId: "Desc_SmelterMk1_C",
+            isAlt: false,
+            unlockTier: 0,
+            cycleSeconds: 2,
+            inputs: [{ itemId: "Desc_OreIron_C", perMinute: 30 }],
+            outputs: [{ itemId: "Desc_IronIngot_C", perMinute: 30 }],
+          },
+          {
+            id: "Recipe_PureIronIngot_C",
+            name: "Pure Iron Ingot",
+            buildingId: "Desc_SmelterMk1_C",
+            isAlt: true,
+            unlockTier: 0,
+            cycleSeconds: 12,
+            inputs: [
+              { itemId: "Desc_OreIron_C", perMinute: 35 },
+              { itemId: "Desc_Water_C", perMinute: 20 },
+            ],
+            outputs: [{ itemId: "Desc_IronIngot_C", perMinute: 65 }],
+          },
+        ]}
+        unlockedAlts={new Set(["Recipe_PureIronIngot_C"])}
+      />,
+    );
+    // The Iron Ingot stage now has a combobox listing both choices.
+    const combobox = await screen.findByRole("combobox", {
+      name: /Recipe for Desc_IronIngot_C/i,
+    });
+    await user.click(combobox);
+    await user.keyboard("{ArrowDown}");
+    const altOption = await screen.findByRole("option", {
+      name: /^Pure Iron Ingot \(alt\)$/,
+    });
+    await user.click(altOption);
+    expect(onSwap).toHaveBeenCalledWith(
+      "Desc_IronIngot_C",
+      "Recipe_PureIronIngot_C",
+    );
   });
 
   it("optional header surfaces target + totals", () => {

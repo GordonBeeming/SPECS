@@ -158,6 +158,14 @@ pub struct DeriveChainInput {
     /// (for `Factory` sources) emits a `ResolvedImport`.
     #[serde(default)]
     pub sources: Vec<InputSource>,
+    /// The recipes the user has chosen for each item, keyed by item id
+    /// → recipe id. The planner validates each entry (recipe must
+    /// produce the item, not be alt-locked, not be an inverse recipe);
+    /// invalid entries silently fall back to the auto-pick so a stale
+    /// id can't wedge the chain. Empty by default — every item then
+    /// uses the planner's greedy pick.
+    #[serde(default)]
+    pub recipes: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

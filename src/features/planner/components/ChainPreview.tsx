@@ -1,3 +1,4 @@
+import { FilterSelect } from "@/shared/ui/FilterSelect";
 import { Icon } from "@/shared/ui/Icon";
 
 import type { ChainPlan } from "../types";
@@ -22,6 +23,18 @@ interface ChainPreviewProps {
    * "Factory <short id>" when omitted.
    */
   factoryName?: (id: string) => string | undefined;
+  /**
+   * When provided, each stage's recipe label becomes a picker — the
+   * user can swap the recipe for that item to any other recipe in
+   * `recipes` that produces it. The parent passes its full recipe list
+   * (already tier-filtered as appropriate) and reacts to the swap by
+   * re-deriving with the new choice. Omit for read-only preview.
+   */
+  recipes?: import("@/features/library/types").Recipe[];
+  /** Set of unlocked alt recipe ids; alts not in this set are hidden. */
+  unlockedAlts?: Set<string>;
+  /** Called when the user swaps a stage's recipe. */
+  onSwapRecipe?: (itemId: string, recipeId: string) => void;
 }
 
 export function ChainPreview({
@@ -29,7 +42,27 @@ export function ChainPreview({
   nodes,
   showHeader,
   factoryName,
+  recipes,
+  unlockedAlts,
+  onSwapRecipe,
 }: ChainPreviewProps) {
+  // Group recipes by output item so each stage's picker only sees the
+  // recipes that could actually fill that stage. Memoised here rather
+  // than at the call site so the picker stays a black-box `recipes`
+  // prop for the caller.
+  const recipesByOutput = new Map<
+    string,
+    import("@/features/library/types").Recipe[]
+  >();
+  for (const r of recipes ?? []) {
+    if (r.id.startsWith("Recipe_Unpackage")) continue;
+    if (r.isAlt && unlockedAlts && !unlockedAlts.has(r.id)) continue;
+    for (const o of r.outputs) {
+      const arr = recipesByOutput.get(o.itemId) ?? [];
+      arr.push(r);
+      recipesByOutput.set(o.itemId, arr);
+    }
+  }
   const supplyByItem = new Map<string, number>();
   for (const n of nodes ?? []) {
     if (!n.claim) continue;
@@ -84,25 +117,60 @@ export function ChainPreview({
       )}
 
       <ol className="flex flex-col gap-2">
-        {plan.stages.map((s, i) => (
+        {plan.stages.map((s, i) => {
+          const choices = recipesByOutput.get(s.outputItemId) ?? [];
+          // Always show the picker when the parent wired one up — even
+          // with a single choice. The widget then advertises "this is
+          // the recipe being used, you can change recipes here" without
+          // the user having to guess whether the cell is editable.
+          const canSwap = !!onSwapRecipe && choices.length > 0;
+          return (
           <li
-            key={`${s.recipeId}-${i}`}
+            key={`${s.outputItemId}-${i}`}
             className="rounded-md border border-border bg-bg/50 p-3 text-sm"
           >
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
                 <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
                   {i + 1}
                 </span>
-                <Icon itemId={s.outputItemId} className="h-5 w-5" />
-                <span className="font-medium">{s.recipeName}</span>
-                {s.isAlt && (
-                  <span className="rounded-full bg-amber-500/10 px-1.5 text-[10px] font-medium text-amber-500">
-                    alt
-                  </span>
+                <Icon itemId={s.outputItemId} className="h-5 w-5 shrink-0" />
+                {canSwap ? (
+                  <div className="min-w-0 max-w-xs flex-1">
+                    <FilterSelect
+                      compact
+                      ariaLabel={`Recipe for ${s.outputItemId}`}
+                      options={[...choices]
+                        .sort((a, b) => {
+                          if (a.isAlt !== b.isAlt) return a.isAlt ? 1 : -1;
+                          return a.name.localeCompare(b.name);
+                        })
+                        .map((r) => ({
+                          value: r.id,
+                          label: r.name + (r.isAlt ? " (alt)" : ""),
+                          iconId: r.outputs[0]?.itemId,
+                          group: r.isAlt ? "Alts" : "Standard",
+                        }))}
+                      value={s.recipeId}
+                      onChange={(next) => {
+                        if (next && next !== s.recipeId) {
+                          onSwapRecipe?.(s.outputItemId, next);
+                        }
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <span className="truncate font-medium">{s.recipeName}</span>
+                    {s.isAlt && (
+                      <span className="rounded-full bg-amber-500/10 px-1.5 text-[10px] font-medium text-amber-500">
+                        alt
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
-              <div className="text-xs text-fg-muted tabular-nums">
+              <div className="shrink-0 text-xs text-fg-muted tabular-nums">
                 {s.machineCount}× {s.buildingName} @ {s.clockPct.toFixed(0)}%
                 · {Math.round(s.powerMw)} MW
               </div>
@@ -138,7 +206,8 @@ export function ChainPreview({
               </div>
             </div>
           </li>
-        ))}
+        );
+        })}
       </ol>
 
       {Object.keys(plan.rawDemand).length > 0 && (

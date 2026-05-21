@@ -7,6 +7,7 @@ import { Card } from "@/shared/ui/Card";
 import { FilterSelect } from "@/shared/ui/FilterSelect";
 import { Icon } from "@/shared/ui/Icon";
 import { useItems, useRecipes } from "@/features/library/hooks/useLibrary";
+import { useUnlockedAlts } from "@/features/alts/hooks/useAlts";
 import { useResourceNodes } from "@/features/resources/hooks/useResources";
 import { plannerApi } from "@/features/planner/api";
 import { ChainPreview } from "@/features/planner/components/ChainPreview";
@@ -51,12 +52,19 @@ export function FactoryTargetPanel({ factoryId, onClose }: FactoryTargetPanelPro
   const recipes = useRecipes();
   const factories = useFactoryList();
   const nodes = useResourceNodes();
+  const unlockedAlts = useUnlockedAlts();
   const queryClient = useQueryClient();
   const applyChain = useApplyChainToFactory(factoryId);
 
   const [target, setTarget] = useState<string | null>(null);
   const [targetIpm, setTargetIpm] = useState(60);
   const [pins, setPins] = useState<PinMap>({});
+  // User-chosen recipes per item (item_id → recipe_id). The Rust side
+  // honours these whenever they're valid for the item and falls back
+  // to the auto-pick when stale.
+  const [chosenRecipes, setChosenRecipes] = useState<Record<string, string>>(
+    {},
+  );
   const [result, setResult] = useState<DeriveChainResult | null>(null);
   const [staleAfterTargetEdit, setStaleAfterTargetEdit] = useState(false);
   const [pending, setPending] = useState(false);
@@ -149,7 +157,10 @@ export function FactoryTargetPanel({ factoryId, onClose }: FactoryTargetPanelPro
     [factories.data, factoryId],
   );
 
-  const derive = async (nextPins: PinMap = pins) => {
+  const derive = async (
+    nextPins: PinMap = pins,
+    nextRecipes: Record<string, string> = chosenRecipes,
+  ) => {
     if (!target) return;
     setPending(true);
     setApplied(null);
@@ -164,12 +175,19 @@ export function FactoryTargetPanel({ factoryId, onClose }: FactoryTargetPanelPro
         targetItemId: target,
         targetIpm,
         sources: pinsToSources(nextPins),
+        recipes: nextRecipes,
         bypassSupply: true,
       });
       setResult(r);
     } finally {
       setPending(false);
     }
+  };
+
+  const handleSwapRecipe = (itemId: string, recipeId: string) => {
+    const next = { ...chosenRecipes, [itemId]: recipeId };
+    setChosenRecipes(next);
+    void derive(pins, next);
   };
 
   const apply = async () => {
@@ -494,6 +512,9 @@ export function FactoryTargetPanel({ factoryId, onClose }: FactoryTargetPanelPro
             nodes={nodes.data ?? []}
             showHeader
             factoryName={factoryNameFor}
+            recipes={recipes.data ?? []}
+            unlockedAlts={unlockedAlts.data}
+            onSwapRecipe={handleSwapRecipe}
           />
         </div>
       )}

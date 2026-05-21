@@ -490,6 +490,7 @@ fn derive_chain(
         unlocked_alts,
         available_supply,
         &[],
+        &HashMap::new(),
         game_data,
         false,
     )
@@ -501,6 +502,7 @@ pub fn derive_chain_with_options(
     unlocked_alts: &HashSet<String>,
     available_supply: &HashMap<String, f32>,
     sources: &[InputSource],
+    recipes: &HashMap<String, String>,
     game_data: &GameData,
     bypass_supply: bool,
 ) -> Result<ChainPlan, PlannerError> {
@@ -520,7 +522,24 @@ pub fn derive_chain_with_options(
     let mut raw_demand: HashMap<String, f32> = HashMap::new();
     let mut imported_demand: HashMap<String, f32> = HashMap::new();
     let mut item_demands: HashMap<String, f32> = HashMap::new();
+    // Seed item_recipes with the user's chosen recipes up-front. The
+    // memoised recipe-pick in `collect_demands` reads from this map
+    // before calling `pick_recipe`, so a valid choice is honoured
+    // throughout the recursion. Invalid ids (recipe not in dataset,
+    // doesn't produce the item, or filtered as alt-locked/inverse)
+    // are dropped here — collect_demands' own pick falls back to the
+    // auto choice, no error to the user.
     let mut item_recipes: HashMap<String, String> = HashMap::new();
+    for (item_id, recipe_id) in recipes {
+        let valid = game_data.recipe(recipe_id).is_some_and(|r| {
+            !is_inverse_recipe(&r.id)
+                && (!r.is_alt || unlocked_alts.contains(&r.id))
+                && r.outputs.iter().any(|o| o.item_id == *item_id)
+        });
+        if valid {
+            item_recipes.insert(item_id.clone(), recipe_id.clone());
+        }
+    }
     let mut visit_order: Vec<String> = Vec::new();
     let mut supply_cache: HashMap<String, bool> = HashMap::new();
     let mut struct_cache: HashMap<String, bool> = HashMap::new();
@@ -784,6 +803,7 @@ mod tests {
             &unlocked(),
             &supply,
             &sources,
+            &HashMap::new(),
             &gd,
             false,
         )
@@ -821,6 +841,7 @@ mod tests {
             &unlocked(),
             &supply,
             &sources,
+            &HashMap::new(),
             &gd,
             false,
         )
@@ -855,6 +876,7 @@ mod tests {
             &unlocked(),
             &supply,
             &sources,
+            &HashMap::new(),
             &gd,
             false,
         )
@@ -890,11 +912,72 @@ mod tests {
             &unlocked(),
             &supply,
             &sources,
+            &HashMap::new(),
             &gd,
             true,
         )
         .unwrap();
         assert!(!plan.imports.is_empty());
+    }
+
+    #[test]
+    fn user_chosen_recipe_replaces_the_greedy_pick() {
+        // The greedy pick prefers Recipe_AluminaSolution_C for Silica
+        // (50/min > Recipe_Silica_C's 37.5/min, both non-alt). If the
+        // user explicitly picks Recipe_Silica_C for Silica, the planner
+        // honours that and uses Raw Quartz instead.
+        let gd = GameData::from_bundled().unwrap();
+        let supply = HashMap::new();
+        let mut recipes = HashMap::new();
+        recipes.insert("Desc_Silica_C".to_string(), "Recipe_Silica_C".to_string());
+        let plan = derive_chain_with_options(
+            "Desc_AluminumPlate_C",
+            60.0,
+            &unlocked(),
+            &supply,
+            &[],
+            &recipes,
+            &gd,
+            true, // bypass_supply
+        )
+        .expect("must derive without cycles");
+        let silica_stage = plan
+            .stages
+            .iter()
+            .find(|s| s.output_item_id == "Desc_Silica_C")
+            .expect("silica stage present");
+        assert_eq!(silica_stage.recipe_id, "Recipe_Silica_C");
+        // Knock-on: Raw Quartz must appear in raw_demand now that the
+        // Silica stage uses the Quartz recipe instead of the byproduct
+        // path through Alumina Solution.
+        assert!(plan.raw_demand.contains_key("Desc_RawQuartz_C"));
+    }
+
+    #[test]
+    fn invalid_recipe_choice_falls_back_to_auto_pick() {
+        // If the user hands in a recipe that doesn't produce the item
+        // (or doesn't exist), the planner ignores it and uses the
+        // greedy pick — no error, no wedge.
+        let gd = GameData::from_bundled().unwrap();
+        let mut supply = HashMap::new();
+        supply.insert("Desc_OreIron_C".into(), 10000.0);
+        let mut recipes = HashMap::new();
+        recipes.insert(
+            "Desc_IronIngot_C".to_string(),
+            "Recipe_DefinitelyNotARecipe_C".to_string(),
+        );
+        let plan = derive_chain_with_options(
+            "Desc_IronIngot_C",
+            60.0,
+            &unlocked(),
+            &supply,
+            &[],
+            &recipes,
+            &gd,
+            false,
+        )
+        .expect("must derive even with invalid recipe choice");
+        assert_eq!(plan.stages[0].recipe_id, "Recipe_IngotIron_C");
     }
 
     #[test]
@@ -933,6 +1016,7 @@ mod tests {
             &unlocked(),
             &supply,
             &[],
+            &HashMap::new(),
             &gd,
             true, // bypass_supply — we just want the chain to build
         )
@@ -966,6 +1050,7 @@ mod tests {
             &unlocked(),
             &supply,
             &sources,
+            &HashMap::new(),
             &gd,
             false,
         )
