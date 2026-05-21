@@ -17,7 +17,7 @@ import type {
 } from "@/features/planner/types";
 import { queryKeys } from "@/shared/query/keys";
 
-import { useFactoryList } from "../hooks/useFactories";
+import { useApplyChainToFactory, useFactoryList } from "../hooks/useFactories";
 
 interface FactoryTargetPanelProps {
   factoryId: string;
@@ -52,6 +52,7 @@ export function FactoryTargetPanel({ factoryId, onClose }: FactoryTargetPanelPro
   const factories = useFactoryList();
   const nodes = useResourceNodes();
   const queryClient = useQueryClient();
+  const applyChain = useApplyChainToFactory(factoryId);
 
   const [target, setTarget] = useState<string | null>(null);
   const [targetIpm, setTargetIpm] = useState(60);
@@ -171,15 +172,15 @@ export function FactoryTargetPanel({ factoryId, onClose }: FactoryTargetPanelPro
     setApplyPending(true);
     setApplyError(null);
     try {
-      const out = await plannerApi.applyToFactory({
+      const out = await applyChain.mutateAsync({
         factoryId,
         plan: result.plan,
         defaultLinkDistanceM: 1000,
       });
-      setApplied(out.machineIds);
-      // Pull the factory + ledger + machine layouts caches fresh so
-      // FactoryDetail re-renders with the new machines without a
-      // manual refresh.
+      setApplied(out?.machineIds ?? []);
+      // Belt-and-braces: useApplyChainToFactory invalidates the same
+      // keys already, but keeping these here means a future refactor
+      // doesn't silently drop the refresh.
       await queryClient.invalidateQueries({
         queryKey: queryKeys.factory.detail(factoryId),
       });

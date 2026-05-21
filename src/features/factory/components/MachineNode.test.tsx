@@ -7,6 +7,9 @@ import type { ReactNode } from "react";
 import { MachineNodeCard } from "./MachineNode";
 import { libraryApi } from "@/features/library/api";
 import { playthroughApi } from "@/features/playthrough/api";
+import { factoryApi } from "../api";
+import { useUpdateMachine } from "../hooks/useFactories";
+import { useUndoStore } from "@/shared/undo/store";
 import type { FactoryMachine } from "../types";
 
 const recipes = [
@@ -214,6 +217,60 @@ describe("<MachineNodeCard /> — inline editor", () => {
           recipeId: "Recipe_PureIronIngot_C",
           buildingId: "Desc_SmelterMk1_C",
         }),
+      );
+    });
+  });
+
+  it("undoable inline edit reverses to the previous clock + count via useUpdateMachine", async () => {
+    // Wire a real useUpdateMachine call by spying on factoryApi.update.
+    const updateSpy = vi
+      .spyOn(factoryApi, "updateMachine")
+      .mockResolvedValue();
+    vi.spyOn(factoryApi, "detail").mockResolvedValue({
+      factory: {
+        id: "f1", name: "Test", worldX: 0, worldY: 0,
+        createdAt: "x", updatedAt: "x", machineCount: 1,
+      },
+      machines: [machine],
+      ledger: { factoryId: "f1", flows: [], powerMw: 0 },
+    });
+    useUndoStore.getState().reset();
+
+    // Use a thin wrapper so the inline editor actually pipes through
+    // useUpdateMachine (the way FactoryGraphView wires it).
+    function Wrap() {
+      const update = useUpdateMachine("f1");
+      return (
+        <MachineNodeCard
+          machine={machine}
+          buildingName="Smelter"
+          recipeName="Iron Ingot"
+          editing={true}
+          onEdit={() => {}}
+          onCancelEdit={() => {}}
+          onRemove={() => {}}
+          onUpdate={(patch) => update.mutate(patch)}
+          updating={update.isPending}
+        />
+      );
+    }
+    const user = userEvent.setup();
+    renderWithProviders(<Wrap />);
+    const clockField = screen.getByLabelText(/Clock percent input/i);
+    await user.clear(clockField);
+    await user.type(clockField, "90");
+    await user.click(screen.getByRole("button", { name: /^Save$/i }));
+    await waitFor(() => {
+      expect(updateSpy).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: "m1", clockPct: 90 }),
+      );
+      expect(useUndoStore.getState().past.length).toBe(1);
+    });
+    // Reverse — the undo restores the original 75% clock + 2 count.
+    await useUndoStore.getState().undo();
+    await waitFor(() => {
+      expect(updateSpy).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: "m1", clockPct: 75, count: 2 }),
       );
     });
   });

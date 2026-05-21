@@ -10,6 +10,8 @@ import { playthroughApi } from "@/features/playthrough/api";
 import { resourcesApi } from "@/features/resources/api";
 import { factoryApi } from "../api";
 import { plannerApi } from "@/features/planner/api";
+import { logisticsApi } from "@/features/logistics/api";
+import { useUndoStore } from "@/shared/undo/store";
 import type {
   ChainPlan,
   DeriveChainResult,
@@ -272,5 +274,50 @@ describe("<FactoryTargetPanel />", () => {
       );
     });
     expect(await screen.findByText(/Added 3 machines/)).toBeInTheDocument();
+  });
+
+  it("⌘Z reverses the whole apply by deleting machines + links", async () => {
+    vi.spyOn(plannerApi, "derive").mockResolvedValue({
+      kind: "ok",
+      plan: {
+        ...okPlan,
+        imports: [
+          {
+            itemId: "Desc_IronPlate_C",
+            itemName: "Iron Plate",
+            sourceFactoryId: "fac-plates",
+            resolvedIpm: 180,
+          },
+        ],
+      },
+    } satisfies DeriveChainResult);
+    vi.spyOn(plannerApi, "applyToFactory").mockResolvedValue({
+      machineIds: ["m1", "m2"],
+      linkIds: ["l1"],
+    });
+    const removeSpy = vi.spyOn(factoryApi, "removeMachine").mockResolvedValue();
+    const deleteLinkSpy = vi.spyOn(logisticsApi, "delete").mockResolvedValue();
+    // Reset undo state between tests so a leftover stack doesn't pollute.
+    useUndoStore.getState().reset();
+    const user = userEvent.setup();
+    renderWithProviders(
+      <FactoryTargetPanel factoryId="fac-frames" onClose={() => {}} />,
+    );
+    await pickModularFrameTarget(user);
+    await user.click(screen.getByRole("button", { name: /Derive/i }));
+    const applyBtn = await screen.findByRole("button", {
+      name: /Apply to this factory/i,
+    });
+    await user.click(applyBtn);
+    await waitFor(() => {
+      expect(useUndoStore.getState().past.length).toBe(1);
+    });
+    // Invoke the reverse — simulates ⌘Z.
+    await useUndoStore.getState().undo();
+    await waitFor(() => {
+      expect(deleteLinkSpy).toHaveBeenCalledWith("l1");
+      expect(removeSpy).toHaveBeenCalledWith("m1");
+      expect(removeSpy).toHaveBeenCalledWith("m2");
+    });
   });
 });
