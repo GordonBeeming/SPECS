@@ -64,6 +64,7 @@ pub fn planner_derive_chain(
         input.target_ipm,
         &unlocked,
         &supply,
+        &input.sources,
         &game_data,
         input.bypass_supply,
     ) {

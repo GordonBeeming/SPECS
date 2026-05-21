@@ -19,6 +19,19 @@ export interface ChainStage {
   powerMw: number;
 }
 
+/**
+ * What the planner actually consumed from a user-pinned input source.
+ * Emitted only for `Factory` sources — those become logistics links on
+ * apply. Node sources are parsed but ignored at the planning layer in
+ * this PR (apply path doesn't yet rebind nodes).
+ */
+export interface ResolvedImport {
+  itemId: string;
+  itemName: string;
+  sourceFactoryId: string;
+  resolvedIpm: number;
+}
+
 export interface ChainPlan {
   targetItemId: string;
   targetItemName: string;
@@ -28,12 +41,36 @@ export interface ChainPlan {
   totalPowerMw: number;
   /** Raw demand by item id, ipm. */
   rawDemand: Record<string, number>;
+  /** Factory-kind imports the planner resolved against pinned sources. */
+  imports: ResolvedImport[];
+}
+
+/**
+ * User-pinned source for a single item. `Factory` cuts the chain at
+ * the named item and binds a real logistics link on apply. `Node` is
+ * forward-compat — declared so the React side can already emit it,
+ * but treated as plain raw supply for now.
+ */
+export type InputSourceKind =
+  | { kind: "factory"; id: string }
+  | { kind: "node"; id: string };
+
+export interface InputSource {
+  itemId: string;
+  source: InputSourceKind;
+  /** Items-per-minute cap on this source. `undefined` ≈ unbounded. */
+  ipmCap?: number;
 }
 
 export type PlannerError =
   | { kind: "unknownTarget"; itemId: string }
   | { kind: "noRecipeForTarget"; itemId: string }
-  | { kind: "insufficient"; missing: Record<string, number> }
+  | {
+      kind: "insufficient";
+      missing: Record<string, number>;
+      /** Per-item gap for pinned sources whose combined cap fell short. */
+      imports: Record<string, number>;
+    }
   | { kind: "cycleDetected"; itemId: string };
 
 export type DeriveChainResult =
@@ -45,6 +82,8 @@ export interface DeriveChainInput {
   targetIpm: number;
   /** Build the plan even with insufficient supply — pins land first, supply bound after. */
   bypassSupply?: boolean;
+  /** User-pinned input sources. Omit or empty for default back-to-raw behaviour. */
+  sources?: InputSource[];
 }
 
 export interface ApplyChainPlanInput {
@@ -55,5 +94,16 @@ export interface ApplyChainPlanInput {
 
 export interface ApplyChainPlanResult {
   factoryIds: string[];
+  linkIds: string[];
+}
+
+export interface ApplyChainToFactoryInput {
+  factoryId: string;
+  plan: ChainPlan;
+  defaultLinkDistanceM: number;
+}
+
+export interface ApplyChainToFactoryResult {
+  machineIds: string[];
   linkIds: string[];
 }
