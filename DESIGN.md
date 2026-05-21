@@ -186,6 +186,48 @@ to convey flow direction. This is a stand-in for true machine-to-
 machine routing (factories currently only model bulk inputs/outputs
 at their boundaries) and will tighten when that lands.
 
+**Inline machine editing.** The pencil on a node card flips it into
+expanded mode (320 px wide, no overlay) with: recipe `FilterSelect`
+filtered to recipes for the same `building_id` so a swap never
+violates the backend's `recipe.building_id != building_id` check;
+count `±` stepper; clock slider + numeric input capped by
+`clockCapForShards`; somersloop stepper bounded by
+`ampSlotsForBuilding`; power-shard stepper (0–3). When the user
+enters edit mode the canvas refits (`useReactFlow().fitView()` after
+a `requestAnimationFrame`) so the larger card doesn't spill off the
+visible area. Save/Cancel buttons in-card; every save pushes through
+`useUndoStore` so a single ⌘Z restores the prior state.
+
+## Single-factory build UX
+
+`FactoryDetail` exposes "Build to target" alongside "Add machine".
+The panel opens inline (not a modal) and has four sections:
+
+1. **Target** — item `FilterSelect` (tier-gated) + ipm input.
+2. **Items, Input** — appears after the first derive. One row per
+   intermediate item the chain currently produces. Each row has a
+   "+ Pin source" affordance that reveals a factory `FilterSelect`
+   (other factories in the playthrough) + optional ipm cap. Multiple
+   sources per item are allowed; the planner distributes demand in
+   declared order. Editing a pin auto re-derives.
+3. **Preview** — the shared `ChainPreview` (extracted from the
+   cross-factory `PlannerView`) renders the stages stack, an
+   `Imports` strip listing every resolved pinning (`Iron Ingot ←
+   Plates v1 240.0/min`), and the raw-demand chips coloured against
+   claimed-node supply (green = covered, red = short).
+4. **Apply** — calls `apply_chain_to_factory`. Inserts one machine
+   per stage into the current factory and one `logistics_link` per
+   resolved import. Single SQLite transaction; pushed onto the undo
+   stack as one grouped action so a single ⌘Z reverses every
+   machine + link that landed.
+
+Recipe-swap on existing machines is **building-locked** by design —
+the dropdown filters to recipes whose `building_id` matches the
+row's, so the backend's defence-in-depth rejection never fires for
+a user-visible path. Cross-building swaps would require deleting +
+re-adding a machine (different building means different power
+draw + amp slot layout — better to be explicit).
+
 ## Planner
 
 The Planner tab takes a target item + ipm and walks the bundled

@@ -8,6 +8,7 @@ import {
   ReactFlowProvider,
   useEdgesState,
   useNodesState,
+  useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 // dagre ships as CJS — `import * as` keeps the namespace shape stable
@@ -212,6 +213,21 @@ function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }
   useEffect(() => {
     setEdges(initialEdges);
   }, [initialEdges, setEdges]);
+
+  // Re-fit the viewport when entering edit mode — the expanded card is
+  // wider/taller than the collapsed one and would otherwise spill out
+  // of the visible canvas. Skip when leaving edit mode so dropping out
+  // of the editor doesn't pull other nodes off-screen.
+  const { fitView } = useReactFlow();
+  useEffect(() => {
+    if (editingId) {
+      // requestAnimationFrame so the DOM has flushed the resized node
+      // before xyflow measures it for the fit.
+      requestAnimationFrame(() => {
+        fitView({ duration: 200, padding: 0.2 });
+      });
+    }
+  }, [editingId, fitView]);
 
   const queryClient = useQueryClient();
 

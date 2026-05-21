@@ -51,6 +51,12 @@ Done:
   derives whole factory chains from a target output rate, draggable
   Map view for placing factories, and an `@xyflow/react` graph
   editor replacing the per-machine table.
+- **Phase 14** — In-factory "Build to target" panel that lands the
+  whole chain into the factory you're editing (instead of spawning
+  one per stage), per-item input pinning so any intermediate can be
+  sourced from another factory via a real logistics link, and
+  inline machine editing on the graph node (recipe swap + count +
+  clock + amps without a modal).
 
 Future:
 
