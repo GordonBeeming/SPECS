@@ -67,6 +67,38 @@ setup needed. Other clients can install it via
 - **WebView2 missing on Windows**: install from
   [microsoft.com/webview2](https://developer.microsoft.com/microsoft-edge/webview2/).
 
+## Game data updates
+
+The bundled dataset (`src-tauri/game-data/v1.2.json`) is converted from
+satisfactory-calculator.com's gameData dump — the same source (and the
+same attribution) as the resource-node catalog. To bump it for a new
+game version:
+
+1. Fetch a fresh copy of
+   `https://static.satisfactory-calculator.com/data/json/gameData/en-Stable.json`
+   in a browser (Cloudflare gates non-browser user agents) and drop it
+   over `scripts/fixtures/satisfactory-calculator-gamedata-<version>.json`.
+2. Update `GAME_VERSION`, the fixture path and the output path in
+   `scripts/convert-game-data.ts`, then `bun run scripts/convert-game-data.ts`.
+   The script validates the result (recipe counts, the SAM chain,
+   referential integrity) and refuses to write a regressed dataset.
+3. Point `src-tauri/src/shared/gamedata/loader.rs`'s `include_str!` at
+   the new file, delete the old one, and run the full test suites — the
+   planner tests pin game-truth rates, so a parse mistake shows up as a
+   failing ratio, not a silent drift.
+
+Recipe unlock tiers carry over by recipe id from
+`scripts/fixtures/recipe-tiers-v1.1.json` (the dump has no
+schematic→recipe table); brand-new recipes default to their building's
+unlock tier, with hand overrides for the MAM-ish chains.
+
+**Open question (parked until after 1.2):** playthroughs persist item
+and recipe ids in SQLite, so a dataset bump can orphan saved plans —
+removed recipes already degrade gracefully (stale overrides drop, warn
+don't block), but a real upgrade pass on playthrough open (validate
+stored ids, surface what changed) is still to be designed. Not a
+release blocker while the app is unreleased.
+
 ## Next steps
 
 - Architecture rules: [`vsa/README.md`](./vsa/README.md)

@@ -1,17 +1,31 @@
 #!/usr/bin/env bun
 /**
- * Convert satisfactorytools' community game-data dump into the SPECS dataset
- * shape under `src-tauri/game-data/v1.1.json`.
+ * Convert satisfactory-calculator.com's gameData dump into the SPECS dataset
+ * shape under `src-tauri/game-data/v1.2.json`.
  *
- * The conversion is intentionally lossy: we only need the slices of the SF
- * data that SPECS reasons about (items, production buildings, in-machine
- * recipes, milestones, generators) plus a few hand-authored structures that
- * SF's data doesn't carry cleanly (miner rate tables, transport-vehicle
- * specs, belt/pipe tier marks).
+ * Source: `static.satisfactory-calculator.com/data/json/gameData/en-Stable.json`
+ * — the same site (and the same attribution) the resource-node catalog
+ * already uses. We moved off the SatisfactoryTools dump because its updates
+ * lag the game by months; the calculator tracks the Stable branch within
+ * days, which is what makes 1.2 (and the SAM/converter chain) available at
+ * all. Re-fetching is a manual step (Cloudflare gates non-browser UAs) —
+ * drop a fresh copy at the fixture path and re-run.
+ *
+ * The conversion is intentionally lossy: we only need the slices SPECS
+ * reasons about (items, production buildings, in-machine recipes) plus the
+ * hand-authored structures the dump doesn't carry cleanly (miner rate
+ * tables, generators, transport-vehicle specs, belt/pipe tier marks,
+ * milestones).
+ *
+ * Recipe unlock tiers: the calculator dump has no schematic→recipe links,
+ * so tiers carry over by recipe id from the old SatisfactoryTools-derived
+ * dataset (`scripts/fixtures/recipe-tiers-v1.1.json`, tier layout unchanged
+ * in 1.2); recipes new to this dump default to their building's unlock
+ * tier — a recipe can't run before its machine exists.
  *
  * Re-run with `bun run scripts/convert-game-data.ts`. The fixture under
- * `scripts/fixtures/satisfactorytools-data-v1.1.json` is checked in so the
- * output is deterministic across machines.
+ * `scripts/fixtures/satisfactory-calculator-gamedata-1.2.json` is checked
+ * in so the output is deterministic across machines.
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -20,94 +34,69 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(__dirname, "..");
-const FIXTURE = resolve(REPO, "scripts/fixtures/satisfactorytools-data-v1.1.json");
-const OUT = resolve(REPO, "src-tauri/game-data/v1.1.json");
+const FIXTURE = resolve(REPO, "scripts/fixtures/satisfactory-calculator-gamedata-1.2.json");
+const TIER_FIXTURE = resolve(REPO, "scripts/fixtures/recipe-tiers-v1.1.json");
+const OUT = resolve(REPO, "src-tauri/game-data/v1.2.json");
 
-if (!existsSync(FIXTURE)) {
-  console.error(`fixture missing: ${FIXTURE}`);
-  process.exit(1);
+const GAME_VERSION = "1.2";
+
+for (const f of [FIXTURE, TIER_FIXTURE]) {
+  if (!existsSync(f)) {
+    console.error(`fixture missing: ${f}`);
+    console.error(
+      "gameData: fetch a fresh copy from https://static.satisfactory-calculator.com/data/json/gameData/en-Stable.json (browser UA required) and drop it at the path above.",
+    );
+    process.exit(1);
+  }
 }
 
-type SfItem = {
+type ScRecipe = {
   className: string;
   name: string;
-  stackSize: number;
-  liquid?: boolean;
-  fluidColor?: { r: number; g: number; b: number; a: number };
+  /** full asset path → amount per craft (fluids in liters). */
+  ingredients?: Record<string, number>;
+  produce?: Record<string, number>;
+  mProducedIn?: string[];
+  mManufactoringDuration?: number;
 };
-type SfBuilding = {
-  className: string;
-  name?: string | null;
-  metadata?: { powerConsumption?: number };
-};
-type SfRecipe = {
+type ScItem = {
   className: string;
   name: string;
-  alternate: boolean;
-  time: number;
-  inHand: boolean;
-  forBuilding: boolean;
-  inWorkshop: boolean;
-  inMachine: boolean;
-  ingredients: Array<{ item: string; amount: number }>;
-  products: Array<{ item: string; amount: number }>;
-  producedIn: string[];
+  category?: string;
+  stack?: number;
+  color?: string;
 };
-type SfSchematic = {
-  className: string;
-  type: string;
-  tier: number;
-  name: string;
-  unlock?: { recipes?: string[] };
+type ScData = {
+  branch: string;
+  itemsData: Record<string, ScItem>;
+  buildingsData: Record<string, { name?: string }>;
+  recipesData: Record<string, ScRecipe>;
 };
 
-type SfData = {
-  items: Record<string, SfItem>;
-  buildings: Record<string, SfBuilding>;
-  recipes: Record<string, SfRecipe>;
-  schematics: Record<string, SfSchematic>;
-  miners: Record<string, unknown>;
-  generators: Record<string, unknown>;
-};
+const sc: ScData = JSON.parse(readFileSync(FIXTURE, "utf8"));
+const carriedTiers: Record<string, number> = JSON.parse(readFileSync(TIER_FIXTURE, "utf8"));
 
-const sf: SfData = JSON.parse(readFileSync(FIXTURE, "utf8"));
+/** `/Game/.../Desc_OreIron.Desc_OreIron_C` → `Desc_OreIron_C`. */
+function classId(path: string): string {
+  const m = path.match(/\.([A-Za-z0-9_]+)$/);
+  return m ? m[1] : path;
+}
 
 // --- Item categorisation ------------------------------------------------
 
-const FLUID_OVERRIDES = new Set([
-  "Desc_Water_C",
-  "Desc_LiquidOil_C",
-  "Desc_HeavyOilResidue_C",
-  "Desc_LiquidFuel_C",
-  "Desc_LiquidTurboFuel_C",
-  "Desc_LiquidBiofuel_C",
-  "Desc_AluminaSolution_C",
-  "Desc_SulfuricAcid_C",
-  "Desc_NitricAcid_C",
-  "Desc_NitrogenGas_C",
-  "Desc_RocketFuel_C",
-  "Desc_IonizedFuel_C",
-  "Desc_DissolvedSilica_C",
-  "Desc_DarkEnergy_C",
-  "Desc_QuantumEnergy_C",
-]);
+const FLUID_CATEGORIES = new Set(["liquid", "gas"]);
 
-function isFluid(item: SfItem): boolean {
-  if (FLUID_OVERRIDES.has(item.className)) return true;
-  if (item.liquid === true) return true;
-  // Some gases / fluids set fluidColor.a > 0 even when `liquid` is absent.
-  if (item.fluidColor && item.fluidColor.a > 0) return true;
-  return false;
+function isFluid(item: ScItem): boolean {
+  return FLUID_CATEGORIES.has(item.category ?? "");
 }
 
-const RAW_PREFIXES = ["Desc_Ore", "Desc_Stone", "Desc_Coal", "Desc_Sulfur", "Desc_RawQuartz", "Desc_LiquidOil", "Desc_Water", "Desc_NitrogenGas", "Desc_Wood", "Desc_Mycelia", "Desc_Leaves", "Desc_Flower", "Desc_GenericBiomass"];
+const RAW_PREFIXES = ["Desc_Ore", "Desc_Stone", "Desc_Coal", "Desc_Sulfur", "Desc_RawQuartz", "Desc_LiquidOil", "Desc_Water", "Desc_NitrogenGas", "Desc_Wood", "Desc_Mycelia", "Desc_Leaves", "Desc_Flower", "Desc_GenericBiomass", "Desc_SAM"];
 const INGOT_PATTERN = /Ingot/;
 const AMMO_PATTERNS = [/Cartridge/, /Rebar/, /Nobelisk/, /^Desc_Bullet/];
 const EQUIPMENT_PATTERNS = [/JetPack/, /BladeRunners/, /Parachute/, /Rifle/, /GasMask/, /HazmatSuit/, /ZipLine/, /JumpingStilts/, /HoverPack/];
 const SPECIAL_IDS = new Set([
   "Desc_WAT1_C",
   "Desc_WAT2_C",
-  "Desc_SAM_C",
   "Desc_AlienProtein_C",
   "Desc_AlienDNACapsule_C",
   "Desc_CrystalShard_C",
@@ -121,7 +110,7 @@ const SPECIAL_IDS = new Set([
   "Desc_HatcherParts_C",
 ]);
 
-function categorise(item: SfItem): string {
+function categorise(item: ScItem): string {
   const id = item.className;
   if (isFluid(item)) return "fluid";
   if (SPECIAL_IDS.has(id)) return "special";
@@ -130,183 +119,106 @@ function categorise(item: SfItem): string {
   if (INGOT_PATTERN.test(id)) return "ingot";
   for (const pre of RAW_PREFIXES) if (id.startsWith(pre)) return "raw";
   // Items like Plate, Rod, Wire are parts; heavy modular frames etc. components.
-  if (/Modular|Frame|Computer|MotorLightweight|Stator|HighSpeedConnector|HeatSink|SuperPositionOscillator|Quantum/.test(id)) return "component";
+  if (/Modular|Frame|Computer|MotorLightweight|Stator|HighSpeedConnector|HeatSink|SuperPositionOscillator|Quantum|Ficsite/.test(id)) return "component";
   return "part";
 }
 
 // --- Building inclusion -------------------------------------------------
 
-// SF data keys buildings by `Desc_*_C` but the SPECS production code (and
-// the Phase-8 amp_slots_for_building helper) expects `Build_*_C` — the
-// in-game actor prefix. Translate at the boundary so downstream slices use
-// one convention.
-const BUILD_ID_BY_DESC: Record<string, string> = {
-  Desc_SmelterMk1_C: "Build_SmelterMk1_C",
-  Desc_FoundryMk1_C: "Build_FoundryMk1_C",
-  Desc_ConstructorMk1_C: "Build_ConstructorMk1_C",
-  Desc_AssemblerMk1_C: "Build_AssemblerMk1_C",
-  Desc_ManufacturerMk1_C: "Build_ManufacturerMk1_C",
-  Desc_OilRefinery_C: "Build_OilRefinery_C",
-  Desc_Blender_C: "Build_Blender_C",
-  Desc_HadronCollider_C: "Build_HadronCollider_C",
-  Desc_QuantumEncoder_C: "Build_QuantumEncoder_C",
-  Desc_Converter_C: "Build_Converter_C",
-  Desc_Packager_C: "Build_Packager_C",
-  Desc_OilPump_C: "Build_OilPump_C",
-  Desc_WaterPump_C: "Build_WaterPump_C",
-  Desc_FrackingExtractor_C: "Build_FrackingExtractor_C",
-  Desc_FrackingSmasher_C: "Build_FrackingSmasher_C",
-  Desc_MinerMk1_C: "Build_MinerMk1_C",
-  Desc_MinerMk2_C: "Build_MinerMk2_C",
-  Desc_MinerMk3_C: "Build_MinerMk3_C",
-};
-
+// The calculator dump keys machine recipes by native `Build_*_C` actor ids
+// already — no Desc→Build translation needed anymore.
 const POWER_MW_BY_BUILDING: Record<string, number> = {
-  // Production buildings — hand-pinned from wiki values (the SF data field
-  // `metadata.powerConsumption` is missing for many, and the manufacturer
-  // family numbers depend on overclocking we don't store on the building).
-  Desc_SmelterMk1_C: 4,
-  Desc_FoundryMk1_C: 16,
-  Desc_ConstructorMk1_C: 4,
-  Desc_AssemblerMk1_C: 15,
-  Desc_ManufacturerMk1_C: 55,
-  Desc_OilRefinery_C: 30,
-  Desc_Blender_C: 75,
-  Desc_HadronCollider_C: 1500, // Particle Accelerator – variable, max baseline
-  Desc_QuantumEncoder_C: 1000,
-  Desc_Converter_C: 250,
-  Desc_Packager_C: 10,
-  Desc_OilPump_C: 40,
-  Desc_WaterPump_C: 20,
-  Desc_FrackingExtractor_C: 150,
-  Desc_FrackingSmasher_C: 300,
-  Desc_MinerMk1_C: 5,
-  Desc_MinerMk2_C: 12,
-  Desc_MinerMk3_C: 30,
+  // Production buildings — hand-pinned from wiki values (the dump's
+  // `powerUsed` is present but the manufacturer-family numbers depend on
+  // overclocking we don't store on the building).
+  Build_SmelterMk1_C: 4,
+  Build_FoundryMk1_C: 16,
+  Build_ConstructorMk1_C: 4,
+  Build_AssemblerMk1_C: 15,
+  Build_ManufacturerMk1_C: 55,
+  Build_OilRefinery_C: 30,
+  Build_Blender_C: 75,
+  Build_HadronCollider_C: 1500, // Particle Accelerator – variable, max baseline
+  Build_QuantumEncoder_C: 1000,
+  Build_Converter_C: 250,
+  Build_Packager_C: 10,
+  Build_OilPump_C: 40,
+  Build_WaterPump_C: 20,
+  Build_FrackingExtractor_C: 150,
+  Build_FrackingSmasher_C: 300,
+  Build_MinerMk1_C: 5,
+  Build_MinerMk2_C: 12,
+  Build_MinerMk3_C: 30,
 };
 
 const BUILDING_NAMES: Record<string, string> = {
-  Desc_SmelterMk1_C: "Smelter",
-  Desc_FoundryMk1_C: "Foundry",
-  Desc_ConstructorMk1_C: "Constructor",
-  Desc_AssemblerMk1_C: "Assembler",
-  Desc_ManufacturerMk1_C: "Manufacturer",
-  Desc_OilRefinery_C: "Refinery",
-  Desc_Blender_C: "Blender",
-  Desc_HadronCollider_C: "Particle Accelerator",
-  Desc_QuantumEncoder_C: "Quantum Encoder",
-  Desc_Converter_C: "Converter",
-  Desc_Packager_C: "Packager",
-  Desc_OilPump_C: "Oil Extractor",
-  Desc_WaterPump_C: "Water Extractor",
-  Desc_FrackingExtractor_C: "Resource Well Extractor",
-  Desc_FrackingSmasher_C: "Resource Well Pressuriser",
-  Desc_MinerMk1_C: "Miner Mk.1",
-  Desc_MinerMk2_C: "Miner Mk.2",
-  Desc_MinerMk3_C: "Miner Mk.3",
+  Build_SmelterMk1_C: "Smelter",
+  Build_FoundryMk1_C: "Foundry",
+  Build_ConstructorMk1_C: "Constructor",
+  Build_AssemblerMk1_C: "Assembler",
+  Build_ManufacturerMk1_C: "Manufacturer",
+  Build_OilRefinery_C: "Refinery",
+  Build_Blender_C: "Blender",
+  Build_HadronCollider_C: "Particle Accelerator",
+  Build_QuantumEncoder_C: "Quantum Encoder",
+  Build_Converter_C: "Converter",
+  Build_Packager_C: "Packager",
+  Build_OilPump_C: "Oil Extractor",
+  Build_WaterPump_C: "Water Extractor",
+  Build_FrackingExtractor_C: "Resource Well Extractor",
+  Build_FrackingSmasher_C: "Resource Well Pressuriser",
+  Build_MinerMk1_C: "Miner Mk.1",
+  Build_MinerMk2_C: "Miner Mk.2",
+  Build_MinerMk3_C: "Miner Mk.3",
 };
 
 const BUILDING_CATEGORIES: Record<string, string> = {
-  Desc_SmelterMk1_C: "smelting",
-  Desc_FoundryMk1_C: "smelting",
-  Desc_ConstructorMk1_C: "manufacturing",
-  Desc_AssemblerMk1_C: "manufacturing",
-  Desc_ManufacturerMk1_C: "manufacturing",
-  Desc_OilRefinery_C: "manufacturing",
-  Desc_Blender_C: "manufacturing",
-  Desc_HadronCollider_C: "manufacturing",
-  Desc_QuantumEncoder_C: "manufacturing",
-  Desc_Converter_C: "manufacturing",
-  Desc_Packager_C: "manufacturing",
-  Desc_OilPump_C: "extraction",
-  Desc_WaterPump_C: "extraction",
-  Desc_FrackingExtractor_C: "extraction",
-  Desc_FrackingSmasher_C: "extraction",
-  Desc_MinerMk1_C: "extraction",
-  Desc_MinerMk2_C: "extraction",
-  Desc_MinerMk3_C: "extraction",
+  Build_SmelterMk1_C: "smelting",
+  Build_FoundryMk1_C: "smelting",
+  Build_ConstructorMk1_C: "manufacturing",
+  Build_AssemblerMk1_C: "manufacturing",
+  Build_ManufacturerMk1_C: "manufacturing",
+  Build_OilRefinery_C: "manufacturing",
+  Build_Blender_C: "manufacturing",
+  Build_HadronCollider_C: "manufacturing",
+  Build_QuantumEncoder_C: "manufacturing",
+  Build_Converter_C: "manufacturing",
+  Build_Packager_C: "manufacturing",
+  Build_OilPump_C: "extraction",
+  Build_WaterPump_C: "extraction",
+  Build_FrackingExtractor_C: "extraction",
+  Build_FrackingSmasher_C: "extraction",
+  Build_MinerMk1_C: "extraction",
+  Build_MinerMk2_C: "extraction",
+  Build_MinerMk3_C: "extraction",
 };
 
 const BUILDING_UNLOCK_TIER: Record<string, number> = {
-  Desc_MinerMk1_C: 0,
-  Desc_MinerMk2_C: 3,
-  Desc_MinerMk3_C: 7,
-  Desc_SmelterMk1_C: 0,
-  Desc_FoundryMk1_C: 3,
-  Desc_ConstructorMk1_C: 0,
-  Desc_AssemblerMk1_C: 1,
-  Desc_ManufacturerMk1_C: 7,
-  Desc_OilRefinery_C: 5,
-  Desc_Blender_C: 7,
-  Desc_HadronCollider_C: 8,
-  Desc_QuantumEncoder_C: 9,
-  Desc_Converter_C: 8,
-  Desc_Packager_C: 5,
-  Desc_OilPump_C: 5,
-  Desc_WaterPump_C: 3,
-  Desc_FrackingExtractor_C: 7,
-  Desc_FrackingSmasher_C: 7,
+  Build_MinerMk1_C: 0,
+  Build_MinerMk2_C: 3,
+  Build_MinerMk3_C: 7,
+  Build_SmelterMk1_C: 0,
+  Build_FoundryMk1_C: 3,
+  Build_ConstructorMk1_C: 0,
+  Build_AssemblerMk1_C: 1,
+  Build_ManufacturerMk1_C: 7,
+  Build_OilRefinery_C: 5,
+  Build_Blender_C: 7,
+  Build_HadronCollider_C: 8,
+  Build_QuantumEncoder_C: 9,
+  Build_Converter_C: 8,
+  Build_Packager_C: 5,
+  Build_OilPump_C: 5,
+  Build_WaterPump_C: 3,
+  Build_FrackingExtractor_C: 7,
+  Build_FrackingSmasher_C: 7,
 };
 
-const INCLUDED_BUILDINGS = Object.keys(BUILDING_NAMES);
-
-// --- Recipe tier map ----------------------------------------------------
-
-const recipeTier = new Map<string, number>();
-for (const schem of Object.values(sf.schematics)) {
-  // EST_Alternate carries the tier at which the alt's Hard Drive can be
-  // scanned in the MAM, which is the right "you can unlock this now"
-  // signal for SPECS' tier-gated alt checklist — without it every alt
-  // shows up at T0 even though most need a higher-tier Hard Drive node.
-  if (
-    schem.type !== "EST_Milestone" &&
-    schem.type !== "EST_MAM" &&
-    schem.type !== "EST_Alternate"
-  )
-    continue;
-  const t = schem.tier ?? 0;
-  for (const r of schem.unlock?.recipes ?? []) {
-    // First-write wins so a recipe shared across milestones gets its
-    // earliest unlock tier.
-    if (!recipeTier.has(r)) recipeTier.set(r, t);
-  }
-}
-
-// --- Item collection ----------------------------------------------------
-
-// Track which items appear as ingredients/products of an included recipe.
-// We bundle the entire SF item table but tag categories conservatively so
-// the Library view doesn't surface garbage like in-hand stages or
-// developer-only debug items.
-
-const referencedItems = new Set<string>();
-
-// Items that the upstream satisfactorytools dump doesn't carry but a
-// 1.0+ generator fuel references. Stamped into the items list later.
-const HAND_AUTHORED_ITEMS: SpecsItem[] = [
-  {
-    id: "Desc_FicsoniumFuelRod_C",
-    name: "Ficsonium Fuel Rod",
-    category: "special",
-    stackSize: 50,
-    isFluid: false,
-  },
-  {
-    // SAM is a 1.0+ map resource the SatisfactoryTools dump pre-dates.
-    // Catalog references it via `Desc_SAM_C`; this row gives the
-    // Resources / Map UIs a real name + category instead of the raw
-    // class id, and downstream slices treat it like any other raw ore.
-    id: "Desc_SAM_C",
-    name: "SAM",
-    category: "raw",
-    stackSize: 100,
-    isFluid: false,
-  },
-];
-for (const it of HAND_AUTHORED_ITEMS) referencedItems.add(it.id);
+const INCLUDED_BUILDINGS = new Set(Object.keys(BUILDING_NAMES));
 
 // --- Recipe conversion --------------------------------------------------
 
+type SpecsIo = { itemId: string; perMinute: number };
 type SpecsRecipe = {
   id: string;
   name: string;
@@ -314,59 +226,70 @@ type SpecsRecipe = {
   isAlt: boolean;
   unlockTier: number;
   cycleSeconds: number;
-  inputs: Array<{ itemId: string; perMinute: number }>;
-  outputs: Array<{ itemId: string; perMinute: number }>;
+  inputs: SpecsIo[];
+  outputs: SpecsIo[];
+};
+
+const referencedItems = new Set<string>();
+
+function toFlows(map: Record<string, number> | undefined, cycle: number): SpecsIo[] {
+  return Object.entries(map ?? {}).map(([path, amount]) => {
+    const itemId = classId(path);
+    const item = sc.itemsData[itemId];
+    // Fluid amounts are stored in liters; SPECS rates are m³/min.
+    const perCraft = item && isFluid(item) ? amount / 1000 : amount;
+    referencedItems.add(itemId);
+    return { itemId, perMinute: round2((perCraft * 60) / cycle) };
+  });
+}
+
+// The MAM-ish chains the calculator dump can't tier for us (no
+// schematic→recipe table) and whose building defaults are wrong:
+// Reanimated SAM runs in a T0 Constructor but unlocks alongside the
+// T8 Converter; the Ficsonium pair is Phase-5/Tier-9 nuclear endgame.
+const HAND_TIERS: Record<string, number> = {
+  Recipe_IngotSAM_C: 8,
+  Recipe_SAMFluctuator_C: 8,
+  Recipe_Ficsonium_C: 9,
+  Recipe_FicsoniumFuelRod_C: 9,
 };
 
 const recipes: SpecsRecipe[] = [];
-for (const r of Object.values(sf.recipes)) {
-  if (!r.inMachine) continue;
-  if (!r.producedIn || r.producedIn.length === 0) continue;
-  // Strip the resource-sink "Recipe_ResourceSink_*" stubs and "for-building"
-  // recipes (those are the buildings themselves being placeable).
-  if (r.forBuilding) continue;
-  if (!INCLUDED_BUILDINGS.includes(r.producedIn[0])) continue;
-  if (r.products.length === 0) continue;
-  if (r.time <= 0) continue;
+for (const r of Object.values(sc.recipesData)) {
+  const id = classId(r.className);
+  const producedIn = (r.mProducedIn ?? []).map(classId);
+  const buildingId = producedIn.find((b) => INCLUDED_BUILDINGS.has(b));
+  // Build-gun, workshop and vehicle recipes have no machine entry — out.
+  if (!buildingId) continue;
+  // The dump models extraction as pseudo-recipes (Iron Ore → Iron Ore
+  // in a Miner). SPECS models extraction via node claims, and a
+  // self-producing "recipe" would make raw items look craftable to the
+  // planner — drop the whole extraction family.
+  if (BUILDING_CATEGORIES[buildingId] === "extraction") continue;
+  const cycle = r.mManufactoringDuration ?? 0;
+  if (cycle <= 0) continue;
+  if (!r.produce || Object.keys(r.produce).length === 0) continue;
 
-  const cycle = r.time;
-  const inputs = r.ingredients.map((i) => ({
-    itemId: i.item,
-    perMinute: round2((i.amount * 60) / cycle),
-  }));
-  const outputs = r.products.map((p) => ({
-    itemId: p.item,
-    perMinute: round2((p.amount * 60) / cycle),
-  }));
+  const inputs = toFlows(r.ingredients, cycle);
+  const outputs = toFlows(r.produce, cycle);
 
-  // The producedIn list may include manual workshop equivalents.
-  // Always take the first machine entry that's in INCLUDED_BUILDINGS,
-  // then translate the SF `Desc_*_C` building id to the SPECS `Build_*_C`
-  // convention so downstream code (factory commands, amp slot helper)
-  // doesn't have to know about the dataset's internal naming.
-  const descBuildingId = r.producedIn.find((b) => INCLUDED_BUILDINGS.includes(b)) ?? r.producedIn[0];
-  const buildingId = BUILD_ID_BY_DESC[descBuildingId] ?? descBuildingId;
+  // The calculator dump has no schematic→recipe table, so alternates are
+  // identified by the game's own naming convention.
+  const isAlt = id.startsWith("Recipe_Alternate_") || r.name.startsWith("Alternate:");
 
-  // Alts AND base recipes both look up their tier from the schematic
-  // map — for alts the map keyed by EST_Alternate above, for base
-  // recipes by EST_Milestone / EST_MAM. Falls back to 0 only when no
-  // schematic references the recipe (rare; usually means a freebie
-  // start recipe).
-  const unlockTier = recipeTier.get(r.className) ?? 0;
+  const unlockTier =
+    HAND_TIERS[id] ?? carriedTiers[id] ?? BUILDING_UNLOCK_TIER[buildingId] ?? 0;
 
   recipes.push({
-    id: r.className,
+    id,
     name: r.name,
     buildingId,
-    isAlt: r.alternate,
+    isAlt,
     unlockTier,
     cycleSeconds: cycle,
     inputs,
     outputs,
   });
-
-  inputs.forEach((io) => referencedItems.add(io.itemId));
-  outputs.forEach((io) => referencedItems.add(io.itemId));
 }
 
 // --- Item list ----------------------------------------------------------
@@ -377,34 +300,59 @@ type SpecsItem = {
   category: string;
   stackSize: number;
   isFluid: boolean;
+  color?: string;
 };
+
+// Generator fuels and supplementals are hand-authored below but must
+// resolve to real items.
+const EXTRA_REFERENCED = [
+  "Desc_Wood_C",
+  "Desc_GenericBiomass_C",
+  "Desc_Leaves_C",
+  "Desc_Mycelia_C",
+  "Desc_Coal_C",
+  "Desc_CompactedCoal_C",
+  "Desc_PetroleumCoke_C",
+  "Desc_Water_C",
+  "Desc_LiquidFuel_C",
+  "Desc_LiquidTurboFuel_C",
+  "Desc_LiquidBiofuel_C",
+  "Desc_RocketFuel_C",
+  "Desc_IonizedFuel_C",
+  "Desc_NuclearFuelRod_C",
+  "Desc_PlutoniumFuelRod_C",
+  "Desc_FicsoniumFuelRod_C",
+];
+for (const id of EXTRA_REFERENCED) referencedItems.add(id);
 
 const items: SpecsItem[] = [];
 const itemIds = new Set<string>();
-// Hand-authored entries first so the synth fallback below never picks
-// up a 1.0+ id the upstream dump is missing (Ficsonium Fuel Rod, etc).
-for (const it of HAND_AUTHORED_ITEMS) {
-  items.push(it);
-  itemIds.add(it.id);
-}
-for (const it of Object.values(sf.items)) {
-  if (!referencedItems.has(it.className)) continue;
-  if (itemIds.has(it.className)) continue;
+for (const [shortId, raw] of Object.entries(sc.itemsData)) {
+  // itemsData is keyed by the short class id; the entry's own className
+  // is the full asset path — normalise to the short id everywhere.
+  const it: ScItem = { ...raw, className: shortId };
+  if (!referencedItems.has(shortId)) continue;
+  if (itemIds.has(shortId)) continue;
   const cat = categorise(it);
-  items.push({
-    id: it.className,
+  const entry: SpecsItem = {
+    id: shortId,
     name: it.name,
     category: cat,
-    stackSize: it.stackSize ?? (cat === "fluid" ? 1 : 100),
+    stackSize: it.stack ?? (cat === "fluid" ? 1 : 100),
     isFluid: cat === "fluid",
-  });
-  itemIds.add(it.className);
+  };
+  if (it.color) entry.color = it.color;
+  items.push(entry);
+  itemIds.add(shortId);
 }
-// Sanity: any referenced item we didn't find in SF items map (rare but
-// possible if SF data is out of sync) — synthesise a minimal entry so the
-// validator doesn't reject the recipe that points at it.
+// Sanity: any referenced item missing from the dump's item table gets a
+// minimal synthesised entry so the loader's validator doesn't reject the
+// recipe that points at it. With the 1.2 dump this should be empty — the
+// old hand-authored SAM/Ficsonium fallbacks now come from the data itself.
+const synthesised: string[] = [];
 for (const id of referencedItems) {
   if (itemIds.has(id)) continue;
+  synthesised.push(id);
   items.push({
     id,
     name: id.replace(/^Desc_/, "").replace(/_C$/, "").replace(/_/g, " "),
@@ -417,12 +365,12 @@ for (const id of referencedItems) {
 
 // --- Buildings ----------------------------------------------------------
 
-const buildings = INCLUDED_BUILDINGS.map((descId) => ({
-  id: BUILD_ID_BY_DESC[descId] ?? descId,
-  name: BUILDING_NAMES[descId],
-  category: BUILDING_CATEGORIES[descId],
-  powerMw: POWER_MW_BY_BUILDING[descId] ?? 0,
-  unlockTier: BUILDING_UNLOCK_TIER[descId] ?? 0,
+const buildings = [...INCLUDED_BUILDINGS].map((id) => ({
+  id,
+  name: BUILDING_NAMES[id],
+  category: BUILDING_CATEGORIES[id],
+  powerMw: POWER_MW_BY_BUILDING[id] ?? 0,
+  unlockTier: BUILDING_UNLOCK_TIER[id] ?? 0,
 }));
 
 // --- Hand-authored: milestones, generators, miners, vehicles, belts, pipes
@@ -455,7 +403,7 @@ const pipeTiers = [
 ];
 
 // Generators: hand-authored so fuel rates + supplemental water match the
-// wiki. SF data omits the fuel-per-minute breakdown.
+// wiki. The dump omits the fuel-per-minute breakdown.
 const generators = [
   {
     id: "Build_GeneratorBiomass_C",
@@ -505,9 +453,7 @@ const generators = [
     fuels: [
       { fuelItemId: "Desc_NuclearFuelRod_C", fuelPerMinute: 0.2, supplementalItemId: "Desc_Water_C", supplementalPerMinute: 240 },
       { fuelItemId: "Desc_PlutoniumFuelRod_C", fuelPerMinute: 0.1, supplementalItemId: "Desc_Water_C", supplementalPerMinute: 240 },
-      // Patch 1.0+ rod added on top of the upstream satisfactorytools
-      // dump (still locked to the older ficsmas data). 1 rod / min,
-      // 1000 m³ water — closes the nuclear-waste recycle loop.
+      // 1 rod / min, 1000 m³ water — closes the nuclear-waste recycle loop.
       { fuelItemId: "Desc_FicsoniumFuelRod_C", fuelPerMinute: 1, supplementalItemId: "Desc_Water_C", supplementalPerMinute: 1000, powerMwOverride: 2500 },
     ],
   },
@@ -559,11 +505,31 @@ const transportVehicles = [
   { id: "Build_DroneTransport_C", name: "Drone", kind: "drone", slots: 9, baseItemsPerMinute: 250, batteryPerKm: 1, unlockTier: 7 },
 ];
 
+// --- Validation ---------------------------------------------------------
+
+const fail = (msg: string) => {
+  console.error(`VALIDATION FAILED: ${msg}`);
+  process.exit(1);
+};
+
+if (sc.branch !== "Stable") fail(`expected the Stable branch dump, got ${sc.branch}`);
+if (recipes.length < 211) fail(`recipe count regressed: ${recipes.length} < 211 (the 1.1 set)`);
+const samRecipes = recipes.filter((r) => r.inputs.some((i) => i.itemId === "Desc_SAM_C"));
+if (samRecipes.length === 0) fail("no SAM-consuming recipes — the SAM toggle would stay inert");
+if (!itemIds.has("Desc_FicsiteIngot_C")) fail("Desc_FicsiteIngot_C missing");
+if (!itemIds.has("Desc_SAM_C")) fail("Desc_SAM_C missing");
+for (const r of recipes) {
+  if (!INCLUDED_BUILDINGS.has(r.buildingId)) fail(`recipe ${r.id} uses excluded building ${r.buildingId}`);
+  for (const io of [...r.inputs, ...r.outputs]) {
+    if (!itemIds.has(io.itemId)) fail(`recipe ${r.id} references unknown item ${io.itemId}`);
+  }
+}
+
 // --- Output -------------------------------------------------------------
 
 const output = {
-  version: "1.1",
-  gameVersion: "1.1",
+  version: GAME_VERSION,
+  gameVersion: GAME_VERSION,
   items: items.sort((a, b) => a.name.localeCompare(b.name)),
   buildings: buildings.sort((a, b) => a.name.localeCompare(b.name)),
   recipes: recipes.sort((a, b) => {
@@ -581,8 +547,9 @@ const output = {
 writeFileSync(OUT, JSON.stringify(output, null, 2) + "\n", "utf8");
 
 const altCount = recipes.filter((r) => r.isAlt).length;
+const newTiers = recipes.filter((r) => carriedTiers[r.id] === undefined).length;
 console.log(
-  `wrote ${OUT}\n  items: ${items.length}\n  buildings: ${buildings.length}\n  recipes: ${recipes.length} (${altCount} alts)\n  milestones: ${milestones.length}\n  generators: ${generators.length}\n  miners: ${miners.length}\n  transportVehicles: ${transportVehicles.length}`,
+  `wrote ${OUT}\n  items: ${items.length} (${synthesised.length} synthesised: ${synthesised.join(", ") || "none"})\n  buildings: ${buildings.length}\n  recipes: ${recipes.length} (${altCount} alts, ${samRecipes.length} SAM-consuming, ${newTiers} tiers defaulted to building tier)\n  milestones: ${milestones.length}\n  generators: ${generators.length}\n  miners: ${miners.length}\n  transportVehicles: ${transportVehicles.length}`,
 );
 
 function round2(n: number): number {

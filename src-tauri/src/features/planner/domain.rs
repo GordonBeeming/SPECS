@@ -596,7 +596,12 @@ fn compute_plan_graph_solved(
                 item_id: t.item_id.clone(),
             }));
         }
-        if game_data.recipes_producing(&t.item_id).is_empty() {
+        // Raw resources come from claimed nodes, not plans — even though
+        // 1.2's Converter can technically craft ores, a plan that just
+        // "makes ore" is the claims model wearing a costume.
+        if game_data.is_extracted_resource(&t.item_id)
+            || game_data.recipes_producing(&t.item_id).is_empty()
+        {
             return Err(SolvedComputeError::Structural(PlannerError::NoRecipeForTarget {
                 item_id: t.item_id.clone(),
             }));
@@ -1097,7 +1102,10 @@ pub fn compute_plan_graph_greedy(
         if game_data.item(&t.item_id).is_none() {
             return Err(PlannerError::UnknownTarget { item_id: t.item_id.clone() });
         }
-        if game_data.recipes_producing(&t.item_id).is_empty() {
+        // Raws come from claimed nodes, not plans (see the solved path).
+        if game_data.is_extracted_resource(&t.item_id)
+            || game_data.recipes_producing(&t.item_id).is_empty()
+        {
             return Err(PlannerError::NoRecipeForTarget { item_id: t.item_id.clone() });
         }
     }

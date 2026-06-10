@@ -11,7 +11,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use super::types::{GameDataFile, MapNode};
 
 /// Bundled dataset — compiled into the binary so prod doesn't touch the FS.
-pub const BUNDLED_JSON: &str = include_str!("../../../game-data/v1.1.json");
+pub const BUNDLED_JSON: &str = include_str!("../../../game-data/v1.2.json");
 /// Bundled resource-node catalog — sibling to `BUNDLED_JSON` but split so
 /// the per-node coords don't have to live in the same file as recipes.
 pub const BUNDLED_NODES_JSON: &str = include_str!("../../../game-data/nodes.json");
@@ -231,7 +231,7 @@ mod tests {
     #[test]
     fn validate_rejects_duplicate_item_ids() {
         let bad = r#"{
-          "version":"x","gameVersion":"1.1",
+          "version":"x","gameVersion":"1.2",
           "items":[
             {"id":"i","name":"a","category":"raw","stackSize":1,"isFluid":false},
             {"id":"i","name":"b","category":"raw","stackSize":1,"isFluid":false}
@@ -245,7 +245,7 @@ mod tests {
     #[test]
     fn validate_rejects_recipe_referencing_unknown_item() {
         let bad = r#"{
-          "version":"x","gameVersion":"1.1",
+          "version":"x","gameVersion":"1.2",
           "items":[{"id":"i","name":"i","category":"raw","stackSize":1,"isFluid":false}],
           "buildings":[{"id":"b","name":"b","category":"smelting","powerMw":1,"unlockTier":0}],
           "recipes":[{
@@ -261,7 +261,7 @@ mod tests {
     #[test]
     fn validate_rejects_recipe_referencing_unknown_building() {
         let bad = r#"{
-          "version":"x","gameVersion":"1.1",
+          "version":"x","gameVersion":"1.2",
           "items":[{"id":"i","name":"i","category":"raw","stackSize":1,"isFluid":false}],
           "buildings":[],
           "recipes":[{
@@ -277,7 +277,7 @@ mod tests {
     #[test]
     fn validate_rejects_recipe_with_zero_per_minute() {
         let bad = r#"{
-          "version":"x","gameVersion":"1.1",
+          "version":"x","gameVersion":"1.2",
           "items":[{"id":"i","name":"i","category":"raw","stackSize":1,"isFluid":false}],
           "buildings":[{"id":"b","name":"b","category":"smelting","powerMw":1,"unlockTier":0}],
           "recipes":[{
@@ -293,7 +293,7 @@ mod tests {
     #[test]
     fn validate_rejects_recipe_with_no_outputs() {
         let bad = r#"{
-          "version":"x","gameVersion":"1.1",
+          "version":"x","gameVersion":"1.2",
           "items":[{"id":"i","name":"i","category":"raw","stackSize":1,"isFluid":false}],
           "buildings":[{"id":"b","name":"b","category":"smelting","powerMw":1,"unlockTier":0}],
           "recipes":[{
@@ -309,7 +309,7 @@ mod tests {
     #[test]
     fn validate_rejects_duplicate_belt_marks() {
         let bad = r#"{
-          "version":"x","gameVersion":"1.1",
+          "version":"x","gameVersion":"1.2",
           "items":[],"buildings":[],"recipes":[],"milestones":[],
           "beltTiers":[
             {"mark":1,"itemsPerMinute":60,"unlockTier":0},
