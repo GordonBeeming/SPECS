@@ -907,6 +907,20 @@ export function MapView() {
                     const { xPct, yPct } = worldToPct(g.worldX, g.worldY);
                     const pinX = xPct * MAP_W;
                     const pinY = yPct * MAP_H;
+                    const toggleLock = () => {
+                      setWaterGroup.mutate({
+                        id: g.id,
+                        worldX: g.worldX,
+                        worldY: g.worldY,
+                        count: g.count,
+                        clockPct: g.clockPct,
+                        count2: g.count2 ?? null,
+                        clock2Pct: g.clock2Pct ?? null,
+                        factoryId: g.factoryId ?? null,
+                        notes: g.notes ?? null,
+                        locked: !g.locked,
+                      });
+                    };
                     return (
                       <WaterExtractorPin
                         key={g.id}
@@ -914,10 +928,11 @@ export function MapView() {
                         x={pinX}
                         y={pinY}
                         selected={selectedWaterGroupId === g.id}
-                        onClick={() => {
+                        onToggleLock={toggleLock}
+                        onOpenEditor={() => {
                           setSelectedNodeId(null);
                           setSelectedFactoryId(null);
-                          setSelectedWaterGroupId(g.id === selectedWaterGroupId ? null : g.id);
+                          setSelectedWaterGroupId(g.id);
                         }}
                         onStartBindDrag={(e) => {
                           // Same gesture as node→factory binding: under
@@ -944,11 +959,9 @@ export function MapView() {
                             window.removeEventListener("mousemove", onMove);
                             window.removeEventListener("mouseup", onUp);
                             if (!armed) {
-                              setSelectedNodeId(null);
-                              setSelectedFactoryId(null);
-                              setSelectedWaterGroupId(
-                                g.id === selectedWaterGroupId ? null : g.id,
-                              );
+                              // Plain click on a locked pin — handled by
+                              // the pin's debounced toggle (so a double-
+                              // click can cancel it); nothing to do here.
                               return;
                             }
                             const target = linkHoverFactoryIdRef.current;
@@ -1913,7 +1926,14 @@ function NodePopover({ node, loadout, factories, onClaim, onRelease, onClose }: 
           <label className="block">
             <span className="text-fg-muted">Clock</span>
             <div className="mt-1.5">
-              <ClockInput value={clockPct} onChange={setClockPct} ariaLabel="Node clock percent" />
+              {/* No slider here — the popover column is too narrow for
+                  it to be anything but decoration. */}
+              <ClockInput
+                value={clockPct}
+                onChange={setClockPct}
+                slider={false}
+                ariaLabel="Node clock percent"
+              />
             </div>
           </label>
         </div>

@@ -15,7 +15,10 @@ export interface WaterExtractorPinProps {
   x: number;
   y: number;
   selected: boolean;
-  onClick: () => void;
+  /** Single click — flips the lock so drag-to-bind is one tap away. */
+  onToggleLock: () => void;
+  /** Double click — opens the editor popover. */
+  onOpenEditor: () => void;
   onDragEnd: (pt: { x: number; y: number }) => void;
   /** Locked groups don't move — dragging starts the bind-to-factory
       gesture instead (handled by the map, same as nodes). */
@@ -23,20 +26,34 @@ export interface WaterExtractorPinProps {
   currentScale: () => number;
 }
 
-/** Droplet marker for a group of water extractors. Unlocked: drag to
- * move, click to edit. Locked: drag binds to a factory (node-like). */
+/** Droplet marker for a group of water extractors. Click toggles the
+ * lock, double-click opens the editor, hold + drag moves it (or binds
+ * it to a factory when locked). */
 export function WaterExtractorPin({
   group,
   x,
   y,
   selected,
-  onClick,
+  onToggleLock,
+  onOpenEditor,
   onDragEnd,
   onStartBindDrag,
   currentScale,
 }: WaterExtractorPinProps) {
   const startRef = useRef<{ clientX: number; clientY: number; moved: boolean } | null>(null);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
+  // The lock toggle waits out the double-click window — firing it per
+  // click would toggle twice off the same stale state (both clicks
+  // compute !locked from the same render) and end up flipped instead
+  // of net-zero.
+  const clickTimerRef = useRef<number | null>(null);
+  const scheduleToggleLock = () => {
+    if (clickTimerRef.current) window.clearTimeout(clickTimerRef.current);
+    clickTimerRef.current = window.setTimeout(() => {
+      clickTimerRef.current = null;
+      onToggleLock();
+    }, 230);
+  };
   const totalCount = group.count + (group.count2 ?? 0);
 
   return (
@@ -46,20 +63,43 @@ export function WaterExtractorPin({
         selected ? "border-accent bg-accent/25" : "border-accent/70 bg-bg-raised/95 hover:bg-bg-raised"
       }`}
       style={{ left: `${hoverPos?.x ?? x}px`, top: `${hoverPos?.y ?? y}px` }}
-      title={`${totalCount}× Water Extractor · ${group.outputIpm.toFixed(0)} m³/min — ${
-        group.locked ? "click to edit, drag onto a factory to bind" : "click to edit, drag to move"
+      title={`${totalCount}× Water Extractor · ${group.outputIpm.toFixed(0)} m³/min — click to ${
+        group.locked ? "unlock" : "lock"
+      } · double-click to edit · hold and drag to ${
+        group.locked ? "bind to a factory" : "move"
       }`}
       onClick={(e) => {
-        // Selection happens in the mouseup handler — stop the synthetic
-        // click from bubbling to the map container, which would clear
-        // the selection it just made (same trick as node markers).
+        // Lock toggling happens in the mouseup handler — stop the
+        // synthetic click from bubbling to the map container, which
+        // would clear any selection (same trick as node markers).
         e.stopPropagation();
+      }}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        // Cancel the pending single-click lock toggle — the user
+        // wanted the editor, not a lock change.
+        if (clickTimerRef.current) {
+          window.clearTimeout(clickTimerRef.current);
+          clickTimerRef.current = null;
+        }
+        onOpenEditor();
       }}
       onMouseDown={(e) => {
         e.preventDefault();
         e.stopPropagation();
         if (group.locked) {
-          // Locked in place — the drag becomes "wire me to a factory".
+          // Locked in place — the drag becomes "wire me to a factory";
+          // a plain click (under the threshold) unlocks instead. The
+          // map owns the drag; the pin owns the debounced click.
+          const sx = e.clientX;
+          const sy = e.clientY;
+          const onUp = (ev: MouseEvent) => {
+            window.removeEventListener("mouseup", onUp);
+            if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < CLICK_THRESHOLD_PX) {
+              scheduleToggleLock();
+            }
+          };
+          window.addEventListener("mouseup", onUp);
           onStartBindDrag(e);
           return;
         }
@@ -83,7 +123,7 @@ export function WaterExtractorPin({
           if (!s) return;
           if (!s.moved) {
             setHoverPos(null);
-            onClick();
+            scheduleToggleLock();
             return;
           }
           const scale = currentScale();

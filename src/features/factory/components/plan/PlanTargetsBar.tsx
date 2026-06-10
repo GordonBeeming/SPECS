@@ -50,7 +50,11 @@ export function PlanTargetsBar({
           </span>
           <input
             type="number"
-            min={0.1}
+            // min is the stepping base for native spinners — 0.1 made
+            // a down-arrow from 3 land on 2.1. With base 0 the arrows
+            // snap to whole numbers (3 → 2, 2.5 → 2); decimals are
+            // still typeable, and onChange rejects anything ≤ 0.
+            min={0}
             step={1}
             value={t.ipm}
             aria-label={`Rate for ${itemNames.get(t.itemId) ?? t.itemId}`}
