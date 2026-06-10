@@ -346,7 +346,10 @@ the next dataset refresh.
 
 Edges carry the item name + ipm as their label; items with several
 producers emit a proportional edge from each (local lines, imports,
-byproduct flows alike). Node
+byproduct flows alike). A byproduct feeding back into the chain is a
+**reuse** line: amber stroke and a "(reuse)" label suffix, because
+piping those wrong is exactly how a line stalls — they must not read
+like ordinary flows. Node
 drags persist to `factory_plan_layout` (sparse; missing row = dagre
 position). **The camera never moves on its own** — no fit/zoom/pan
 on click or recompute; `Auto-arrange` is the explicit button that

@@ -91,6 +91,8 @@ export interface PlanEdge {
   itemId: string;
   itemName: string;
   ipm: number;
+  /** Byproduct fed back into the chain — rendered distinctly. */
+  isReuse: boolean;
 }
 
 export type PlanWarning =

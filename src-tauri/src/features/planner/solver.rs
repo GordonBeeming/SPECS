@@ -106,7 +106,7 @@ pub fn rarity_weights(game_data: &GameData) -> HashMap<String, f64> {
 /// Fixpoint of "what can this playthrough craft" from the extracted
 /// raws (optionally without SAM). Drives both the SAM candidate filter
 /// and the "this target NEEDS SAM" auto-force.
-fn producible_items(
+pub(crate) fn producible_items(
     game_data: &GameData,
     unlocked_alts: &HashSet<String>,
     include_sam: bool,
@@ -140,23 +140,29 @@ fn producible_items(
 
 /// True when the item cannot be made at all without SAM — the UI then
 /// forces the per-plan toggle on (and disables it) for that plan.
-pub fn requires_sam(
+/// `producible_without_sam` comes from one `producible_items(.., false)`
+/// call so checking many targets doesn't repeat the fixpoint.
+pub(crate) fn requires_sam_with(
+    producible_without_sam: &HashSet<String>,
     item_id: &str,
     game_data: &GameData,
-    unlocked_alts: &HashSet<String>,
 ) -> bool {
     if game_data.is_extracted_resource(item_id) {
         return item_id == SAM_ITEM_ID;
     }
-    !producible_items(game_data, unlocked_alts, false).contains(item_id)
+    !producible_without_sam.contains(item_id)
 }
 
-fn candidates<'a>(game_data: &'a GameData, input: &SolveInput) -> Vec<&'a Recipe> {
-    let producible = if input.include_sam {
-        None
-    } else {
-        Some(producible_items(game_data, input.unlocked_alts, false))
-    };
+
+/// `reachable` is the producible fixpoint for the CURRENT SAM setting,
+/// computed once by `solve` — with SAM off it doubles as the candidate
+/// filter, so the fixpoint never runs twice per solve.
+fn candidates<'a>(
+    game_data: &'a GameData,
+    input: &SolveInput,
+    reachable: &HashSet<String>,
+) -> Vec<&'a Recipe> {
+    let producible = if input.include_sam { None } else { Some(reachable) };
     game_data
         .recipes()
         .iter()
@@ -197,11 +203,10 @@ pub fn solve(
     budget_ms: u64,
 ) -> Result<PlanSolution, SolveError> {
     let started = Instant::now();
-    let recipes = candidates(game_data, input);
-
     // Sanity: every demanded item must be reachable at all, otherwise
     // report which one (the UI shows "needs SAM" / "no recipe").
     let reachable = producible_items(game_data, input.unlocked_alts, input.include_sam);
+    let recipes = candidates(game_data, input, &reachable);
     for item in input.demands.keys() {
         let exogenous = input.cut_items.contains(item)
             || input.external_supply.contains_key(item);
@@ -439,8 +444,9 @@ mod tests {
         // product is Unreachable rather than silently mis-planned.
         let gd = gd();
         let alts = HashSet::new();
-        assert!(!requires_sam("Desc_IronPlate_C", &gd, &alts));
-        assert!(requires_sam("Desc_FicsiteIngot_C", &gd, &alts));
+        let producible = producible_items(&gd, &alts, false);
+        assert!(!requires_sam_with(&producible, "Desc_IronPlate_C", &gd));
+        assert!(requires_sam_with(&producible, "Desc_FicsiteIngot_C", &gd));
 
         let mut demands = HashMap::new();
         demands.insert("Desc_FicsiteIngot_C".to_string(), 10.0);

@@ -651,10 +651,12 @@ fn compute_plan_graph_solved(
     }
 
     // A SAM-locked target forces the toggle on for this compute; the
-    // UI renders the switch on + disabled.
+    // UI renders the switch on + disabled. One fixpoint covers every
+    // target.
+    let producible_without_sam = solver::producible_items(game_data, unlocked_alts, false);
     let sam_forced = targets
         .iter()
-        .any(|t| solver::requires_sam(&t.item_id, game_data, unlocked_alts));
+        .any(|t| solver::requires_sam_with(&producible_without_sam, &t.item_id, game_data));
     let include_sam = options.include_sam || sam_forced;
 
     let weights = solver::rarity_weights(game_data);
@@ -771,7 +773,16 @@ fn assemble_solved_graph(
     let mut stages: Vec<SolvedStage> = Vec::new();
     for (recipe_id, runs) in &sol.recipes {
         let Some(recipe) = game_data.recipe(recipe_id) else { continue };
-        let Some(primary) = recipe.outputs.first() else { continue };
+        // The node's face is normally the recipe's first output, but a
+        // demanded item keeps its identity even as a secondary output —
+        // Polymer Resin made via the Fuel recipe is still the Resin
+        // product, badge and all.
+        let primary = recipe
+            .outputs
+            .iter()
+            .find(|o| target_ipms.contains_key(o.item_id.as_str()))
+            .or_else(|| recipe.outputs.first());
+        let Some(primary) = primary else { continue };
         let demand_ipm = primary.per_minute as f64 * runs;
         let stage = build_stage(&primary.item_id, demand_ipm as f32, recipe, game_data);
         let base_key = recipe_node_key(&primary.item_id);
@@ -846,6 +857,10 @@ fn assemble_solved_graph(
     // Edges: each consumer draws from every producer proportionally to
     // that producer's share of the item — same convention the greedy
     // path used for its local/import splits.
+    let primary_by_key: HashMap<&str, &str> = stages
+        .iter()
+        .map(|s| (s.node_key.as_str(), s.primary_item.as_str()))
+        .collect();
     let mut edges: Vec<PlanEdge> = Vec::new();
     let mut item_ids: Vec<&String> = consumers.keys().collect();
     item_ids.sort();
@@ -862,6 +877,13 @@ fn assemble_solved_graph(
                 if ipm <= 1e-3 || from_node == to_node {
                     continue;
                 }
+                // A byproduct flowing back into the chain is a reuse
+                // line; surplus heading to the sink is just surplus.
+                let is_reuse = primary_by_key
+                    .get(from_node.as_str())
+                    .map(|primary| *primary != item.as_str())
+                    .unwrap_or(false)
+                    && !to_node.starts_with("byproduct:");
                 edges.push(PlanEdge {
                     id: format!("{from_node}->{to_node}:{item}"),
                     from_node: from_node.clone(),
@@ -869,6 +891,7 @@ fn assemble_solved_graph(
                     item_id: item.clone(),
                     item_name: item_name(item, game_data),
                     ipm,
+                    is_reuse,
                 });
             }
         }
@@ -1263,6 +1286,7 @@ pub fn compute_plan_graph_greedy(
                         item_id: io.item_id.clone(),
                         item_name: io.item_name.clone(),
                         ipm: local_ipm,
+                        is_reuse: false,
                     });
                 }
                 if import_ipm > 1e-3 {
@@ -1274,6 +1298,7 @@ pub fn compute_plan_graph_greedy(
                         item_id: io.item_id.clone(),
                         item_name: io.item_name.clone(),
                         ipm: import_ipm,
+                        is_reuse: false,
                     });
                 }
                 continue;
@@ -1292,6 +1317,7 @@ pub fn compute_plan_graph_greedy(
                 item_id: io.item_id.clone(),
                 item_name: io.item_name.clone(),
                 ipm: io.per_minute,
+                is_reuse: false,
             });
         }
 
@@ -1309,6 +1335,7 @@ pub fn compute_plan_graph_greedy(
                 item_id: io.item_id.clone(),
                 item_name: io.item_name.clone(),
                 ipm: io.per_minute,
+                is_reuse: false,
             });
             if let Some(entry) = byproducts.iter_mut().find(|(id, _)| id == &io.item_id) {
                 entry.1 += io.per_minute;
@@ -1430,9 +1457,13 @@ pub fn compute_plan_graph_greedy(
         total_power_mw,
         raw_demand,
         warnings,
-        sam_forced: targets
-            .iter()
-            .any(|t| solver::requires_sam(&t.item_id, game_data, unlocked_alts)),
+        sam_forced: {
+            let producible_without_sam =
+                solver::producible_items(game_data, unlocked_alts, false);
+            targets.iter().any(|t| {
+                solver::requires_sam_with(&producible_without_sam, &t.item_id, game_data)
+            })
+        },
     })
 }
 
@@ -1859,6 +1890,72 @@ mod tests {
         assert!((import.1[0].resolved_ipm - 30.0).abs() < 0.5, "capacity-limited allocation");
         assert!((import.2 - 10.0).abs() < 0.5, "gap surfaces as unassigned");
         assert!(graph.warnings.iter().any(|w| matches!(w, PlanWarning::ImportShort { .. })));
+    }
+
+    #[test]
+    fn secondary_output_target_keeps_its_identity() {
+        // Polymer Resin (no alts) only comes out of refineries as a
+        // secondary output — the node must still present as the Resin
+        // product, not as "Fuel".
+        let gd = GameData::from_bundled().unwrap();
+        let graph = compute_plan_graph(
+            "fac-self",
+            &[target("Desc_PolymerResin_C", 60.0)],
+            &unlocked(),
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            &HashMap::new(),
+            &PlanComputeOptions::default(),
+            &gd,
+        )
+        .unwrap();
+        let resin = graph
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                PlanNode::Recipe { item_id, is_target, target_ipm, .. }
+                    if item_id == "Desc_PolymerResin_C" =>
+                    Some((*is_target, *target_ipm)),
+                _ => None,
+            })
+            .expect("resin keeps its identity as a node");
+        assert!(resin.0, "resin node carries the Product badge");
+        assert_eq!(resin.1, Some(60.0));
+    }
+
+    #[test]
+    fn byproduct_feeds_are_flagged_as_reuse_edges() {
+        // Aluminum Ingot consumes the alumina refinery's silica
+        // byproduct — that edge is a reuse line; the primary flows
+        // (alumina → scrap, scrap → ingot) are not.
+        let gd = GameData::from_bundled().unwrap();
+        let graph = compute_plan_graph(
+            "fac-self",
+            &[target("Desc_AluminumIngot_C", 60.0)],
+            &unlocked(),
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            &HashMap::new(),
+            &PlanComputeOptions::default(),
+            &gd,
+        )
+        .unwrap();
+        let reuse: Vec<&PlanEdge> = graph.edges.iter().filter(|e| e.is_reuse).collect();
+        assert!(
+            reuse.iter().any(|e| e.item_id == "Desc_Silica_C"),
+            "silica byproduct feed must be a reuse edge: {:?}",
+            reuse.iter().map(|e| &e.id).collect::<Vec<_>>()
+        );
+        assert!(
+            graph
+                .edges
+                .iter()
+                .filter(|e| e.item_id == "Desc_AluminumScrap_C")
+                .all(|e| !e.is_reuse),
+            "primary scrap flow must not be flagged"
+        );
     }
 
     #[test]

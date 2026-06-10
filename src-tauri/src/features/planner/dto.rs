@@ -182,6 +182,11 @@ pub struct PlanEdge {
     pub item_id: String,
     pub item_name: String,
     pub ipm: f32,
+    /// A byproduct being fed back into the chain (item isn't the
+    /// producing node's primary output). Rendered distinctly — piping
+    /// these wrong is how lines stall.
+    #[serde(default)]
+    pub is_reuse: bool,
 }
 
 /// Non-blocking findings. The plan always computes and always saves;
