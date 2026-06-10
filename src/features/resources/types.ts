@@ -87,6 +87,8 @@ export interface WaterExtractorGroup {
   clock2Pct?: number | null;
   factoryId?: string | null;
   notes?: string | null;
+  /** Locked groups bind-on-drag instead of moving (node-like). */
+  locked: boolean;
   /** Computed server-side: Σ banks of count × 120 × clock m³/min. */
   outputIpm: number;
   createdAt: string;
@@ -104,4 +106,5 @@ export interface SetWaterExtractorGroupInput {
   clock2Pct?: number | null;
   factoryId?: string | null;
   notes?: string | null;
+  locked?: boolean;
 }

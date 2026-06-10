@@ -102,6 +102,7 @@ const STORAGE = {
   hiddenResources: "specs:map:hiddenResources",
   hiddenPurities: "specs:map:hiddenPurities",
   showAllLinks: "specs:map:showAllLinks",
+  showWater: "specs:map:showWaterExtractors",
   transform: "specs:map:transform",
 } as const;
 
@@ -253,6 +254,16 @@ export function MapView() {
   const [showAllLinks, setShowAllLinks] = useState(() =>
     readBool(STORAGE.showAllLinks, true),
   );
+  // Bound water groups hide unless their factory is selected — same
+  // rule as claimed nodes. This toggle force-shows them all.
+  const [showWaterExtractors, setShowWaterExtractors] = useState(() =>
+    readBool(STORAGE.showWater, false),
+  );
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE.showWater, showWaterExtractors ? "1" : "0");
+    } catch {}
+  }, [showWaterExtractors]);
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE.showAllLinks, showAllLinks ? "1" : "0");
@@ -265,6 +276,12 @@ export function MapView() {
     screenY: number;
     mapX: number;
     mapY: number;
+  } | null>(null);
+  // Locked water group being dragged onto a factory (node-like bind).
+  const [linkingWater, setLinkingWater] = useState<{
+    groupId: string;
+    fromX: number;
+    fromY: number;
   } | null>(null);
   // Drag-to-source: an unsourced input being dragged from the factory
   // popover towards its future source factory. Ghost line anchors at
@@ -324,6 +341,18 @@ export function MapView() {
     if (!selectedFactoryId) return [];
     return (waterGroups.data ?? []).filter((g) => g.factoryId === selectedFactoryId);
   }, [waterGroups.data, selectedFactoryId]);
+
+  // Same visibility rule as nodes: unbound groups always show; bound
+  // groups only for their selected factory (or with the toggle on).
+  const visibleWaterGroups = useMemo(() => {
+    return (waterGroups.data ?? []).filter(
+      (g) =>
+        showWaterExtractors ||
+        !g.factoryId ||
+        g.factoryId === selectedFactoryId ||
+        g.id === selectedWaterGroupId,
+    );
+  }, [waterGroups.data, showWaterExtractors, selectedFactoryId, selectedWaterGroupId]);
 
   // Unsourced inputs per factory → pin badge counts + popover rows.
   const unsourcedByFactory = useMemo(() => {
@@ -445,6 +474,14 @@ export function MapView() {
                 onChange={(e) => setShowAllLinks(e.target.checked)}
               />
               Show factory links
+            </label>
+            <label className="flex items-center gap-2 text-xs text-fg-muted">
+              <input
+                type="checkbox"
+                checked={showWaterExtractors}
+                onChange={(e) => setShowWaterExtractors(e.target.checked)}
+              />
+              Show water extractors
             </label>
             <Button
               onClick={() => {
@@ -796,6 +833,22 @@ export function MapView() {
                       boundNodes={boundNodes}
                       boundWaterGroups={boundWaterGroups}
                       allFactories={factories.data ?? []}
+                      onDetachWaterGroup={(group) => {
+                        // Back to unbound — the marker survives, just
+                        // not wired into this factory anymore.
+                        setWaterGroup.mutate({
+                          id: group.id,
+                          worldX: group.worldX,
+                          worldY: group.worldY,
+                          count: group.count,
+                          clockPct: group.clockPct,
+                          count2: group.count2 ?? null,
+                          clock2Pct: group.clock2Pct ?? null,
+                          factoryId: null,
+                          notes: group.notes ?? null,
+                          locked: group.locked,
+                        });
+                      }}
                       onDetachNode={(nodeId) => {
                         // Full release: the node goes back to
                         // "unclaimed" state so it reappears in the
@@ -838,7 +891,8 @@ export function MapView() {
                           setSelectedFactoryId(f.id);
                         }}
                         onLinkHoverEnter={() => {
-                          if (linkingNode || linkingImport) setLinkHoverFactoryId(f.id);
+                          if (linkingNode || linkingImport || linkingWater)
+                            setLinkHoverFactoryId(f.id);
                         }}
                         onLinkHoverLeave={() => {
                           if (linkHoverFactoryId === f.id)
@@ -849,19 +903,75 @@ export function MapView() {
                     );
                   })}
 
-                  {(waterGroups.data ?? []).map((g) => {
+                  {visibleWaterGroups.map((g) => {
                     const { xPct, yPct } = worldToPct(g.worldX, g.worldY);
+                    const pinX = xPct * MAP_W;
+                    const pinY = yPct * MAP_H;
                     return (
                       <WaterExtractorPin
                         key={g.id}
                         group={g}
-                        x={xPct * MAP_W}
-                        y={yPct * MAP_H}
+                        x={pinX}
+                        y={pinY}
                         selected={selectedWaterGroupId === g.id}
                         onClick={() => {
                           setSelectedNodeId(null);
                           setSelectedFactoryId(null);
                           setSelectedWaterGroupId(g.id === selectedWaterGroupId ? null : g.id);
+                        }}
+                        onStartBindDrag={(e) => {
+                          // Same gesture as node→factory binding: under
+                          // the click threshold it's a click (open the
+                          // popover); past it, a ghost line follows the
+                          // cursor and dropping on a pin binds.
+                          const startX = e.clientX;
+                          const startY = e.clientY;
+                          let armed = false;
+                          const onMove = (ev: MouseEvent) => {
+                            if (
+                              !armed &&
+                              Math.hypot(ev.clientX - startX, ev.clientY - startY) >=
+                                CLICK_THRESHOLD_PX
+                            ) {
+                              armed = true;
+                              setLinkingWater({ groupId: g.id, fromX: pinX, fromY: pinY });
+                            }
+                            if (!armed) return;
+                            const map = clientToMap(ev.clientX, ev.clientY);
+                            if (map) setLinkCursor(map);
+                          };
+                          const onUp = () => {
+                            window.removeEventListener("mousemove", onMove);
+                            window.removeEventListener("mouseup", onUp);
+                            if (!armed) {
+                              setSelectedNodeId(null);
+                              setSelectedFactoryId(null);
+                              setSelectedWaterGroupId(
+                                g.id === selectedWaterGroupId ? null : g.id,
+                              );
+                              return;
+                            }
+                            const target = linkHoverFactoryIdRef.current;
+                            setLinkingWater(null);
+                            setLinkCursor(null);
+                            setLinkHoverFactoryId(null);
+                            if (target) {
+                              setWaterGroup.mutate({
+                                id: g.id,
+                                worldX: g.worldX,
+                                worldY: g.worldY,
+                                count: g.count,
+                                clockPct: g.clockPct,
+                                count2: g.count2 ?? null,
+                                clock2Pct: g.clock2Pct ?? null,
+                                factoryId: target,
+                                notes: g.notes ?? null,
+                                locked: g.locked,
+                              });
+                            }
+                          };
+                          window.addEventListener("mousemove", onMove);
+                          window.addEventListener("mouseup", onUp);
                         }}
                         onDragEnd={(pt) => {
                           const { worldX, worldY } = pctToWorld(pt.x / MAP_W, pt.y / MAP_H);
@@ -875,6 +985,7 @@ export function MapView() {
                             clock2Pct: g.clock2Pct ?? null,
                             factoryId: g.factoryId ?? null,
                             notes: g.notes ?? null,
+                            locked: g.locked,
                           });
                         }}
                         currentScale={() => wrapRef.current?.state.scale ?? 1}
@@ -892,7 +1003,7 @@ export function MapView() {
                       factory, or an unsourced input onto its future
                       source). Pointer-events disabled so it doesn't
                       intercept the drop hit-test. */}
-                  {(linkingNode || linkingImport) && linkCursor && (
+                  {(linkingNode || linkingImport || linkingWater) && linkCursor && (
                     <svg
                       className="pointer-events-none absolute inset-0"
                       width={MAP_W}
@@ -900,8 +1011,8 @@ export function MapView() {
                       viewBox={`0 0 ${MAP_W} ${MAP_H}`}
                     >
                       <line
-                        x1={(linkingNode ?? linkingImport)!.fromX}
-                        y1={(linkingNode ?? linkingImport)!.fromY}
+                        x1={(linkingNode ?? linkingImport ?? linkingWater)!.fromX}
+                        y1={(linkingNode ?? linkingImport ?? linkingWater)!.fromY}
                         x2={linkCursor.x}
                         y2={linkCursor.y}
                         stroke={linkHoverFactoryId ? "var(--color-success)" : "var(--color-primary)"}
@@ -980,10 +1091,25 @@ export function MapView() {
                       id: selectedWaterGroup.id,
                       worldX: selectedWaterGroup.worldX,
                       worldY: selectedWaterGroup.worldY,
+                      locked: selectedWaterGroup.locked,
                       ...patch,
                     },
                     { onSuccess: () => setSelectedWaterGroupId(null) },
                   );
+                }}
+                onToggleLock={() => {
+                  setWaterGroup.mutate({
+                    id: selectedWaterGroup.id,
+                    worldX: selectedWaterGroup.worldX,
+                    worldY: selectedWaterGroup.worldY,
+                    count: selectedWaterGroup.count,
+                    clockPct: selectedWaterGroup.clockPct,
+                    count2: selectedWaterGroup.count2 ?? null,
+                    clock2Pct: selectedWaterGroup.clock2Pct ?? null,
+                    factoryId: selectedWaterGroup.factoryId ?? null,
+                    notes: selectedWaterGroup.notes ?? null,
+                    locked: !selectedWaterGroup.locked,
+                  });
                 }}
                 onDelete={() => {
                   deleteWaterGroup.mutate(selectedWaterGroup.id, {
@@ -1125,6 +1251,7 @@ interface InputLinesLayerProps {
   boundWaterGroups: WaterExtractorGroup[];
   allFactories: Array<{ id: string; name: string; worldX: number; worldY: number }>;
   onDetachNode: (nodeId: string, prev: ResourceNodeRow) => void;
+  onDetachWaterGroup: (group: WaterExtractorGroup) => void;
 }
 
 /**
@@ -1140,6 +1267,7 @@ function InputLinesLayer({
   boundWaterGroups,
   allFactories,
   onDetachNode,
+  onDetachWaterGroup,
 }: InputLinesLayerProps) {
   const target = allFactories.find((f) => f.id === selectedFactoryId);
   if (!target) return null;
@@ -1209,6 +1337,27 @@ function InputLinesLayer({
       {/* Detach buttons sit on top of the SVG (which is
           pointer-events-none) so each one is independently clickable
           without blocking node/factory hits underneath. */}
+      {boundWaterGroups.map((g) => {
+        const p = worldToPct(g.worldX, g.worldY);
+        return (
+          <button
+            key={`detach-w-${g.id}`}
+            type="button"
+            className="specs-map-pin absolute -translate-x-1/2 -translate-y-1/2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-bg-raised text-fg-muted shadow-sm hover:bg-danger/20 hover:text-danger"
+            style={{
+              left: `${p.xPct * MAP_W + 16}px`,
+              top: `${p.yPct * MAP_H - 16}px`,
+            }}
+            title="Detach these water extractors from this factory"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDetachWaterGroup(g);
+            }}
+          >
+            <Unlink className="h-3 w-3" />
+          </button>
+        );
+      })}
       {boundNodes.map((n) => {
         const p = worldToPct(n.x, n.y);
         return (
@@ -1454,12 +1603,19 @@ function FactoryPopover({
       bound: number;
       missing: number;
     }>;
+    // A deficit covered by an incoming logistics link is supplied,
+    // not missing — test 45 importing its Copper Ingot from another
+    // factory must not roll that demand back to "ore missing".
     const grossDeficits = ledger.flows
       .filter((flow) => flow.netPerMinute < -0.001)
       .map((flow) => ({
         itemId: flow.itemId,
-        ratePerMin: -flow.netPerMinute,
-      }));
+        ratePerMin: Math.max(
+          0,
+          -flow.netPerMinute - (flow.fromLinksPerMinute ?? 0),
+        ),
+      }))
+      .filter((d) => d.ratePerMin > 0.001);
     const raw = grossDeficits.length === 0
       ? {}
       : traceRawDemand(grossDeficits, recipes.data);

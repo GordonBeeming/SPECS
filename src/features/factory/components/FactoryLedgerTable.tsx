@@ -23,6 +23,7 @@ export function FactoryLedgerTable({ ledger, itemNames }: FactoryLedgerTableProp
             <th className="px-3 py-2 text-right font-medium">Produced</th>
             <th className="px-3 py-2 text-right font-medium">Consumed</th>
             <th className="px-3 py-2 text-right font-medium">From nodes</th>
+            <th className="px-3 py-2 text-right font-medium">From links</th>
             <th className="px-3 py-2 text-right font-medium">Net</th>
           </tr>
         </thead>
@@ -30,7 +31,10 @@ export function FactoryLedgerTable({ ledger, itemNames }: FactoryLedgerTableProp
           {ledger.flows.map((flow) => {
             const name = flow.itemName || itemNames.get(flow.itemId) || flow.itemId;
             const surplus = flow.netPerMinute > 0.001;
-            const deficit = flow.netPerMinute < -0.001;
+            // Incoming links cover machine deficits — only what's left
+            // after them paints red.
+            const coveredNet = flow.netPerMinute + (flow.fromLinksPerMinute ?? 0);
+            const deficit = coveredNet < -0.001;
             return (
               <tr key={flow.itemId} className="hover:bg-border/30">
                 <td className="px-3 py-2">
@@ -57,10 +61,27 @@ export function FactoryLedgerTable({ ledger, itemNames }: FactoryLedgerTableProp
                     "—"
                   )}
                 </td>
+                <td className="px-3 py-2 text-right tabular-nums">
+                  {flow.fromLinksPerMinute && flow.fromLinksPerMinute > 0 ? (
+                    <span
+                      className="inline-flex items-center rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent"
+                      title="Items per minute arriving via logistics links from other factories"
+                    >
+                      {flow.fromLinksPerMinute.toFixed(1)}
+                    </span>
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 <td
                   className={`px-3 py-2 text-right tabular-nums font-medium ${
                     surplus ? "text-success" : deficit ? "text-danger" : "text-fg-muted"
                   }`}
+                  title={
+                    flow.fromLinksPerMinute && flow.netPerMinute < -0.001
+                      ? `${flow.netPerMinute.toFixed(1)} from machines, ${flow.fromLinksPerMinute.toFixed(1)} arriving via links`
+                      : undefined
+                  }
                 >
                   {flow.netPerMinute > 0 ? "+" : ""}
                   {flow.netPerMinute.toFixed(1)}

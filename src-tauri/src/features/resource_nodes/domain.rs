@@ -490,6 +490,7 @@ mod tests {
             clock2_pct: bank2.map(|b| b.1),
             factory_id: factory.map(str::to_string),
             notes: None,
+            locked: false,
             created_at: "n".into(),
             updated_at: "n".into(),
         }

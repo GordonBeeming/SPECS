@@ -194,6 +194,7 @@ fn group_to_dto(row: repo::WaterGroupRow) -> WaterExtractorGroup {
         clock2_pct: row.clock2_pct,
         factory_id: row.factory_id,
         notes: row.notes,
+        locked: row.locked,
         output_ipm,
         created_at: row.created_at,
         updated_at: row.updated_at,
@@ -262,6 +263,7 @@ pub fn set_water_extractor_group(
             input.clock2_pct,
             trimmed_factory.as_deref(),
             trimmed_notes.as_deref(),
+            input.locked,
             &now,
         )
         .map_err(AppError::from)

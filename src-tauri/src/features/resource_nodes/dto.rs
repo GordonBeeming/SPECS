@@ -110,6 +110,8 @@ pub struct WaterExtractorGroup {
     pub factory_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    /// Locked groups bind-on-drag instead of moving (node-like).
+    pub locked: bool,
     pub output_ipm: f32,
     pub created_at: String,
     pub updated_at: String,
@@ -133,6 +135,8 @@ pub struct SetWaterExtractorGroupInput {
     pub factory_id: Option<String>,
     #[serde(default)]
     pub notes: Option<String>,
+    #[serde(default)]
+    pub locked: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]

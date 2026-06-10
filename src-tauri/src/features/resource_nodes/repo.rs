@@ -125,6 +125,8 @@ pub struct WaterGroupRow {
     pub clock2_pct: Option<f32>,
     pub factory_id: Option<String>,
     pub notes: Option<String>,
+    /// Locked groups bind-on-drag instead of moving (node-like).
+    pub locked: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -143,13 +145,14 @@ pub fn water_group_upsert(
     clock2_pct: Option<f32>,
     factory_id: Option<&str>,
     notes: Option<&str>,
+    locked: bool,
     now: &str,
 ) -> Result<()> {
     conn.execute(
         "INSERT INTO water_extractor_group
             (id, world_x, world_y, count, clock_pct_x100, count2, clock2_pct_x100,
-             factory_id, notes, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             factory_id, notes, locked, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
             world_x = excluded.world_x,
             world_y = excluded.world_y,
@@ -159,6 +162,7 @@ pub fn water_group_upsert(
             clock2_pct_x100 = excluded.clock2_pct_x100,
             factory_id = excluded.factory_id,
             notes = excluded.notes,
+            locked = excluded.locked,
             updated_at = excluded.updated_at",
         params![
             id,
@@ -170,6 +174,7 @@ pub fn water_group_upsert(
             clock2_pct.map(clock_pct_to_x100),
             factory_id,
             notes,
+            if locked { 1 } else { 0 },
             now,
             now,
         ],
@@ -184,7 +189,7 @@ pub fn water_group_delete(conn: &Connection, id: &str) -> Result<usize> {
 pub fn water_groups_all(conn: &Connection) -> Result<Vec<WaterGroupRow>> {
     let mut stmt = conn.prepare(
         "SELECT id, world_x, world_y, count, clock_pct_x100, count2, clock2_pct_x100,
-                factory_id, notes, created_at, updated_at
+                factory_id, notes, locked, created_at, updated_at
          FROM water_extractor_group
          ORDER BY created_at",
     )?;
@@ -199,8 +204,9 @@ pub fn water_groups_all(conn: &Connection) -> Result<Vec<WaterGroupRow>> {
             clock2_pct: r.get::<_, Option<i64>>(6)?.map(clock_pct_from_x100),
             factory_id: r.get(7)?,
             notes: r.get(8)?,
-            created_at: r.get(9)?,
-            updated_at: r.get(10)?,
+            locked: r.get::<_, i64>(9)? != 0,
+            created_at: r.get(10)?,
+            updated_at: r.get(11)?,
         })
     })?;
     let mut out = Vec::new();
@@ -286,7 +292,7 @@ mod tests {
             seed_factory(c, "F1");
             water_group_upsert(
                 c, "wg-1", 1000.0, -2000.0, 40, 150.5, Some(2), Some(45.25), Some("F1"),
-                None, "2026-06-10T00:00:00Z",
+                None, true, "2026-06-10T00:00:00Z",
             )
             .unwrap();
             let groups = water_groups_all(c).unwrap();
@@ -298,11 +304,12 @@ mod tests {
             assert_eq!(g.count2, Some(2));
             assert!((g.clock2_pct.unwrap() - 45.25).abs() < 0.001);
             assert_eq!(g.factory_id.as_deref(), Some("F1"));
+            assert!(g.locked, "lock state must round-trip");
 
             // Update drops bank 2 and rebinds; created_at survives.
             water_group_upsert(
                 c, "wg-1", 1000.0, -2000.0, 38, 100.0, None, None, None, None,
-                "2026-06-10T01:00:00Z",
+                false, "2026-06-10T01:00:00Z",
             )
             .unwrap();
             let g = &water_groups_all(c).unwrap()[0];
@@ -310,6 +317,7 @@ mod tests {
             assert_eq!(g.count2, None);
             assert_eq!(g.clock2_pct, None);
             assert_eq!(g.factory_id, None);
+            assert!(!g.locked);
             assert_eq!(g.created_at, "2026-06-10T00:00:00Z");
         });
     }
@@ -319,7 +327,7 @@ mod tests {
         let pt = db();
         pt.with(|c| {
             let res = water_group_upsert(
-                c, "wg-1", 0.0, 0.0, 1, 100.0, Some(2), None, None, None, "n",
+                c, "wg-1", 0.0, 0.0, 1, 100.0, Some(2), None, None, None, false, "n",
             );
             assert!(res.is_err(), "count2 without clock2 must violate the CHECK");
         });
@@ -330,7 +338,7 @@ mod tests {
         let pt = db();
         pt.with(|c| {
             seed_factory(c, "F1");
-            water_group_upsert(c, "wg-1", 0.0, 0.0, 4, 100.0, None, None, Some("F1"), None, "n")
+            water_group_upsert(c, "wg-1", 0.0, 0.0, 4, 100.0, None, None, Some("F1"), None, false, "n")
                 .unwrap();
             c.execute("DELETE FROM factory WHERE id = 'F1'", []).unwrap();
             let groups = water_groups_all(c).unwrap();
@@ -343,7 +351,7 @@ mod tests {
     fn water_group_delete_removes_the_row() {
         let pt = db();
         pt.with(|c| {
-            water_group_upsert(c, "wg-1", 0.0, 0.0, 4, 100.0, None, None, None, None, "n").unwrap();
+            water_group_upsert(c, "wg-1", 0.0, 0.0, 4, 100.0, None, None, None, None, false, "n").unwrap();
             assert_eq!(water_group_delete(c, "wg-1").unwrap(), 1);
             assert!(water_groups_all(c).unwrap().is_empty());
         });

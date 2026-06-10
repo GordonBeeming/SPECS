@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Droplets, Plus, Trash2 } from "lucide-react";
+import { Droplets, Lock, LockOpen, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
@@ -17,11 +17,14 @@ export interface WaterExtractorPinProps {
   selected: boolean;
   onClick: () => void;
   onDragEnd: (pt: { x: number; y: number }) => void;
+  /** Locked groups don't move — dragging starts the bind-to-factory
+      gesture instead (handled by the map, same as nodes). */
+  onStartBindDrag: (e: React.MouseEvent) => void;
   currentScale: () => number;
 }
 
-/** Droplet marker for a group of water extractors — drag to move,
- * click for the editor popover. */
+/** Droplet marker for a group of water extractors. Unlocked: drag to
+ * move, click to edit. Locked: drag binds to a factory (node-like). */
 export function WaterExtractorPin({
   group,
   x,
@@ -29,6 +32,7 @@ export function WaterExtractorPin({
   selected,
   onClick,
   onDragEnd,
+  onStartBindDrag,
   currentScale,
 }: WaterExtractorPinProps) {
   const startRef = useRef<{ clientX: number; clientY: number; moved: boolean } | null>(null);
@@ -42,10 +46,23 @@ export function WaterExtractorPin({
         selected ? "border-accent bg-accent/25" : "border-accent/70 bg-bg-raised/95 hover:bg-bg-raised"
       }`}
       style={{ left: `${hoverPos?.x ?? x}px`, top: `${hoverPos?.y ?? y}px` }}
-      title={`${totalCount}× Water Extractor · ${group.outputIpm.toFixed(0)} m³/min — click to edit, drag to move`}
+      title={`${totalCount}× Water Extractor · ${group.outputIpm.toFixed(0)} m³/min — ${
+        group.locked ? "click to edit, drag onto a factory to bind" : "click to edit, drag to move"
+      }`}
+      onClick={(e) => {
+        // Selection happens in the mouseup handler — stop the synthetic
+        // click from bubbling to the map container, which would clear
+        // the selection it just made (same trick as node markers).
+        e.stopPropagation();
+      }}
       onMouseDown={(e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (group.locked) {
+          // Locked in place — the drag becomes "wire me to a factory".
+          onStartBindDrag(e);
+          return;
+        }
         startRef.current = { clientX: e.clientX, clientY: e.clientY, moved: false };
         const onMove = (ev: MouseEvent) => {
           const s = startRef.current;
@@ -83,6 +100,7 @@ export function WaterExtractorPin({
       <span className="inline-flex items-center gap-1">
         <Droplets className="h-3.5 w-3.5 text-accent" />
         {totalCount}×
+        {group.locked && <Lock className="h-2.5 w-2.5 text-fg-muted" aria-label="Locked in place" />}
       </span>
     </button>
   );
@@ -99,6 +117,8 @@ export interface WaterExtractorPopoverProps {
     clock2Pct: number | null;
     factoryId: string | null;
   }) => void;
+  /** Lock/unlock applies immediately — it changes what dragging does. */
+  onToggleLock: () => void;
   onDelete: () => void;
   onClose: () => void;
 }
@@ -111,6 +131,7 @@ export function WaterExtractorPopover({
   factories,
   pending,
   onSave,
+  onToggleLock,
   onDelete,
   onClose,
 }: WaterExtractorPopoverProps) {
@@ -133,14 +154,33 @@ export function WaterExtractorPopover({
           <Droplets className="h-4 w-4 text-accent" />
           Water extractors
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="rounded p-1 text-fg-muted hover:bg-border hover:text-fg"
-        >
-          ×
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onToggleLock}
+            disabled={pending}
+            aria-pressed={group.locked}
+            aria-label={group.locked ? "Unlock (drag moves the marker)" : "Lock in place (drag binds to a factory)"}
+            title={
+              group.locked
+                ? "Locked — dragging wires it to a factory. Click to unlock and move it."
+                : "Unlocked — dragging moves it. Click to lock it in place; then drag onto a factory to bind."
+            }
+            className={`rounded p-1 ${
+              group.locked ? "text-primary" : "text-fg-muted hover:bg-border hover:text-fg"
+            }`}
+          >
+            {group.locked ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded p-1 text-fg-muted hover:bg-border hover:text-fg"
+          >
+            ×
+          </button>
+        </div>
       </div>
 
       <div className="mt-3 flex items-center gap-1.5 text-xs">

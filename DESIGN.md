@@ -200,7 +200,19 @@ node markers + draggable factory pins.
   droplet), one click drops a group with the loadout defaults. A
   group holds up to two banks ("40 @ 100% and 2 @ 45%"), shows its
   total m³/min, binds to a factory like a node claim, and feeds the
-  same supply pool the planner and ledgers read.
+  same supply pool the planner and ledgers read. Groups start
+  unlocked (drag moves them); the lock in the popover pins them in
+  place, after which dragging starts the bind-to-factory gesture —
+  the same ghost line nodes use. Bound groups follow the node
+  visibility rule (hidden unless their factory is selected) with a
+  "Show water extractors" toggle to force them all visible, and get
+  the same detach button on their input line.
+- **Ledger link supply:** every factory ledger row carries
+  `fromLinksPerMinute` — what arrives via incoming logistics links —
+  next to the node supply. The popover's raw-demand rollup subtracts
+  it before tracing to raw, so a factory importing its Copper Ingot
+  never reads as "ore missing", and the ledger table only paints a
+  deficit red when links don't cover it.
 - **Clock inputs:** every clock control pairs the slider (whole
   steps, coarse scrubbing) with a typed input where decimals are
   first-class — 100.01–250.00, matching the x100 storage precision.
