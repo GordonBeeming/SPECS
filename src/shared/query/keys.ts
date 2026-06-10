@@ -28,6 +28,7 @@ export const queryKeys = {
     list: ["factory", "list"] as const,
     detail: (id: string) => ["factory", "detail", id] as const,
     ledger: (id: string) => ["factory", "ledger", id] as const,
+    plan: (id: string) => ["factory", "plan", id] as const,
   },
   logistics: {
     list: ["logistics", "list"] as const,

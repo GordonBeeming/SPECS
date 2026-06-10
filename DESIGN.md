@@ -198,51 +198,63 @@ a `requestAnimationFrame`) so the larger card doesn't spill off the
 visible area. Save/Cancel buttons in-card; every save pushes through
 `useUndoStore` so a single ⌘Z restores the prior state.
 
-## Single-factory build UX
+## Production plan designer
 
-`FactoryDetail` exposes "Build to target" alongside "Add machine".
-The panel opens inline (not a modal) and has four sections:
+Factory design is outcome-first: the user names what the factory
+should make ("60/min Cable", plus any other products) and the app
+computes the whole production graph back to raw. The designer is a
+**full-screen surface** (route `plan`) opened from factory detail,
+the factories list, or a map pin — the sidebar hides, a back button
+returns to where the user came from. The word "derive" never
+appears in the UI; the feature is the **Production plan**, compute
+is automatic on every edit, and the only verb is **Save plan**.
 
-1. **Target** — item `FilterSelect` (tier-gated) + ipm input.
-2. **Items, Input** — appears after the first derive. One row per
-   intermediate item the chain currently produces. Each row has a
-   "+ Pin source" affordance that reveals a factory `FilterSelect`
-   (other factories in the playthrough) + optional ipm cap. Multiple
-   sources per item are allowed; the planner distributes demand in
-   declared order. Editing a pin auto re-derives.
-3. **Preview** — the shared `ChainPreview` (extracted from the
-   cross-factory `PlannerView`) renders the stages stack, an
-   `Imports` strip listing every resolved pinning (`Iron Ingot ←
-   Plates v1 240.0/min`), and the raw-demand chips coloured against
-   claimed-node supply (green = covered, red = short).
-4. **Apply** — calls `apply_chain_to_factory`. Inserts one machine
-   per stage into the current factory and one `logistics_link` per
-   resolved import. Single SQLite transaction; pushed onto the undo
-   stack as one grouped action so a single ⌘Z reverses every
-   machine + link that landed.
+Layout, top to bottom:
 
-Recipe-swap on existing machines is **building-locked** by design —
-the dropdown filters to recipes whose `building_id` matches the
-row's, so the backend's defence-in-depth rejection never fires for
-a user-visible path. Cross-building swaps would require deleting +
-re-adding a machine (different building means different power
-draw + amp slot layout — better to be explicit).
+1. **Header bar** — back button, factory name, targets strip
+   (chip per product: icon + name + inline ipm input + remove,
+   plus "Add product" backed by the tier-grouped item
+   `FilterSelect`), totals (`N machines · X MW`), Save plan button
+   (primary; dirty-state dot when unsaved edits exist).
+2. **Warnings banner** — amber strip listing supply gaps,
+   unsourced inputs and cap shortfalls. Warn, don't block: the
+   plan still renders and still saves.
+3. **Canvas** — `@xyflow/react` + dagre (LR), one node per item.
 
-## Planner
+Node cards (all 250 px wide, `tabular-nums` for rates):
 
-The Planner tab takes a target item + ipm and walks the bundled
-recipe graph leaves-first, supply-aware:
+- **Step** (`recipe:*` keys) — neutral card: item icon + name,
+  `count× Building @ clock%`, MW, out-rate. A recipe `FilterSelect`
+  (standard + unlocked alts producing that item; Unpackage filtered)
+  swaps the recipe in place — node keys are item-based so the card
+  keeps its position. Footer action: **Supply from elsewhere**,
+  which collapses the upstream subtree into an Input node. Target
+  steps get a primary-coloured border + a `Target` badge.
+- **Input** (`import:*`) — accent-bordered card for items that
+  arrive from another factory. Lists each assigned source (factory
+  `FilterSelect` + optional ipm cap) and the demand it covers. With
+  no source it shows an amber **Unsourced** badge ("a future
+  factory will supply this") — a fully valid, saveable state; the
+  whole point of planning the endgame backwards. Footer action:
+  **Build it here** (removes the cut, the subtree re-expands).
+- **Raw** (`raw:*`) — leaf card for mined/pumped items: demand vs
+  claimed-node supply, success tone when covered, danger + icon
+  when short.
+- **Byproduct** (`byproduct:*`) — muted sink card for surplus
+  outputs nobody consumes (no netting in v1; honesty over magic).
 
-- A recipe is "supply-viable" if every input traces back to a
-  claimed extracted resource (or another supply-viable recipe). The
-  picker prefers supply-viable candidates over structural-only ones
-  so "Pure Iron Ingot" is silently unavailable without water rather
-  than producing a chain you can't build.
-- If no supply-viable chain exists, the planner builds a structural
-  fallback so the final raw-demand vs. claim-supply diff surfaces
-  a precise `Insufficient` error (with the exact ipm gap per item).
-- Apply materialises one factory per stage, wires logistics links
-  between consecutive stages, all in a single SQLite transaction.
+Edges carry the item name + ipm as their label. Node drags persist
+to `factory_plan_layout` (sparse; missing row = dagre position).
+Saving runs everything in one transaction: plan inputs persist, the
+graph recomputes server-side, plan-managed machines regenerate
+(manual machines survive via `plan_node_key IS NULL`), sourced
+inputs become logistics links, and the action lands on the undo
+stack as one group.
+
+The legacy "Build to target" panel, the stage-list preview, and the
+cross-factory Planner wizard are retired; manual "Add machine"
+remains available behind a disclosure on factory detail for legacy
+factories.
 
 ## Accessibility
 

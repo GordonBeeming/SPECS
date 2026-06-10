@@ -43,3 +43,12 @@ export const useNavStore = create<NavState>((set, get) => ({
     return r;
   },
 }));
+
+/**
+ * Open the full-screen production-plan designer for a factory from
+ * anywhere (factory detail, factories list, map pin popovers).
+ */
+export function openPlanDesigner(factoryId: string) {
+  useNavStore.getState().selectFactory(factoryId);
+  useNavStore.getState().goTo("plan");
+}

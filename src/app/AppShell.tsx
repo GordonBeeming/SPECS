@@ -34,6 +34,7 @@ import {
 import { PowerView } from "@/features/power/components/PowerView";
 import { ResourcesView } from "@/features/resources/components/ResourcesView";
 import { MapView } from "@/features/map/components/MapView";
+import { PlanDesignerView } from "@/features/factory/components/plan/PlanDesignerView";
 import { useNavStore } from "@/shared/nav-store";
 import { ErrorBoundary } from "@/shared/ui/ErrorBoundary";
 import { useUndoStore } from "@/shared/undo/store";
@@ -48,7 +49,10 @@ type Route =
   | "library"
   | "alts"
   | "resources"
-  | "map";
+  | "map"
+  // Full-screen production-plan designer — reached via nav-store deep
+  // link (openPlanDesigner), never from the sidebar.
+  | "plan";
 
 // The Map is the canvas now — Planner folded into a "New factory"
 // overlay on the map, and the per-resource list still has its own
@@ -68,7 +72,7 @@ const NAV: ReadonlyArray<{ id: Route; label: string; Icon: typeof BookOpen }> = 
   { id: "library", label: "Library", Icon: BookOpen },
 ];
 
-const ROUTE_IDS = new Set<string>(NAV.map((n) => n.id));
+const ROUTE_IDS = new Set<string>([...NAV.map((n) => n.id), "plan"]);
 function isRoute(s: string): s is Route {
   return ROUTE_IDS.has(s);
 }
@@ -89,6 +93,10 @@ export function AppShell() {
   const [autoOpenAttempted, setAutoOpenAttempted] = useState(false);
   const takePendingRoute = useNavStore((s) => s.takePendingRoute);
   const pendingRoute = useNavStore((s) => s.pendingRoute);
+  // Which factory the full-screen plan designer is editing, and where
+  // its back button returns to.
+  const [planFactoryId, setPlanFactoryId] = useState<string | null>(null);
+  const [planReturnRoute, setPlanReturnRoute] = useState<Route>("factories");
 
   // Cross-slice deep linking: the Network view's "open in graph" button
   // pushes "factories" through the nav store. AppShell owns route
@@ -96,10 +104,17 @@ export function AppShell() {
   useEffect(() => {
     if (!pendingRoute) return;
     const next = takePendingRoute();
-    if (next && isRoute(next)) {
-      setRoute(next);
+    if (!next || !isRoute(next)) return;
+    if (next === "plan") {
+      // openPlanDesigner pairs the route with a pending factory id;
+      // without one there's nothing to design — ignore the request.
+      const factoryId = useNavStore.getState().takePendingFactoryId();
+      if (!factoryId) return;
+      setPlanFactoryId(factoryId);
+      setPlanReturnRoute((prev) => (route === "plan" ? prev : route));
     }
-  }, [pendingRoute, takePendingRoute]);
+    setRoute(next);
+  }, [pendingRoute, takePendingRoute, route]);
 
   // First-paint convenience: if nothing is open but a previous run
   // touched at least one playthrough, auto-select the most-recently-
@@ -198,6 +213,18 @@ export function AppShell() {
         </div>
       )}
 
+      {route === "plan" && planFactoryId ? (
+        // The designer takes the whole window below the header — no
+        // sidebar, maximum canvas. Back returns to the launching tab.
+        <div className="flex-1 overflow-hidden">
+          <ErrorBoundary key={`plan-${planFactoryId}`} label="The plan designer">
+            <PlanDesignerView
+              factoryId={planFactoryId}
+              onBack={() => setRoute(planReturnRoute)}
+            />
+          </ErrorBoundary>
+        </div>
+      ) : (
       <div className="flex flex-1 overflow-hidden">
         <nav
           aria-label="Main"
@@ -250,6 +277,7 @@ export function AppShell() {
           </ErrorBoundary>
         </main>
       </div>
+      )}
     </div>
   );
 }
