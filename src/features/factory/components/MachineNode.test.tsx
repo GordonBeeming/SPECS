@@ -145,7 +145,8 @@ describe("<MachineNodeCard /> — inline editor", () => {
     await waitFor(() => {
       // Smelter recipes appear; we look for exact-label matches so the
       // overlapping /Iron Ingot/i regex doesn't ambiguously match both
-      // "Iron Ingot" and "Pure Iron Ingot (alt)".
+      // "Iron Ingot" and "Pure Iron Ingot (alt)". The IO strip is
+      // aria-hidden, so it stays out of the accessible name.
       expect(
         screen.getByRole("option", { name: /^Iron Ingot$/ }),
       ).toBeInTheDocument();

@@ -26,6 +26,16 @@ export interface FilterOption {
    * Empty / undefined groups render without a header.
    */
   group?: string;
+  /**
+   * Recipe-style flows, rendered as an icon + rate strip under the
+   * label (inputs → outputs, per machine at 100% clock). Lets recipe
+   * pickers read like the in-game build menu so ratios inform the
+   * choice before clicking.
+   */
+  io?: {
+    inputs: Array<{ itemId: string; perMinute: number }>;
+    outputs: Array<{ itemId: string; perMinute: number }>;
+  };
 }
 
 interface BaseProps {
@@ -193,17 +203,29 @@ interface DropdownPanelProps {
   multiple: boolean;
 }
 
+function rate(n: number): string {
+  // Satisfactory ratios are exact (3.75, 1.875) — rounding to one
+  // decimal would mislead anyone balancing a line. Up to 3 decimals,
+  // trailing zeros dropped.
+  return Number(n.toFixed(3)).toString();
+}
+
 function DropdownPanel({ filtered, value, multiple }: DropdownPanelProps) {
+  // Rows with an IO strip need more room than plain labels; only pay
+  // for the wider panel when a recipe picker is actually using it.
+  const hasIo = filtered.some((o) => o.io);
   return (
     <ComboboxOptions
       // `anchor` portals the panel to the body so it floats above
       // whatever stacking context the input lives in — inside a
       // ReactFlow node the old in-place panel painted UNDER sibling
       // nodes. min/max width mirror the old in-place sizing: at least
-      // the input's width, capped at 28rem so long recipe names fit
-      // without spanning the pane.
+      // the input's width, capped so long recipe names fit without
+      // spanning the pane.
       anchor={{ to: "bottom start", gap: 4 }}
-      className="z-50 max-h-60 min-w-[var(--input-width)] max-w-[28rem] overflow-auto rounded-md border border-border bg-bg-raised py-1 shadow-lg empty:hidden"
+      className={`z-50 max-h-60 min-w-[var(--input-width)] ${
+        hasIo ? "max-w-[32rem]" : "max-w-[28rem]"
+      } overflow-auto rounded-md border border-border bg-bg-raised py-1 shadow-lg empty:hidden`}
       modal={false}
     >
       {filtered.length === 0 ? (
@@ -227,28 +249,62 @@ function DropdownPanel({ filtered, value, multiple }: DropdownPanelProps) {
               <ComboboxOption
                 value={option.value}
                 className={({ active }) =>
-                  `flex cursor-pointer items-center justify-between gap-3 whitespace-nowrap px-3 py-1.5 text-sm ${
+                  `cursor-pointer px-3 py-1.5 text-sm ${
                     active ? "bg-primary text-white" : "text-fg"
                   }`
                 }
               >
-                <div className="flex flex-1 items-center gap-2">
-                  {option.iconId && (
-                    <Icon itemId={option.iconId} alt="" className="h-5 w-5 shrink-0" />
-                  )}
-                  <span>{option.label}</span>
+                <div className="flex items-center justify-between gap-3 whitespace-nowrap">
+                  <div className="flex flex-1 items-center gap-2">
+                    {option.iconId && (
+                      <Icon itemId={option.iconId} alt="" className="h-5 w-5 shrink-0" />
+                    )}
+                    <span>{option.label}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {option.hint && (
+                      <span className="text-xs opacity-70">{option.hint}</span>
+                    )}
+                    {(selected || multiple) && (
+                      <Check
+                        className={`h-3.5 w-3.5 ${selected ? "" : "opacity-0"}`}
+                        aria-hidden="true"
+                      />
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {option.hint && (
-                    <span className="text-xs opacity-70">{option.hint}</span>
-                  )}
-                  {(selected || multiple) && (
-                    <Check
-                      className={`h-3.5 w-3.5 ${selected ? "" : "opacity-0"}`}
-                      aria-hidden="true"
-                    />
-                  )}
-                </div>
+                {option.io && (
+                  // Inputs → outputs at 100% clock. Colour inherits from
+                  // the row (white on the active highlight) with opacity
+                  // doing the muting, so the strip stays legible in both
+                  // states. Wraps so 4-input Manufacturer alts never
+                  // overflow the panel.
+                  // aria-hidden: to a screen reader the strip is a run of
+                  // contextless numbers, and it would pollute the option's
+                  // accessible name — the label alone is the name.
+                  <div
+                    aria-hidden="true"
+                    className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] tabular-nums opacity-75"
+                  >
+                    {option.io.inputs.map((f) => (
+                      <span key={`in-${f.itemId}`} className="flex items-center gap-1">
+                        <Icon itemId={f.itemId} alt="" className="h-3.5 w-3.5 shrink-0" />
+                        {rate(f.perMinute)}
+                      </span>
+                    ))}
+                    <span aria-hidden="true">→</span>
+                    {option.io.outputs.map((f) => (
+                      <span
+                        key={`out-${f.itemId}`}
+                        className="flex items-center gap-1 font-semibold"
+                      >
+                        <Icon itemId={f.itemId} alt="" className="h-3.5 w-3.5 shrink-0" />
+                        {rate(f.perMinute)}
+                        <span className="font-normal opacity-80">/min</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </ComboboxOption>
             </div>
           );

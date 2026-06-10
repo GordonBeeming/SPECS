@@ -163,6 +163,9 @@ function InlineEditor({
         label: r.name + (r.isAlt ? " (alt)" : ""),
         iconId: r.outputs[0]?.itemId,
         group: r.isAlt ? "Alts" : "Standard",
+        // Inputs → outputs strip in the dropdown, so alternates can be
+        // compared by ratio before committing to a swap.
+        io: { inputs: r.inputs, outputs: r.outputs },
       }));
   }, [recipes.data, machine.buildingId, tierCap]);
 

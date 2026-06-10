@@ -276,7 +276,13 @@ Node cards (all 250 px wide, `tabular-nums` for rates):
   `count× Building @ clock%`, MW, out-rate. EVERY step carries the
   recipe `FilterSelect` (standard + unlocked alts; Unpackage
   filtered) so any link in the chain re-recipes in place — node
-  keys are item-based so the card keeps its position. Footer:
+  keys are item-based so the card keeps its position. Recipe
+  options carry an `io` payload, so the dropdown reads like the
+  in-game build menu: a second line per option with input icons +
+  rates `→` output icons + rates (per machine at 100% clock,
+  wrapping for 4-input Manufacturer alts; the panel widens to
+  32rem when any option has the strip). The same strip shows in
+  the factory graph's machine editor picker. Footer:
   **Sources** (opens the sources panel) and **Export** (offers the
   item to other factories — see exports below). Product steps get a
   primary border + `Product` badge and edit their export slice
