@@ -44,3 +44,33 @@ export interface SetNodeClaimInput {
   factoryId?: string | null;
   notes?: string | null;
 }
+
+// ---- Resource budget ----
+
+export type BudgetAssumption = "current_tier_best" | "mk3_at_100" | "mk3_at_250";
+
+export interface PurityCount {
+  total: number;
+  claimed: number;
+}
+
+export interface ResourceBudgetRow {
+  resourceItemId: string;
+  resourceItemName: string;
+  kind: NodeKind;
+  worldMaxIpm: number;
+  claimedIpm: number;
+  boundIpm: number;
+  claimedMaxIpm: number;
+  remainingIpm: number;
+  pure: PurityCount;
+  normal: PurityCount;
+  impure: PurityCount;
+  overcommitted: boolean;
+}
+
+export interface ResourceBudget {
+  /** e.g. "Mk2 @ 100%" — the basis every max/remaining number is stated at. */
+  assumptionLabel: string;
+  rows: ResourceBudgetRow[];
+}

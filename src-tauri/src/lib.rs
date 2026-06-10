@@ -125,6 +125,7 @@ pub fn run() {
             features::resource_nodes::commands::list_resource_nodes,
             features::resource_nodes::commands::set_node_claim,
             features::resource_nodes::commands::clear_node_claim,
+            features::resource_nodes::commands::get_resource_budget,
             features::planner::commands::planner_derive_chain,
             features::planner::commands::apply_chain_plan,
             features::planner::commands::apply_chain_to_factory,

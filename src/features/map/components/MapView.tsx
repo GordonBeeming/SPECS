@@ -25,6 +25,7 @@ import { useNavStore } from "@/shared/nav-store";
 import { Factory as FactoryGlyph, Pencil, Sparkles, Unlink, Zap } from "lucide-react";
 
 import { NewFactoryPanel } from "./NewFactoryPanel";
+import { ResourceBudgetPanel } from "@/features/resources/components/ResourceBudgetPanel";
 
 import mapAsset from "@/assets/map/satisfactory-map.webp";
 
@@ -618,6 +619,15 @@ export function MapView() {
               </TransformComponent>
             </TransformWrapper>
           </div>
+
+          {/* Whole-map resource budget dock. Shares the bottom-left
+              corner with the node popover — the popover wins while a
+              node is selected so claiming never fights the budget. */}
+          {!selectedNode && (
+            <div className="absolute bottom-3 left-3 z-20">
+              <ResourceBudgetPanel variant="compact" />
+            </div>
+          )}
 
           {/* Selected-node popover. Floats over the map so the user
               doesn't lose their pan/zoom state when claiming. */}

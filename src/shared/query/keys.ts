@@ -45,5 +45,6 @@ export const queryKeys = {
   },
   resources: {
     list: ["resources", "list"] as const,
+    budget: (assumption: string) => ["resources", "budget", assumption] as const,
   },
 };

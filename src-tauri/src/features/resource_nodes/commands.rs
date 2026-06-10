@@ -6,8 +6,8 @@ use crate::features::playthrough::state::ActivePlaythrough;
 use crate::shared::error::{AppError, AppResult};
 use crate::shared::gamedata::GameData;
 
-use super::domain::extractor_output_ipm;
-use super::dto::{ResourceNodeClaim, ResourceNodeRow, SetNodeClaimInput};
+use super::domain::{BudgetAssumption, extractor_output_ipm, resource_budget};
+use super::dto::{ResourceBudget, ResourceNodeClaim, ResourceNodeRow, SetNodeClaimInput};
 use super::repo;
 
 fn now_iso() -> String {
@@ -140,6 +140,29 @@ pub fn set_node_claim(
         )
         .map_err(AppError::from)
     })
+}
+
+/// Whole-map resource budget: per resource, what the world could still
+/// yield at the stated assumption vs what's claimed/bound already.
+/// Defaults to "best miner at the current tier @ 100%".
+#[tauri::command]
+pub fn get_resource_budget(
+    active: State<ActivePlaythrough>,
+    game_data: State<GameData>,
+    assumption: Option<BudgetAssumption>,
+) -> AppResult<ResourceBudget> {
+    let db = require_active(&active)?;
+    let claims = db.with(|c| repo::claims_all(c).map_err(AppError::from))?;
+    let (current_tier, _progress) = db.with(|c| {
+        crate::features::playthrough::repo::progress_get(c).map_err(AppError::from)
+    })?;
+    let tier: u8 = current_tier.clamp(0, u8::MAX as i64) as u8;
+    Ok(resource_budget(
+        &claims,
+        &game_data,
+        tier,
+        assumption.unwrap_or(BudgetAssumption::CurrentTierBest),
+    ))
 }
 
 #[tauri::command]
