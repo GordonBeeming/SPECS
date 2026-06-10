@@ -105,7 +105,7 @@ fn validate_clock_against_shards(clock_pct: f32, power_shard_count: i64) -> AppR
 }
 
 fn validate_clock(clock_pct: f32) -> AppResult<()> {
-    if clock_pct < 1.0 || clock_pct > 250.0 {
+    if !(1.0..=250.0).contains(&clock_pct) {
         return Err(AppError::Invalid(format!(
             "clock must be between 1% and 250% (got {clock_pct})"
         )));
@@ -313,6 +313,7 @@ pub fn add_factory_machine(
             input.use_somersloop,
             input.somersloop_slots_filled,
             input.power_shard_count,
+            None,
             &now,
         )
         .map_err(AppError::from)

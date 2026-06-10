@@ -128,6 +128,10 @@ pub fn run() {
             features::planner::commands::planner_derive_chain,
             features::planner::commands::apply_chain_plan,
             features::planner::commands::apply_chain_to_factory,
+            features::planner::commands::factory_plan_get,
+            features::planner::commands::factory_plan_compute,
+            features::planner::commands::factory_plan_save,
+            features::planner::commands::factory_plan_layout_set,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

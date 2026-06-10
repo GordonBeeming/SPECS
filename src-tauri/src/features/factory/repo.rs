@@ -175,6 +175,10 @@ pub fn machine_insert(
     use_somersloop: bool,
     somersloop_slots_filled: i64,
     power_shard_count: i64,
+    // `Some` tags the machine as materialized from the factory's
+    // production plan (the plan-save regenerates those rows wholesale);
+    // `None` = manually added, never touched by plan saves.
+    plan_node_key: Option<&str>,
     now: &str,
 ) -> Result<()> {
     let clock_x100 = clock_pct_to_x100(clock_pct);
@@ -182,13 +186,14 @@ pub fn machine_insert(
         "INSERT INTO factory_machine
             (id, factory_id, building_id, recipe_id, count, clock_pct_x100,
              use_somersloop, somersloop_slots_filled, power_shard_count,
-             created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             plan_node_key, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params![
             id, factory_id, building_id, recipe_id, count, clock_x100,
             if use_somersloop { 1 } else { 0 },
             somersloop_slots_filled,
             power_shard_count,
+            plan_node_key,
             now, now,
         ],
     )?;
@@ -311,7 +316,7 @@ mod tests {
             factory_insert(c, "f1", "Iron Plant", None, None, None, "2026-05-10T00:00:00Z").unwrap();
             factory_insert(c, "f2", "Copper Plant", None, None, None, "2026-05-10T00:00:01Z").unwrap();
             machine_insert(c, "m1", "f1", "Build_SmelterMk1_C", "Recipe_IronIngot_C",
-                           4, 100.0, false, 0, 0, "2026-05-10T00:00:02Z").unwrap();
+                           4, 100.0, false, 0, 0, None, "2026-05-10T00:00:02Z").unwrap();
             let factories = factory_list(c).unwrap();
             assert_eq!(factories.len(), 2);
             // Sorted by lower(name): "Copper Plant" < "Iron Plant".
@@ -340,7 +345,7 @@ mod tests {
         pt.with(|c| {
             factory_insert(c, "f1", "X", None, None, None, "2026-05-10T00:00:00Z").unwrap();
             machine_insert(c, "m1", "f1", "Build_SmelterMk1_C", "Recipe_IronIngot_C",
-                           1, 100.0, false, 0, 0, "2026-05-10T00:00:00Z").unwrap();
+                           1, 100.0, false, 0, 0, None, "2026-05-10T00:00:00Z").unwrap();
             factory_delete(c, "f1").unwrap();
             let machines = machines_for_factory(c, "f1").unwrap();
             assert!(machines.is_empty(), "ON DELETE CASCADE should drop machines");
@@ -353,7 +358,7 @@ mod tests {
         pt.with(|c| {
             factory_insert(c, "f1", "X", None, None, None, "2026-05-10T00:00:00Z").unwrap();
             machine_insert(c, "m1", "f1", "Build_SmelterMk1_C", "Recipe_IronIngot_C",
-                           1, 100.0, false, 0, 0, "2026-05-10T00:00:00Z").unwrap();
+                           1, 100.0, false, 0, 0, None, "2026-05-10T00:00:00Z").unwrap();
             machine_update(c, "m1", 3, 247.5, false, 0, 0, "2026-05-10T00:01:00Z").unwrap();
             let machines = machines_for_factory(c, "f1").unwrap();
             assert_eq!(machines.len(), 1);
@@ -369,10 +374,10 @@ mod tests {
         pt.with(|c| {
             factory_insert(c, "f1", "X", None, None, None, "2026-05-10T00:00:00Z").unwrap();
             // 0% is out of range (CHECK is BETWEEN 100 AND 25000 on x100).
-            let too_low = machine_insert(c, "m1", "f1", "B", "R", 1, 0.0, false, 0, 0, "n");
+            let too_low = machine_insert(c, "m1", "f1", "B", "R", 1, 0.0, false, 0, 0, None, "n");
             assert!(too_low.is_err(), "0% clock should be rejected by CHECK");
             // 251% likewise.
-            let too_high = machine_insert(c, "m2", "f1", "B", "R", 1, 251.0, false, 0, 0, "n");
+            let too_high = machine_insert(c, "m2", "f1", "B", "R", 1, 251.0, false, 0, 0, None, "n");
             assert!(too_high.is_err(), "251% clock should be rejected by CHECK");
         });
     }

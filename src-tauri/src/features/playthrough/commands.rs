@@ -225,7 +225,7 @@ pub fn delete_playthrough(
     Ok(())
 }
 
-fn require_absolute_path(path: &PathBuf, label: &str) -> AppResult<()> {
+fn require_absolute_path(path: &std::path::Path, label: &str) -> AppResult<()> {
     if !path.is_absolute() {
         return Err(AppError::Invalid(format!(
             "{label} must be an absolute path (got {})",
