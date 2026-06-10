@@ -43,6 +43,7 @@ export interface PlanGraphCanvasProps {
   layout: PlanLayoutEntry[];
   recipesByOutput: Map<string, Recipe[]>;
   factoryNames: Map<string, string>;
+  factoryIcons: Map<string, string | null>;
   /** itemId → its export slice (targets only). */
   exportByItem: Map<string, number | null>;
   /** Items with a local "build it here" source row. */
@@ -109,6 +110,7 @@ function renderPlanCard(data: PlanFlowData) {
         <ImportNodeCard
           node={planNode}
           factoryNames={canvas.factoryNames}
+          factoryIcons={canvas.factoryIcons}
           hasLocal={canvas.localItems.has(planNode.itemId)}
           onOpenSources={canvas.onOpenSources}
           onAddLocal={canvas.onAddLocal}
@@ -182,12 +184,17 @@ function CanvasInner(props: PlanGraphCanvasProps) {
     }
     return out;
   }, [graph, selectedKey]);
-  // A stale selection (node cut out of the graph) must not dim
-  // everything forever.
+  // A recompute can swap an item's node kind under the selection —
+  // adding an external source turns recipe:X into import:X (and vice
+  // versa). The user is still mid-thought on that item, so follow it
+  // to its new node instead of silently deselecting; only a node
+  // that's truly gone clears the selection (a stale key must not dim
+  // everything forever).
   useEffect(() => {
-    if (selectedKey && !graph.nodes.some((n) => n.nodeKey === selectedKey)) {
-      setSelectedKey(null);
-    }
+    if (!selectedKey || graph.nodes.some((n) => n.nodeKey === selectedKey)) return;
+    const m = selectedKey.match(/^(recipe|import):(.+)$/);
+    const twin = m ? `${m[1] === "recipe" ? "import" : "recipe"}:${m[2]}` : null;
+    setSelectedKey(twin && graph.nodes.some((n) => n.nodeKey === twin) ? twin : null);
   }, [graph, selectedKey]);
 
   const savedLayout = useMemo(

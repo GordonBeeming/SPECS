@@ -448,15 +448,36 @@ fn item_name(item_id: &str, game_data: &GameData) -> String {
         .unwrap_or_else(|| item_id.to_string())
 }
 
+/// What a sourced spec can actually pull. An explicit cap is the
+/// user's override and wins outright; without one, the source's real
+/// remaining export capacity is the limit — a factory that exports
+/// nothing (yet) contributes nothing, instead of notionally absorbing
+/// the whole demand and starving the local line.
+fn effective_external_cap(
+    spec: &PlanImportSpec,
+    export_capacity: &HashMap<(String, String), f32>,
+) -> f32 {
+    if let Some(cap) = spec.ipm_cap {
+        return cap.max(0.0);
+    }
+    match &spec.source_factory_id {
+        Some(source_id) => *export_capacity
+            .get(&(source_id.clone(), spec.item_id.clone()))
+            .unwrap_or(&0.0),
+        None => 0.0,
+    }
+}
+
 /// Distribute one cut item's accumulated demand across its import
-/// specs in declared order. Sourced specs take up to their cap;
-/// whatever is left is `unassigned` (covered by an unsourced spec —
-/// "a future factory" — or by nothing at all if every spec is sourced
-/// and capped short).
+/// specs in declared order. Sourced specs take up to their effective
+/// cap (explicit cap, else real export capacity); whatever is left is
+/// `unassigned` (covered by an unsourced spec — "a future factory" —
+/// or by nothing at all if every spec falls short).
 fn allocate_import_specs(
     item_id: &str,
     total_demand: f32,
     specs: &[PlanImportSpec],
+    export_capacity: &HashMap<(String, String), f32>,
 ) -> (Vec<ImportAllocation>, f32, bool) {
     let mut remaining = total_demand;
     let mut allocations: Vec<ImportAllocation> = Vec::new();
@@ -475,7 +496,7 @@ fn allocate_import_specs(
             });
             continue;
         }
-        let cap = spec.ipm_cap.unwrap_or(f32::INFINITY);
+        let cap = effective_external_cap(spec, export_capacity);
         let take = remaining.min(cap).max(0.0);
         allocations.push(ImportAllocation {
             source_factory_id: source_id.clone(),
@@ -493,6 +514,7 @@ fn allocate_import_specs(
 /// the result — raw gaps, unsourced imports, and cap shortfalls come
 /// back as `PlanGraph.warnings` (warn, don't block). Only structural
 /// failures (unknown item, no recipe, dataset cycle) return `Err`.
+#[allow(clippy::too_many_arguments)]
 pub fn compute_plan_graph(
     factory_id: &str,
     targets: &[PlanTargetSpec],
@@ -500,6 +522,10 @@ pub fn compute_plan_graph(
     available_supply: &HashMap<String, f32>,
     imports: &[PlanImportSpec],
     recipe_overrides: &HashMap<String, String>,
+    // Remaining export capacity per (source factory, item), with this
+    // factory's own existing draws excluded — caps uncapped sources at
+    // what their plan actually offers.
+    export_capacity: &HashMap<(String, String), f32>,
     game_data: &GameData,
 ) -> Result<PlanGraph, PlannerError> {
     if targets.is_empty() {
@@ -547,6 +573,14 @@ pub fn compute_plan_graph(
         .iter()
         .filter(|sp| sp.source_factory_id.as_deref() == Some(factory_id))
         .map(|sp| sp.item_id.clone())
+        .collect();
+    // A cap on the self row pins the local line ("build exactly N here");
+    // without one the local line elastically covers whatever the
+    // externals can't.
+    let self_caps: HashMap<String, f32> = imports
+        .iter()
+        .filter(|sp| sp.source_factory_id.as_deref() == Some(factory_id))
+        .filter_map(|sp| sp.ipm_cap.map(|cap| (sp.item_id.clone(), cap.max(0.0))))
         .collect();
 
     // Honour the user's recipe choices, dropping invalid ids the same
@@ -614,20 +648,22 @@ pub fn compute_plan_graph(
             let mut any_delta = false;
             for item in &mixed_items {
                 let demand = *imported_demand.get(item).unwrap_or(&0.0);
-                // External reservation in declared order. Unsourced
-                // rows only reserve what they're capped at — an
-                // uncapped "future factory" row can't starve the
-                // local line to zero.
-                let mut remaining = demand;
-                for spec in external_specs.iter().filter(|sp| sp.item_id == *item) {
-                    let take = if spec.source_factory_id.is_some() {
-                        remaining.min(spec.ipm_cap.unwrap_or(f32::INFINITY))
-                    } else {
-                        remaining.min(spec.ipm_cap.unwrap_or(0.0))
-                    };
-                    remaining = (remaining - take.max(0.0)).max(0.0);
-                }
-                let local_needed = remaining;
+                let local_needed = if let Some(cap) = self_caps.get(item) {
+                    // Pinned local line: build exactly the cap (or the
+                    // whole demand if it's smaller); externals cover
+                    // the rest and any gap surfaces as a warning.
+                    cap.min(demand)
+                } else {
+                    // Elastic local line: externals reserve in
+                    // declared order up to what they can actually
+                    // deliver, the local line builds the remainder.
+                    let mut remaining = demand;
+                    for spec in external_specs.iter().filter(|sp| sp.item_id == *item) {
+                        let take = remaining.min(effective_external_cap(spec, export_capacity));
+                        remaining = (remaining - take.max(0.0)).max(0.0);
+                    }
+                    remaining
+                };
                 let already = *seeded_local.get(item).unwrap_or(&0.0);
                 let delta = local_needed - already;
                 if delta > 1e-3 {
@@ -808,7 +844,7 @@ pub fn compute_plan_graph(
         }
         let demand = &external;
         let (allocations, unassigned, has_unsourced_spec) =
-            allocate_import_specs(item_id, *demand, &external_specs);
+            allocate_import_specs(item_id, *demand, &external_specs, export_capacity);
         if unassigned > 0.0 {
             if has_unsourced_spec || allocations.is_empty() {
                 warnings.push(PlanWarning::ImportUnsourced {
@@ -926,6 +962,7 @@ mod tests {
             &HashMap::new(),
             &[],
             &HashMap::new(),
+            &HashMap::new(),
             &gd,
         )
         .unwrap_err();
@@ -937,6 +974,7 @@ mod tests {
             &unlocked(),
             &HashMap::new(),
             &[],
+            &HashMap::new(),
             &HashMap::new(),
             &gd,
         )
@@ -969,6 +1007,7 @@ mod tests {
                 &alts,
                 supply,
                 &[],
+                &HashMap::new(),
                 &HashMap::new(),
                 &gd,
             )
@@ -1011,6 +1050,7 @@ mod tests {
             &supply,
             &[],
             &overrides,
+            &HashMap::new(),
             &gd,
         )
         .expect("stale override must never wedge the plan");
@@ -1038,6 +1078,7 @@ mod tests {
             &HashMap::new(),
             &[],
             &HashMap::new(),
+            &HashMap::new(),
             &gd,
         )
         .expect("aluminum chain must compute without cycles");
@@ -1055,7 +1096,10 @@ mod tests {
         let mut supply = HashMap::new();
         supply.insert("Desc_OreCopper_C".into(), 100000.0);
         // Cable @60 needs ~120 Wire: first source saturates its 50
-        // cap, the second absorbs the rest.
+        // cap, the second (uncapped) absorbs the rest because its
+        // plan actually offers enough.
+        let mut capacity = HashMap::new();
+        capacity.insert(("fac-B".to_string(), "Desc_Wire_C".to_string()), 100.0);
         let graph = compute_plan_graph(
             "fac-self",
             &[target("Desc_Cable_C", 60.0)],
@@ -1066,6 +1110,7 @@ mod tests {
                 import_spec("Desc_Wire_C", Some("fac-B"), None),
             ],
             &HashMap::new(),
+            &capacity,
             &gd,
         )
         .unwrap();
@@ -1100,6 +1145,7 @@ mod tests {
             &supply,
             &[],
             &HashMap::new(),
+            &HashMap::new(),
             &gd,
         )
         .unwrap();
@@ -1131,6 +1177,7 @@ mod tests {
                 import_spec("Desc_Wire_C", Some("fac-wire"), Some(50.0)),
                 import_spec("Desc_Wire_C", Some("fac-self"), None),
             ],
+            &HashMap::new(),
             &HashMap::new(),
             &gd,
         )
@@ -1178,6 +1225,100 @@ mod tests {
     }
 
     #[test]
+    fn uncapped_source_with_no_real_exports_leaves_production_local() {
+        // The bug Gordon hit live: picking "iron smelter" as a Wire
+        // source before that factory exports anything tore the local
+        // line down to 0/min. An uncapped source only reserves what
+        // its plan actually offers — nothing on offer, nothing taken.
+        let gd = GameData::from_bundled().unwrap();
+        let mut supply = HashMap::new();
+        supply.insert("Desc_OreCopper_C".into(), 100000.0);
+        let graph = compute_plan_graph(
+            "fac-self",
+            &[target("Desc_Cable_C", 60.0)],
+            &unlocked(),
+            &supply,
+            &[
+                import_spec("Desc_Wire_C", Some("fac-smelter"), None),
+                import_spec("Desc_Wire_C", Some("fac-self"), None),
+            ],
+            &HashMap::new(),
+            &HashMap::new(), // fac-smelter exports nothing
+            &gd,
+        )
+        .unwrap();
+        let wire_local = graph
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                PlanNode::Recipe { item_id, output_ipm, .. } if item_id == "Desc_Wire_C" =>
+                    Some(*output_ipm),
+                _ => None,
+            })
+            .expect("local wire line must survive");
+        assert!((wire_local - 120.0).abs() < 0.5, "local builds everything, got {wire_local}");
+        assert!(
+            !graph.nodes.iter().any(|n| matches!(
+                n,
+                PlanNode::Import { item_id, .. } if item_id == "Desc_Wire_C"
+            )),
+            "nothing actually imported → no import node"
+        );
+    }
+
+    #[test]
+    fn self_row_cap_pins_the_local_share() {
+        // "Build it here" with an explicit amount: local builds the
+        // cap, externals cover the rest up to what they offer, and any
+        // gap warns instead of blocking.
+        let gd = GameData::from_bundled().unwrap();
+        let mut supply = HashMap::new();
+        supply.insert("Desc_OreCopper_C".into(), 100000.0);
+        let mut capacity = HashMap::new();
+        capacity.insert(("fac-wire".to_string(), "Desc_Wire_C".to_string()), 30.0);
+        // Cable @60 needs 120 Wire. Local pinned at 80; fac-wire only
+        // offers 30 → 10 short.
+        let graph = compute_plan_graph(
+            "fac-self",
+            &[target("Desc_Cable_C", 60.0)],
+            &unlocked(),
+            &supply,
+            &[
+                import_spec("Desc_Wire_C", Some("fac-wire"), None),
+                import_spec("Desc_Wire_C", Some("fac-self"), Some(80.0)),
+            ],
+            &HashMap::new(),
+            &capacity,
+            &gd,
+        )
+        .unwrap();
+        let wire_local = graph
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                PlanNode::Recipe { item_id, output_ipm, .. } if item_id == "Desc_Wire_C" =>
+                    Some(*output_ipm),
+                _ => None,
+            })
+            .expect("pinned local wire line");
+        assert!((wire_local - 80.0).abs() < 0.5, "local pinned at 80, got {wire_local}");
+        let import = graph
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                PlanNode::Import { item_id, ipm, allocations, unassigned_ipm, .. }
+                    if item_id == "Desc_Wire_C" =>
+                    Some((*ipm, allocations.clone(), *unassigned_ipm)),
+                _ => None,
+            })
+            .expect("import node carries the external share");
+        assert!((import.0 - 40.0).abs() < 0.5, "external share = 120 - 80, got {}", import.0);
+        assert!((import.1[0].resolved_ipm - 30.0).abs() < 0.5, "capacity-limited allocation");
+        assert!((import.2 - 10.0).abs() < 0.5, "gap surfaces as unassigned");
+        assert!(graph.warnings.iter().any(|w| matches!(w, PlanWarning::ImportShort { .. })));
+    }
+
+    #[test]
     fn removing_the_self_row_is_a_full_cut() {
         let gd = GameData::from_bundled().unwrap();
         let graph = compute_plan_graph(
@@ -1186,6 +1327,7 @@ mod tests {
             &unlocked(),
             &HashMap::new(),
             &[import_spec("Desc_Wire_C", Some("fac-wire"), None)],
+            &HashMap::new(),
             &HashMap::new(),
             &gd,
         )
@@ -1206,6 +1348,7 @@ mod tests {
             &HashMap::new(),
             &[],
             &HashMap::new(),
+            &HashMap::new(),
             &gd,
         )
         .unwrap();
@@ -1223,6 +1366,7 @@ mod tests {
             &unlocked(),
             &supply,
             &[],
+            &HashMap::new(),
             &HashMap::new(),
             &gd,
         )
@@ -1276,6 +1420,7 @@ mod tests {
             &supply,
             &[],
             &HashMap::new(),
+            &HashMap::new(),
             &gd,
         )
         .unwrap();
@@ -1311,6 +1456,7 @@ mod tests {
             &unlocked(),
             &supply,
             &[import_spec("Desc_CopperIngot_C", None, None)],
+            &HashMap::new(),
             &HashMap::new(),
             &gd,
         )
@@ -1361,6 +1507,7 @@ mod tests {
             &supply,
             &[import_spec("Desc_Wire_C", Some("fac-wire"), Some(50.0))],
             &HashMap::new(),
+            &HashMap::new(),
             &gd,
         )
         .unwrap();
@@ -1393,6 +1540,7 @@ mod tests {
             &HashMap::new(),
             &[],
             &HashMap::new(),
+            &HashMap::new(),
             &gd,
         )
         .unwrap();
@@ -1416,6 +1564,7 @@ mod tests {
             &unlocked(),
             &supply,
             &[],
+            &HashMap::new(),
             &HashMap::new(),
             &gd,
         )
@@ -1441,6 +1590,7 @@ mod tests {
             &supply,
             &[],
             &overrides,
+            &HashMap::new(),
             &gd,
         )
         .unwrap();
@@ -1482,6 +1632,7 @@ mod tests {
             &supply,
             &[import_spec("Desc_Cable_C", Some("fac-other"), None)],
             &HashMap::new(),
+            &HashMap::new(),
             &gd,
         )
         .unwrap();
@@ -1503,6 +1654,7 @@ mod tests {
             &unlocked(),
             &HashMap::new(),
             &[],
+            &HashMap::new(),
             &HashMap::new(),
             &gd,
         )

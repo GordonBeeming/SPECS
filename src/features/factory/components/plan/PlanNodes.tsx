@@ -165,6 +165,8 @@ export function RecipeStepNodeCard({
 export interface ImportNodeProps {
   node: Extract<PlanNode, { kind: "import" }>;
   factoryNames: Map<string, string>;
+  /** Source factories' item-icon ids, for a face next to each name. */
+  factoryIcons: Map<string, string | null>;
   /** True when a local line also builds this item (mixed sourcing). */
   hasLocal: boolean;
   onOpenSources: (itemId: string) => void;
@@ -174,6 +176,7 @@ export interface ImportNodeProps {
 export function ImportNodeCard({
   node,
   factoryNames,
+  factoryIcons,
   hasLocal,
   onOpenSources,
   onAddLocal,
@@ -200,14 +203,23 @@ export function ImportNodeCard({
 
       {node.allocations.length > 0 && (
         <ul className="mt-2 space-y-0.5">
-          {node.allocations.map((a, i) => (
-            <li key={`${a.sourceFactoryId}-${i}`} className="flex items-center justify-between gap-2">
-              <span className="truncate text-fg">
-                {factoryNames.get(a.sourceFactoryId) ?? a.sourceFactoryId}
-              </span>
-              <span className="tabular-nums text-fg-muted">{rate(a.resolvedIpm)}</span>
-            </li>
-          ))}
+          {node.allocations.map((a, i) => {
+            const icon = factoryIcons.get(a.sourceFactoryId) ?? null;
+            return (
+              <li
+                key={`${a.sourceFactoryId}-${i}`}
+                className="flex items-center justify-between gap-2"
+              >
+                <span className="flex min-w-0 items-center gap-1.5">
+                  {icon && <Icon itemId={icon} alt="" className="h-4 w-4 shrink-0" />}
+                  <span className="truncate text-fg">
+                    {factoryNames.get(a.sourceFactoryId) ?? a.sourceFactoryId}
+                  </span>
+                </span>
+                <span className="tabular-nums text-fg-muted">{rate(a.resolvedIpm)}</span>
+              </li>
+            );
+          })}
         </ul>
       )}
 

@@ -57,6 +57,39 @@ fn gather_plan_context(
     Ok((unlocked, supply))
 }
 
+/// Remaining export capacity per (factory, item) from one consumer's
+/// point of view: each factory's export slice minus what OTHER
+/// factories already draw via logistics links. The consumer's own
+/// links are excluded so its existing draw doesn't eat its own
+/// headroom when its plan recomputes.
+fn gather_export_capacity(
+    db: &PlaythroughDb,
+    beneficiary_factory_id: &str,
+) -> AppResult<std::collections::HashMap<(String, String), f32>> {
+    let targets = db.with(|c| plan_repo::plan_targets_all(c).map_err(AppError::from))?;
+    let links = db.with(|c| logistics_repo::link_list(c).map_err(AppError::from))?;
+    let mut drawn: std::collections::HashMap<(String, String), f32> =
+        std::collections::HashMap::new();
+    for l in links {
+        if l.to_factory_id == beneficiary_factory_id {
+            continue;
+        }
+        *drawn
+            .entry((l.from_factory_id, l.item_id))
+            .or_insert(0.0) += l.items_per_minute;
+    }
+    let mut out = std::collections::HashMap::new();
+    for (fid, t) in targets {
+        let Some(export) = t.export_ipm else { continue };
+        if export <= 0.0 {
+            continue;
+        }
+        let d = *drawn.get(&(fid.clone(), t.item_id.clone())).unwrap_or(&0.0);
+        out.insert((fid, t.item_id), (export - d).max(0.0));
+    }
+    Ok(out)
+}
+
 fn validate_plan_specs(input_targets: &[super::dto::PlanTargetSpec]) -> AppResult<()> {
     for t in input_targets {
         if !t.ipm.is_finite() || t.ipm <= 0.0 {
@@ -122,6 +155,7 @@ fn plan_save_impl(
     }
 
     let (unlocked, supply) = gather_plan_context(db, game_data)?;
+    let export_capacity = gather_export_capacity(db, &input.factory_id)?;
     // The graph is recomputed server-side from the submitted inputs —
     // a client-supplied graph is never trusted for materialization.
     let graph = compute_plan_graph(
@@ -131,6 +165,7 @@ fn plan_save_impl(
         &supply,
         &input.imports,
         &input.recipe_overrides,
+        &export_capacity,
         game_data,
     )
     .map_err(|e| AppError::Invalid(format!("plan does not compute: {e:?}")))?;
@@ -294,6 +329,7 @@ pub fn factory_plan_compute(
     validate_plan_specs(&input.targets)?;
     let db = require_active(&active)?;
     let (unlocked, supply) = gather_plan_context(&db, &game_data)?;
+    let export_capacity = gather_export_capacity(&db, &input.factory_id)?;
     match compute_plan_graph(
         &input.factory_id,
         &input.targets,
@@ -301,6 +337,7 @@ pub fn factory_plan_compute(
         &supply,
         &input.imports,
         &input.recipe_overrides,
+        &export_capacity,
         &game_data,
     ) {
         Ok(graph) => Ok(ComputePlanResult::Ok { graph }),
@@ -590,12 +627,34 @@ mod tests {
         }
     }
 
+    /// Give a factory a Wire plan that exports 150/min — uncapped
+    /// sources only deliver what the supplier actually offers, so
+    /// tests that expect a materialized link need a real offer.
+    fn plan_wire_exports(db: &PlaythroughDb, gd: &GameData, factory_id: &str) {
+        plan_save_impl(
+            db,
+            gd,
+            save_input(
+                factory_id,
+                vec![PlanTargetSpec {
+                    item_id: "Desc_Wire_C".into(),
+                    ipm: 150.0,
+                    export_ipm: Some(150.0),
+                }],
+                vec![],
+            ),
+            NOW,
+        )
+        .expect("supplier plan saves");
+    }
+
     #[test]
     fn plan_save_creates_links_for_sourced_imports_and_reconciles_on_resave() {
         let db = Arc::new(open_test_db());
         let gd = GameData::from_bundled().unwrap();
         insert_test_factory(&db, "fac-cables", "Cables v1");
         insert_test_factory(&db, "fac-wire", "Wire farm");
+        plan_wire_exports(&db, &gd, "fac-wire");
 
         let sourced = vec![PlanImportSpec {
             item_id: "Desc_Wire_C".into(),
@@ -670,6 +729,7 @@ mod tests {
         let gd = GameData::from_bundled().unwrap();
         insert_test_factory(&db, "fac-cables", "Cables v1");
         insert_test_factory(&db, "fac-wire", "Wire farm");
+        plan_wire_exports(&db, &gd, "fac-wire");
 
         // Save a plan with an unsourced Wire input.
         plan_save_impl(

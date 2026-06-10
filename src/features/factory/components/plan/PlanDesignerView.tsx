@@ -17,6 +17,7 @@ import {
   useSetFactoryIcon,
 } from "../../hooks/useFactories";
 import { usePlanDesigner } from "../../hooks/usePlanDesigner";
+import { FirstProductModal } from "./FirstProductModal";
 import { PlanGraphCanvas } from "./PlanGraphCanvas";
 import { PlanTargetsBar } from "./PlanTargetsBar";
 import { errorLine, PlanWarningsBanner } from "./PlanWarningsBanner";
@@ -63,8 +64,17 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
     () => new Map(factories.data?.map((f) => [f.id, f.name]) ?? []),
     [factories.data],
   );
+  const factoryIcons = useMemo(
+    () => new Map(factories.data?.map((f) => [f.id, f.iconId ?? null]) ?? []),
+    [factories.data],
+  );
   const allFactories = useMemo(
-    () => (factories.data ?? []).map((f) => ({ id: f.id, name: f.name })),
+    () =>
+      (factories.data ?? []).map((f) => ({
+        id: f.id,
+        name: f.name,
+        iconId: f.iconId ?? null,
+      })),
     [factories.data],
   );
   const recipesByOutput = useMemo(
@@ -211,10 +221,10 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
             {designer.saving ? "Saving…" : designer.dirty ? "Unsaved" : "Saved"}
           </span>
           <Button
-            variant="ghost"
+            variant="danger"
             onClick={() => setConfirmDelete(true)}
             aria-label="Delete factory"
-            className="px-2 py-1 text-xs text-danger"
+            className="px-2 py-1 text-xs"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
@@ -252,10 +262,11 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
               Keep it
             </Button>
             <Button
+              variant="danger-solid"
               onClick={() => {
                 deleteFactory.mutate(factoryId, { onSuccess: onDeleted });
               }}
-              className="bg-danger px-3 py-1 text-xs hover:bg-danger"
+              className="px-3 py-1 text-xs"
             >
               Delete factory
             </Button>
@@ -268,7 +279,6 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
           <PlanTargetsBar
             targets={working.targets}
             itemNames={itemNames}
-            autoOpenAdd={firstRun && working.targets.length === 0}
             onAddTarget={designer.addTarget}
             onRemoveTarget={designer.removeTarget}
             onSetTargetIpm={designer.setTargetIpm}
@@ -291,25 +301,12 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
 
       <div className="relative min-h-0 flex-1">
         {working && working.targets.length === 0 ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="max-w-md text-center">
-              <h3 className="text-lg font-semibold text-fg">What should this factory make?</h3>
-              <p className="mt-2 text-sm text-fg-muted">
-                Add a product above and the production graph builds itself — swap recipes on
-                any step, or source parts from other factories (now or later).
-              </p>
-              {firstRun && (
-                <Button
-                  variant="ghost"
-                  onClick={() => deleteFactory.mutate(factoryId, { onSuccess: onDeleted })}
-                  className="mt-4 px-3 py-1.5 text-xs text-danger"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Cancel & delete this factory
-                </Button>
-              )}
-            </div>
-          </div>
+          <FirstProductModal
+            factoryName={factoryName}
+            firstRun={firstRun ?? false}
+            onConfirm={(itemId, ipm) => designer.addTarget(itemId, ipm)}
+            onDeleteFactory={() => deleteFactory.mutate(factoryId, { onSuccess: onDeleted })}
+          />
         ) : graph ? (
           <PlanGraphCanvas
             factoryId={factoryId}
@@ -317,6 +314,7 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
             layout={designer.layout}
             recipesByOutput={recipesByOutput}
             factoryNames={factoryNames}
+            factoryIcons={factoryIcons}
             exportByItem={exportByItem}
             localItems={localItems}
             onSwapRecipe={designer.setRecipeOverride}

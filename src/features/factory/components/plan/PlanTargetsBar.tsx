@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus, Share2, X } from "lucide-react";
 
 import { FilterSelect } from "@/shared/ui/FilterSelect";
@@ -10,8 +10,6 @@ import { useItems, useRecipes } from "@/features/library/hooks/useLibrary";
 export interface PlanTargetsBarProps {
   targets: PlanTargetSpec[];
   itemNames: Map<string, string>;
-  /** Open the picker immediately (first-run "what should this make?"). */
-  autoOpenAdd?: boolean;
   onAddTarget: (itemId: string) => void;
   onRemoveTarget: (itemId: string) => void;
   onSetTargetIpm: (itemId: string, ipm: number) => void;
@@ -22,7 +20,6 @@ export interface PlanTargetsBarProps {
 export function PlanTargetsBar({
   targets,
   itemNames,
-  autoOpenAdd,
   onAddTarget,
   onRemoveTarget,
   onSetTargetIpm,
@@ -30,9 +27,6 @@ export function PlanTargetsBar({
   const items = useItems();
   const recipes = useRecipes();
   const [adding, setAdding] = useState(false);
-  useEffect(() => {
-    if (autoOpenAdd) setAdding(true);
-  }, [autoOpenAdd]);
 
   const targetOptions = useMemo(
     () => buildTargetOptions(items.data, recipes.data),

@@ -133,6 +133,7 @@ describe("RecipeStepNodeCard", () => {
 describe("ImportNodeCard", () => {
   const baseProps = {
     factoryNames: new Map([["fac-wire", "Wire farm"]]),
+    factoryIcons: new Map([["fac-wire", "Desc_Wire_C"]]),
     hasLocal: false,
     onOpenSources: vi.fn(),
     onAddLocal: vi.fn(),
