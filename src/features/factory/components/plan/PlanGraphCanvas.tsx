@@ -20,6 +20,7 @@ const dagre: typeof import("dagre") =
   (dagreNs as unknown as typeof import("dagre"));
 
 import { plannerApi } from "@/features/planner/api";
+import { useThemeMode } from "@/shared/theme/useThemeMode";
 import type { PlanGraph, PlanLayoutEntry, PlanNode } from "@/features/planner/types";
 import type { FilterOption } from "@/shared/ui/FilterSelect";
 import type { Recipe } from "@/features/library/types";
@@ -136,6 +137,11 @@ function autoLayout(graph: PlanGraph): Map<string, { x: number; y: number }> {
 
 function CanvasInner(props: PlanGraphCanvasProps) {
   const { factoryId, graph, layout } = props;
+  // xyflow defaults to colorMode="light", which adds a `light` class
+  // to the canvas — and brand.css scopes every --color-* token under
+  // .light/.dark, so the nodes would flip to light-mode colours inside
+  // a dark app. Follow the app theme instead.
+  const { mode } = useThemeMode();
 
   const savedLayout = useMemo(
     () => new Map(layout.map((l) => [l.nodeKey, { x: l.x, y: l.y }] as const)),
@@ -206,6 +212,7 @@ function CanvasInner(props: PlanGraphCanvasProps) {
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       nodeTypes={nodeTypes}
+      colorMode={mode}
       fitView
       minZoom={0.1}
       proOptions={{ hideAttribution: true }}

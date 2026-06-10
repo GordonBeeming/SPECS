@@ -25,6 +25,7 @@ const dagre: typeof import("dagre") =
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useRecipes } from "@/features/library/hooks/useLibrary";
+import { useThemeMode } from "@/shared/theme/useThemeMode";
 import { factoryApi } from "../api";
 import { useRemoveMachine, useUpdateMachine } from "../hooks/useFactories";
 import type { FactoryMachine, UpdateMachineInput } from "../types";
@@ -111,6 +112,9 @@ function autoLayout(machines: FactoryMachine[]): Map<string, { x: number; y: num
 
 function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }: FactoryGraphViewProps) {
   const recipes = useRecipes();
+  // Same colour-scheme trap as PlanGraphCanvas: xyflow's default
+  // light colorMode re-scopes the brand tokens inside the canvas.
+  const { mode } = useThemeMode();
   const removeMachine = useRemoveMachine(factoryId);
   const updateMachine = useUpdateMachine(factoryId);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -240,6 +244,7 @@ function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
+        colorMode={mode}
         fitView
         onNodeDragStop={(_, node) => {
           void factoryApi

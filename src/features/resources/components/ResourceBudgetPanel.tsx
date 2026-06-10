@@ -100,40 +100,44 @@ export function ResourceBudgetPanel({ variant }: ResourceBudgetPanelProps) {
   }
 
   const header = (
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-2 text-sm font-semibold text-fg">
-        <Gauge className="h-4 w-4 text-primary" />
-        Resource budget
-        <span className="text-xs font-normal text-fg-muted">
-          remaining at {budget.data?.assumptionLabel ?? "…"}
-        </span>
-      </div>
-      <div className="flex items-center gap-1">
-        {ASSUMPTIONS.map((a) => (
-          <button
-            key={a.value}
-            type="button"
-            onClick={() => pickAssumption(a.value)}
-            aria-pressed={assumption === a.value}
-            className={`rounded-full px-2 py-0.5 text-[11px] ${
-              assumption === a.value
-                ? "bg-primary text-white"
-                : "text-fg-muted hover:bg-border hover:text-fg"
-            }`}
-          >
-            {a.label}
-          </button>
-        ))}
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-fg">
+          <Gauge className="h-4 w-4 text-primary" />
+          Resource budget
+        </div>
         {variant === "compact" && (
           <button
             type="button"
             onClick={toggleCollapsed}
             aria-label="Collapse resource budget"
-            className="ml-1 rounded p-1 text-fg-muted hover:bg-border hover:text-fg"
+            className="rounded p-1 text-fg-muted hover:bg-border hover:text-fg"
           >
             <ChevronDown className="h-3.5 w-3.5" />
           </button>
         )}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-xs text-fg-muted">
+          remaining at {budget.data?.assumptionLabel ?? "…"}
+        </span>
+        <div className="flex items-center gap-1">
+          {ASSUMPTIONS.map((a) => (
+            <button
+              key={a.value}
+              type="button"
+              onClick={() => pickAssumption(a.value)}
+              aria-pressed={assumption === a.value}
+              className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] ${
+                assumption === a.value
+                  ? "bg-primary text-white"
+                  : "text-fg-muted hover:bg-border hover:text-fg"
+              }`}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -142,7 +146,9 @@ export function ResourceBudgetPanel({ variant }: ResourceBudgetPanelProps) {
     <div
       className={
         variant === "compact"
-          ? "w-[26rem] max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-bg-raised/95 p-3 shadow-lg backdrop-blur"
+          ? // max-h + scroll keeps the dock inside the map card even
+            // with all 13 resources expanded.
+            "max-h-[min(420px,60vh)] w-[26rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-border bg-bg-raised/95 p-3 shadow-lg backdrop-blur"
           : "rounded-lg border border-border bg-bg-raised p-4"
       }
     >
