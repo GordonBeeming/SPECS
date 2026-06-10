@@ -7,8 +7,13 @@ import {
 } from "react-zoom-pan-pinch";
 
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
-import { useFactoryDetail, useFactoryList } from "@/features/factory/hooks/useFactories";
-import { useRecipes } from "@/features/library/hooks/useLibrary";
+import {
+  useCreateFactory,
+  useFactoryDetail,
+  useFactoryList,
+  useUnsourcedInputs,
+} from "@/features/factory/hooks/useFactories";
+import { useItems, useRecipes } from "@/features/library/hooks/useLibrary";
 import { traceRawDemand } from "@/features/factory/traceRaw";
 import { useLogisticsLinks } from "@/features/logistics/hooks/useLogistics";
 import { useAllPowerGens } from "@/features/power/hooks/usePower";
@@ -18,13 +23,27 @@ import {
   useSetNodeClaim,
 } from "@/features/resources/hooks/useResources";
 import { factoryApi } from "@/features/factory/api";
+import { plannerApi } from "@/features/planner/api";
+import type { UnsourcedInput } from "@/features/planner/types";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/shared/query/keys";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { Icon } from "@/shared/ui/Icon";
-import { useNavStore } from "@/shared/nav-store";
-import { Factory as FactoryGlyph, Pencil, Sparkles, Unlink, Zap } from "lucide-react";
+import { openPlanDesigner, useNavStore } from "@/shared/nav-store";
+import {
+  CircleAlert,
+  Factory as FactoryGlyph,
+  GripVertical,
+  Pencil,
+  Sparkles,
+  Unlink,
+  Workflow,
+  Zap,
+} from "lucide-react";
 
 import { NewFactoryPanel } from "./NewFactoryPanel";
+import { MapLinksLayer } from "./MapLinksLayer";
 import { ResourceBudgetPanel } from "@/features/resources/components/ResourceBudgetPanel";
 
 import mapAsset from "@/assets/map/satisfactory-map.webp";
@@ -65,6 +84,7 @@ const STORAGE = {
   showClaimed: "specs:map:showClaimedToo",
   hiddenResources: "specs:map:hiddenResources",
   hiddenPurities: "specs:map:hiddenPurities",
+  showAllLinks: "specs:map:showAllLinks",
 } as const;
 
 function readBool(key: string, fallback: boolean): boolean {
@@ -99,9 +119,13 @@ export function MapView() {
   const factories = useFactoryList();
   const nodes = useResourceNodes();
   const links = useLogisticsLinks();
+  const items = useItems();
   const powerGens = useAllPowerGens();
+  const unsourcedInputs = useUnsourcedInputs();
   const setClaim = useSetNodeClaim();
   const clearClaim = useClearNodeClaim();
+  const createFactory = useCreateFactory();
+  const queryClient = useQueryClient();
   const wrapRef = useRef<ReactZoomPanPinchRef | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -142,6 +166,32 @@ export function MapView() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedFactoryId, setSelectedFactoryId] = useState<string | null>(null);
   const [showNewFactoryPanel, setShowNewFactoryPanel] = useState(false);
+  const [showAllLinks, setShowAllLinks] = useState(() =>
+    readBool(STORAGE.showAllLinks, true),
+  );
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE.showAllLinks, showAllLinks ? "1" : "0");
+    } catch {}
+  }, [showAllLinks]);
+  // Right-click quick-create: where the popover renders (container-
+  // relative screen px) and where the factory lands (map px).
+  const [quickCreate, setQuickCreate] = useState<{
+    screenX: number;
+    screenY: number;
+    mapX: number;
+    mapY: number;
+  } | null>(null);
+  // Drag-to-source: an unsourced input being dragged from the factory
+  // popover towards its future source factory. Ghost line anchors at
+  // the OWNING factory's pin.
+  const [linkingImport, setLinkingImport] = useState<{
+    importId: string;
+    itemName: string;
+    fromX: number;
+    fromY: number;
+    ownerFactoryId: string;
+  } | null>(null);
   // Active drag-to-link state: the node being dragged + the current
   // cursor position (in MAP_W/MAP_H pixel space) so we can draw a
   // ghost line. `linkHoverFactoryId` is set by FactoryPin mouseenter
@@ -180,22 +230,47 @@ export function MapView() {
     return (nodes.data ?? []).filter((n) => n.claim?.factoryId === selectedFactoryId);
   }, [nodes.data, selectedFactoryId]);
 
-  const upstreamFactories = useMemo(() => {
-    if (!selectedFactoryId) return [];
-    const factoryById = new Map((factories.data ?? []).map((f) => [f.id, f]));
-    const out: Array<{
-      link: NonNullable<typeof links.data>[number];
-      factory: NonNullable<typeof factories.data>[number];
-    }> = [];
-    for (const l of links.data ?? []) {
-      if (l.toFactoryId !== selectedFactoryId) continue;
-      const f = factoryById.get(l.fromFactoryId);
-      if (f) out.push({ link: l, factory: f });
-    }
-    return out;
-  }, [links.data, factories.data, selectedFactoryId]);
-
   const boundNodeIds = useMemo(() => new Set(boundNodes.map((n) => n.id)), [boundNodes]);
+
+  // Unsourced inputs per factory → pin badge counts + popover rows.
+  const unsourcedByFactory = useMemo(() => {
+    const map = new Map<string, UnsourcedInput[]>();
+    for (const u of unsourcedInputs.data ?? []) {
+      const arr = map.get(u.factoryId) ?? [];
+      arr.push(u);
+      map.set(u.factoryId, arr);
+    }
+    return map;
+  }, [unsourcedInputs.data]);
+
+  const itemNames = useMemo(
+    () => new Map(items.data?.map((i) => [i.id, i.name]) ?? []),
+    [items.data],
+  );
+
+  // Screen → map-pixel conversion for events that don't originate on a
+  // map-anchored element (right-click anywhere, popover drag handles).
+  const clientToMap = (clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    const state = wrapRef.current?.state;
+    if (!rect || !state) return null;
+    return {
+      x: (clientX - rect.left - state.positionX) / state.scale,
+      y: (clientY - rect.top - state.positionY) / state.scale,
+    };
+  };
+
+  const commitImportSource = (importId: string, sourceFactoryId: string) => {
+    void plannerApi
+      .assignImportSource(importId, sourceFactoryId)
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ["factory"] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.logistics.list });
+      })
+      .catch((err: unknown) => {
+        console.error("assigning input source failed:", err);
+      });
+  };
 
   const resourceTypes = useMemo(() => {
     const m = new Map<string, { id: string; name: string; total: number }>();
@@ -269,6 +344,14 @@ export function MapView() {
                 onChange={(e) => setShowClaimedToo(e.target.checked)}
               />
               Show claimed nodes too
+            </label>
+            <label className="flex items-center gap-2 text-xs text-fg-muted">
+              <input
+                type="checkbox"
+                checked={showAllLinks}
+                onChange={(e) => setShowAllLinks(e.target.checked)}
+              />
+              Show factory links
             </label>
             <Button
               onClick={() => setShowNewFactoryPanel(true)}
@@ -401,6 +484,23 @@ export function MapView() {
                   className="relative"
                   style={{ width: MAP_W, height: MAP_H }}
                   onClick={() => setSelectedNodeId(null)}
+                  onContextMenu={(e) => {
+                    // Right-click drops a factory right where the
+                    // cursor is — the fast path for sketching a whole
+                    // playthrough's worth of pins.
+                    e.preventDefault();
+                    const map = clientToMap(e.clientX, e.clientY);
+                    const rect = containerRef.current?.getBoundingClientRect();
+                    if (!map || !rect) return;
+                    setSelectedNodeId(null);
+                    setSelectedFactoryId(null);
+                    setQuickCreate({
+                      screenX: e.clientX - rect.left,
+                      screenY: e.clientY - rect.top,
+                      mapX: map.x,
+                      mapY: map.y,
+                    });
+                  }}
                 >
                   <img
                     src={mapAsset}
@@ -408,6 +508,21 @@ export function MapView() {
                     className="absolute inset-0 h-full w-full"
                     draggable={false}
                   />
+
+                  {/* All factory→factory flows, faint until a factory
+                      is selected. Above the map image, under the
+                      markers/pins, and pointer-events-none so it never
+                      steals clicks. */}
+                  {showAllLinks && (
+                    <MapLinksLayer
+                      links={links.data ?? []}
+                      factories={factories.data ?? []}
+                      itemNames={itemNames}
+                      selectedFactoryId={selectedFactoryId}
+                      mapW={MAP_W}
+                      mapH={MAP_H}
+                    />
+                  )}
 
                   {visibleNodes.map((node) => {
                     const { xPct, yPct } = worldToPct(node.x, node.y);
@@ -533,7 +648,6 @@ export function MapView() {
                     <InputLinesLayer
                       selectedFactoryId={selectedFactoryId}
                       boundNodes={boundNodes}
-                      upstreamFactories={upstreamFactories}
                       allFactories={factories.data ?? []}
                       onDetachNode={(nodeId) => {
                         // Full release: the node goes back to
@@ -557,6 +671,7 @@ export function MapView() {
                         key={f.id}
                         factory={f}
                         hasPower={hasPower}
+                        unsourcedCount={unsourcedByFactory.get(f.id)?.length ?? 0}
                         dragging={dragging === f.id}
                         linkHover={linkHoverFactoryId === f.id}
                         onDragStart={() => setDragging(f.id)}
@@ -576,7 +691,7 @@ export function MapView() {
                           setSelectedFactoryId(f.id);
                         }}
                         onLinkHoverEnter={() => {
-                          if (linkingNode) setLinkHoverFactoryId(f.id);
+                          if (linkingNode || linkingImport) setLinkHoverFactoryId(f.id);
                         }}
                         onLinkHoverLeave={() => {
                           if (linkHoverFactoryId === f.id)
@@ -593,10 +708,11 @@ export function MapView() {
                       tell which factories include power gear at a
                       glance. */}
 
-                  {/* Ghost line while drag-to-linking a node onto a
-                      factory. Pointer-events disabled so it doesn't
+                  {/* Ghost line while drag-to-linking (a node onto a
+                      factory, or an unsourced input onto its future
+                      source). Pointer-events disabled so it doesn't
                       intercept the drop hit-test. */}
-                  {linkingNode && linkCursor && (
+                  {(linkingNode || linkingImport) && linkCursor && (
                     <svg
                       className="pointer-events-none absolute inset-0"
                       width={MAP_W}
@@ -604,8 +720,8 @@ export function MapView() {
                       viewBox={`0 0 ${MAP_W} ${MAP_H}`}
                     >
                       <line
-                        x1={linkingNode.fromX}
-                        y1={linkingNode.fromY}
+                        x1={(linkingNode ?? linkingImport)!.fromX}
+                        y1={(linkingNode ?? linkingImport)!.fromY}
                         x2={linkCursor.x}
                         y2={linkCursor.y}
                         stroke={linkHoverFactoryId ? "var(--color-success)" : "var(--color-primary)"}
@@ -619,6 +735,45 @@ export function MapView() {
               </TransformComponent>
             </TransformWrapper>
           </div>
+
+          {/* Right-click quick-create. Anchored at the cursor in
+              container space so it doesn't scale with zoom. */}
+          {quickCreate && (
+            <div
+              className="absolute z-30"
+              style={{
+                left: Math.min(quickCreate.screenX, (containerRef.current?.clientWidth ?? 600) - 280),
+                top: Math.min(quickCreate.screenY, (containerRef.current?.clientHeight ?? 400) - 140),
+              }}
+            >
+              <QuickCreateFactoryPopover
+                pending={createFactory.isPending}
+                onCreate={(name, openPlan) => {
+                  const { worldX, worldY } = pctToWorld(
+                    quickCreate.mapX / MAP_W,
+                    quickCreate.mapY / MAP_H,
+                  );
+                  createFactory.mutate(
+                    { name },
+                    {
+                      onSuccess: (factory) => {
+                        void factoryApi
+                          .setPosition({ id: factory.id, worldX, worldY })
+                          .finally(() => factories.refetch());
+                        setQuickCreate(null);
+                        if (openPlan) {
+                          openPlanDesigner(factory.id);
+                        } else {
+                          setSelectedFactoryId(factory.id);
+                        }
+                      },
+                    },
+                  );
+                }}
+                onClose={() => setQuickCreate(null)}
+              />
+            </div>
+          )}
 
           {/* Whole-map resource budget dock. Shares the bottom-left
               corner with the node popover — the popover wins while a
@@ -666,6 +821,47 @@ export function MapView() {
                 hasPower={(powerGens.data ?? []).some(
                   (g) => g.factoryId === selectedFactoryId,
                 )}
+                unsourcedInputs={unsourcedByFactory.get(selectedFactoryId) ?? []}
+                onStartImportDrag={(input, e) => {
+                  // Ghost line anchors at the owning factory's pin —
+                  // the demand originates there.
+                  const owner = (factories.data ?? []).find(
+                    (f) => f.id === input.factoryId,
+                  );
+                  if (!owner) return;
+                  const o = worldToPct(owner.worldX, owner.worldY);
+                  const fromX = o.xPct * MAP_W;
+                  const fromY = o.yPct * MAP_H;
+                  setLinkingImport({
+                    importId: input.importId,
+                    itemName: input.itemName,
+                    fromX,
+                    fromY,
+                    ownerFactoryId: input.factoryId,
+                  });
+                  const onMove = (ev: MouseEvent) => {
+                    const map = clientToMap(ev.clientX, ev.clientY);
+                    if (map) setLinkCursor(map);
+                  };
+                  const onUp = () => {
+                    window.removeEventListener("mousemove", onMove);
+                    window.removeEventListener("mouseup", onUp);
+                    const target = linkHoverFactoryIdRef.current;
+                    setLinkingImport(null);
+                    setLinkCursor(null);
+                    setLinkHoverFactoryId(null);
+                    if (target && target !== input.factoryId) {
+                      commitImportSource(input.importId, target);
+                    }
+                  };
+                  window.addEventListener("mousemove", onMove);
+                  window.addEventListener("mouseup", onUp);
+                  e.preventDefault();
+                }}
+                onOpenPlan={() => {
+                  openPlanDesigner(selectedFactoryId);
+                  setSelectedFactoryId(null);
+                }}
                 onEdit={() => {
                   useNavStore.getState().selectFactory(selectedFactoryId);
                   useNavStore.getState().goTo("factories");
@@ -690,6 +886,8 @@ interface FactoryPinProps {
   factory: { id: string; name: string; worldX: number; worldY: number; iconId?: string };
   /** True if this factory has any power_gen rows — surfaces a ⚡ corner badge so power-bearing factories read distinctly. */
   hasPower?: boolean;
+  /** Inputs still waiting on a source factory — danger corner badge with the count. */
+  unsourcedCount?: number;
   /** True while the user is dragging a node-link towards this pin so we can highlight it as the drop target. */
   linkHover?: boolean;
   dragging: boolean;
@@ -712,25 +910,20 @@ const CLICK_THRESHOLD_PX = 4;
 interface InputLinesLayerProps {
   selectedFactoryId: string;
   boundNodes: ResourceNodeRow[];
-  upstreamFactories: Array<{
-    link: { id: string; itemId: string; itemsPerMinute: number };
-    factory: { id: string; name: string; worldX: number; worldY: number };
-  }>;
   allFactories: Array<{ id: string; name: string; worldX: number; worldY: number }>;
   onDetachNode: (nodeId: string, prev: ResourceNodeRow) => void;
 }
 
 /**
- * SVG layer that draws a line from each input (claimed node or
- * upstream factory) to the currently-selected factory, with a small
- * detach-button on each line's source endpoint. Mounted inside the
- * pan/zoom transform so the lines stay glued to their endpoints at
- * every zoom level.
+ * SVG layer that draws a line from each bound resource node to the
+ * currently-selected factory, with a small detach-button on each
+ * line's source endpoint. Factory→factory flows render in
+ * `MapLinksLayer` instead. Mounted inside the pan/zoom transform so
+ * the lines stay glued to their endpoints at every zoom level.
  */
 function InputLinesLayer({
   selectedFactoryId,
   boundNodes,
-  upstreamFactories,
   allFactories,
   onDetachNode,
 }: InputLinesLayerProps) {
@@ -780,23 +973,6 @@ function InputLinesLayer({
             />
           );
         })}
-        {upstreamFactories.map(({ link, factory }) => {
-          const p = worldToPct(factory.worldX, factory.worldY);
-          return (
-            <line
-              key={`f-${link.id}`}
-              x1={p.xPct * MAP_W}
-              y1={p.yPct * MAP_H}
-              x2={tx}
-              y2={ty}
-              stroke="var(--color-accent, var(--color-primary))"
-              strokeWidth={3}
-              strokeOpacity={0.75}
-              markerEnd="url(#specs-arrow)"
-              style={{ color: "var(--color-accent, var(--color-primary))" }}
-            />
-          );
-        })}
       </svg>
       {/* Detach buttons sit on top of the SVG (which is
           pointer-events-none) so each one is independently clickable
@@ -829,6 +1005,7 @@ function InputLinesLayer({
 function FactoryPin({
   factory,
   hasPower,
+  unsourcedCount = 0,
   linkHover,
   onDragStart,
   onDragEnd,
@@ -930,19 +1107,101 @@ function FactoryPin({
           <Zap className="h-2.5 w-2.5" />
         </span>
       )}
+      {unsourcedCount > 0 && (
+        <span
+          aria-label={`${unsourcedCount} unsourced input${unsourcedCount === 1 ? "" : "s"}`}
+          title={`${unsourcedCount} input${unsourcedCount === 1 ? "" : "s"} still need a source factory — click the pin to assign`}
+          className="absolute -left-1.5 -top-1.5 inline-flex h-4 min-w-4 items-center justify-center gap-0.5 rounded-full bg-danger px-0.5 text-[9px] font-bold text-white"
+        >
+          <CircleAlert className="h-2.5 w-2.5" />
+          {unsourcedCount}
+        </span>
+      )}
     </button>
+  );
+}
+
+interface QuickCreateFactoryPopoverProps {
+  pending: boolean;
+  onCreate: (name: string, openPlan: boolean) => void;
+  onClose: () => void;
+}
+
+/** Right-click → name → pin. The fastest path from "a factory goes
+ * here" to a pin on the map; planning what it makes can come later. */
+function QuickCreateFactoryPopover({ pending, onCreate, onClose }: QuickCreateFactoryPopoverProps) {
+  const [name, setName] = useState("");
+  const valid = name.trim().length > 0;
+  return (
+    <Card className="w-[260px] p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-semibold text-fg">New factory here</span>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="rounded p-1 text-fg-muted hover:bg-border hover:text-fg"
+        >
+          ×
+        </button>
+      </div>
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && valid && !pending) onCreate(name.trim(), false);
+          if (e.key === "Escape") onClose();
+        }}
+        placeholder="Factory name…"
+        aria-label="Factory name"
+        className="mt-2 h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-fg outline-none focus:border-primary"
+      />
+      <div className="mt-2 flex items-center justify-end gap-2">
+        <Button
+          variant="ghost"
+          disabled={!valid || pending}
+          onClick={() => onCreate(name.trim(), false)}
+          className="px-2.5 py-1 text-xs"
+        >
+          Create
+        </Button>
+        <Button
+          disabled={!valid || pending}
+          onClick={() => onCreate(name.trim(), true)}
+          className="px-2.5 py-1 text-xs"
+        >
+          <Workflow className="h-3 w-3" />
+          Create & plan
+        </Button>
+      </div>
+    </Card>
   );
 }
 
 interface FactoryPopoverProps {
   factoryId: string;
   hasPower?: boolean;
+  /** This factory's inputs still waiting on a source — rendered with
+      drag handles so the user can drop them on the supplying pin. */
+  unsourcedInputs?: UnsourcedInput[];
+  onStartImportDrag?: (input: UnsourcedInput, e: React.MouseEvent) => void;
+  onOpenPlan?: () => void;
   onEdit: () => void;
   onEditPower?: () => void;
   onClose: () => void;
 }
 
-function FactoryPopover({ factoryId, hasPower, onEdit, onEditPower, onClose }: FactoryPopoverProps) {
+function FactoryPopover({
+  factoryId,
+  hasPower,
+  unsourcedInputs = [],
+  onStartImportDrag,
+  onOpenPlan,
+  onEdit,
+  onEditPower,
+  onClose,
+}: FactoryPopoverProps) {
   const detail = useFactoryDetail(factoryId);
   const recipes = useRecipes();
   const f = detail.data?.factory;
@@ -1142,6 +1401,31 @@ function FactoryPopover({ factoryId, hasPower, onEdit, onEditPower, onClose }: F
         );
       })()}
 
+      {unsourcedInputs.length > 0 && (
+        <div className="mt-3 border-t border-border/40 pt-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-warning">
+            Unsourced inputs · drag onto the supplying factory
+          </div>
+          <ul className="mt-1 space-y-1 text-[11px]">
+            {unsourcedInputs.map((u) => (
+              <li
+                key={u.importId}
+                className="flex cursor-grab items-center justify-between gap-2 rounded px-1 py-0.5 hover:bg-border/40 active:cursor-grabbing"
+                title={`Drag onto the factory that will supply ${u.itemName}`}
+                onMouseDown={(e) => onStartImportDrag?.(u, e)}
+              >
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <GripVertical className="h-3 w-3 shrink-0 text-fg-muted" />
+                  <Icon itemId={u.itemId} alt="" className="h-3.5 w-3.5" />
+                  <span className="truncate">{u.itemName}</span>
+                </span>
+                <span className="tabular-nums text-warning">unsourced</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="mt-3 flex items-center justify-end gap-2">
         {hasPower && onEditPower && (
           <Button
@@ -1153,10 +1437,16 @@ function FactoryPopover({ factoryId, hasPower, onEdit, onEditPower, onClose }: F
             Edit power
           </Button>
         )}
-        <Button onClick={onEdit} className="px-3 py-1 text-xs">
+        <Button variant="ghost" onClick={onEdit} className="px-3 py-1 text-xs">
           <Pencil className="h-3 w-3" />
-          Edit factory
+          Details
         </Button>
+        {onOpenPlan && (
+          <Button onClick={onOpenPlan} className="px-3 py-1 text-xs">
+            <Workflow className="h-3 w-3" />
+            Open plan
+          </Button>
+        )}
       </div>
     </Card>
   );

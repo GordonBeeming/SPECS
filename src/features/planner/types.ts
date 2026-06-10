@@ -260,3 +260,12 @@ export interface SavePlanResult {
   machineIds: string[];
   linkIds: string[];
 }
+
+/** An input still waiting on a source factory, playthrough-wide. */
+export interface UnsourcedInput {
+  importId: string;
+  factoryId: string;
+  itemId: string;
+  itemName: string;
+  ipmCap: number | null;
+}

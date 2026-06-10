@@ -451,3 +451,15 @@ pub struct SavePlanResult {
     /// Logistics links materialized for sourced imports.
     pub link_ids: Vec<String>,
 }
+
+/// One input across the playthrough still waiting on a source factory
+/// — the map shows these as pin badges and drag-to-source handles.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct UnsourcedInput {
+    pub import_id: String,
+    pub factory_id: String,
+    pub item_id: String,
+    pub item_name: String,
+    pub ipm_cap: Option<f32>,
+}

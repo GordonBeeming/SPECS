@@ -173,6 +173,23 @@ node markers + draggable factory pins.
   approximations against the bundled catalog — if pins land
   off-target on the released map, tweak `WORLD_BOUNDS` rather than
   touching the renderer.
+- **Factory links layer** (`MapLinksLayer`): every logistics link
+  draws as one line per factory pair (items aggregate into a count
+  chip; the tooltip lists them). With nothing selected the lines sit
+  at 30% opacity; selecting a factory lights its lines (accent
+  incoming, primary outgoing, arrowheads) and fades the rest to 8%.
+  Toggleable via "Show factory links" (persisted).
+- **Pin badges:** ⚡ top-right for power gear; a red top-left badge
+  with a count + alert icon for unsourced inputs (colour is never the
+  only signal — icon + tooltip ride along).
+- **Drag-to-source:** the factory popover lists unsourced inputs
+  with grab handles. Dragging one onto another pin assigns that
+  factory as the source — same ghost-line gesture as node binding,
+  green over a valid drop target. Self-drops are rejected.
+- **Quick-create:** right-click anywhere → name → "Create" or
+  "Create & plan" drops a pin at the cursor (and optionally opens
+  the plan designer). Sketch the whole playthrough's factories
+  first, plan each one later.
 
 ## Factory graph view
 

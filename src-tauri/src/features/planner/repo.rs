@@ -224,6 +224,65 @@ pub fn plan_link_ids_for_factory(conn: &Connection, factory_id: &str) -> Result<
     Ok(out)
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnsourcedInputRow {
+    pub import_id: String,
+    pub factory_id: String,
+    pub item_id: String,
+    pub ipm_cap: Option<f32>,
+}
+
+/// Every import across the playthrough still waiting for a source
+/// factory — the map renders these as pin badges and drag handles.
+pub fn unsourced_inputs_all(conn: &Connection) -> Result<Vec<UnsourcedInputRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, factory_id, item_id, ipm_cap_x100
+         FROM factory_plan_import
+         WHERE source_factory_id IS NULL
+         ORDER BY factory_id, sort_order",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok(UnsourcedInputRow {
+            import_id: r.get(0)?,
+            factory_id: r.get(1)?,
+            item_id: r.get(2)?,
+            ipm_cap: r.get::<_, Option<i64>>(3)?.map(ipm_from_x100),
+        })
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
+/// Resolve an import row back to its owning factory. Used by the
+/// assign-source command to load the right plan.
+pub fn plan_import_get(
+    conn: &Connection,
+    import_id: &str,
+) -> Result<Option<(String, PlanImportRow)>> {
+    let mut stmt = conn.prepare(
+        "SELECT factory_id, id, item_id, source_factory_id, ipm_cap_x100, sort_order,
+                logistics_link_id
+         FROM factory_plan_import WHERE id = ?",
+    )?;
+    let mut rows = stmt.query_map([import_id], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            PlanImportRow {
+                id: r.get(1)?,
+                item_id: r.get(2)?,
+                source_factory_id: r.get(3)?,
+                ipm_cap: r.get::<_, Option<i64>>(4)?.map(ipm_from_x100),
+                sort_order: r.get(5)?,
+                logistics_link_id: r.get(6)?,
+            },
+        ))
+    })?;
+    Ok(rows.next().transpose()?)
+}
+
 // ---- Layout ----
 
 pub fn plan_layout_upsert(

@@ -45,6 +45,19 @@ export function useMachineLayouts(factoryId: string | null | undefined) {
   });
 }
 
+/**
+ * Playthrough-wide list of inputs still waiting on a source factory.
+ * Drives map pin badges and the drag-to-source gesture.
+ */
+export function useUnsourcedInputs() {
+  const playthrough = useCurrentPlaythrough();
+  return useQuery({
+    queryKey: [...queryKeys.factory.unsourcedInputs, playthrough.data?.id ?? null] as const,
+    queryFn: plannerApi.listUnsourcedInputs,
+    enabled: !!playthrough.data,
+  });
+}
+
 export function useFactoryDetail(id: string | null | undefined) {
   const playthrough = useCurrentPlaythrough();
   return useQuery({

@@ -253,6 +253,7 @@ export function usePlanDesigner(factoryId: string) {
     queryClient.invalidateQueries({ queryKey: queryKeys.factory.detail(factoryId) });
     queryClient.invalidateQueries({ queryKey: queryKeys.factory.list });
     queryClient.invalidateQueries({ queryKey: queryKeys.factory.ledger(factoryId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.factory.unsourcedInputs });
     queryClient.invalidateQueries({ queryKey: queryKeys.logistics.list });
     queryClient.invalidateQueries({ queryKey: ["factory", "machine-layouts", factoryId] });
   }, [queryClient, factoryId]);

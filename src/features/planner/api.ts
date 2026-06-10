@@ -11,6 +11,7 @@ import type {
   FactoryPlan,
   SavePlanInput,
   SavePlanResult,
+  UnsourcedInput,
 } from "./types";
 
 export const plannerApi = {
@@ -28,4 +29,11 @@ export const plannerApi = {
     invoke<SavePlanResult>("factory_plan_save", { input }),
   setPlanLayout: (factoryId: string, nodeKey: string, x: number, y: number) =>
     invoke<void>("factory_plan_layout_set", { factoryId, nodeKey, x, y }),
+  listUnsourcedInputs: () =>
+    invoke<UnsourcedInput[]>("list_unsourced_inputs"),
+  assignImportSource: (importId: string, sourceFactoryId: string) =>
+    invoke<SavePlanResult>("factory_plan_assign_import_source", {
+      importId,
+      sourceFactoryId,
+    }),
 };

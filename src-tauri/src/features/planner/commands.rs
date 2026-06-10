@@ -537,6 +537,92 @@ pub fn factory_plan_save(
     plan_save_impl(&db, &game_data, input, &now_iso())
 }
 
+/// Every unsourced input in the playthrough, for map badges and the
+/// "what's still waiting on a source?" planning view.
+#[tauri::command]
+pub fn list_unsourced_inputs(
+    active: State<ActivePlaythrough>,
+    game_data: State<GameData>,
+) -> AppResult<Vec<super::dto::UnsourcedInput>> {
+    let db = require_active(&active)?;
+    let rows = db.with(|c| plan_repo::unsourced_inputs_all(c).map_err(AppError::from))?;
+    Ok(rows
+        .into_iter()
+        .map(|r| super::dto::UnsourcedInput {
+            item_name: game_data
+                .item(&r.item_id)
+                .map(|i| i.name.clone())
+                .unwrap_or_else(|| r.item_id.clone()),
+            import_id: r.import_id,
+            factory_id: r.factory_id,
+            item_id: r.item_id,
+            ipm_cap: r.ipm_cap,
+        })
+        .collect())
+}
+
+fn assign_import_source_impl(
+    db: &PlaythroughDb,
+    game_data: &GameData,
+    import_id: &str,
+    source_factory_id: &str,
+    now: &str,
+) -> AppResult<SavePlanResult> {
+    let Some((factory_id, _row)) =
+        db.with(|c| plan_repo::plan_import_get(c, import_id).map_err(AppError::from))?
+    else {
+        return Err(AppError::NotFound(format!("input {import_id} not found")));
+    };
+    if factory_id == source_factory_id {
+        return Err(AppError::Invalid(
+            "a factory can't supply its own input — pick another factory".into(),
+        ));
+    }
+    // Re-save the whole plan with just this import's source flipped —
+    // the save path owns machine/link reconciliation, so the map
+    // gesture can't drift from what the designer would have done.
+    let plan = plan_get_impl(db, &factory_id)?;
+    let imports: Vec<super::dto::PlanImportSpec> = plan
+        .imports
+        .iter()
+        .map(|i| super::dto::PlanImportSpec {
+            item_id: i.item_id.clone(),
+            source_factory_id: if i.id == import_id {
+                Some(source_factory_id.to_string())
+            } else {
+                i.source_factory_id.clone()
+            },
+            ipm_cap: i.ipm_cap,
+        })
+        .collect();
+    plan_save_impl(
+        db,
+        game_data,
+        SavePlanInput {
+            factory_id,
+            targets: plan.targets,
+            imports,
+            recipe_overrides: plan.recipe_overrides,
+            default_link_distance_m: 1000,
+        },
+        now,
+    )
+}
+
+/// Map gesture: drag an unsourced input onto a factory pin to make
+/// that factory the source. Equivalent to opening the plan, picking
+/// the source, and saving.
+#[tauri::command]
+pub fn factory_plan_assign_import_source(
+    active: State<ActivePlaythrough>,
+    game_data: State<GameData>,
+    import_id: String,
+    source_factory_id: String,
+) -> AppResult<SavePlanResult> {
+    let db = require_active(&active)?;
+    assign_import_source_impl(&db, &game_data, &import_id, &source_factory_id, &now_iso())
+}
+
 /// Persist a designer node position (mirrors `set_machine_layout`).
 #[tauri::command]
 pub fn factory_plan_layout_set(
@@ -921,6 +1007,80 @@ mod tests {
             NOW,
         )
         .unwrap_err();
+        assert!(matches!(err, AppError::Invalid(_)));
+    }
+
+    #[test]
+    fn assign_import_source_links_the_unsourced_input() {
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "fac-cables", "Cables v1");
+        insert_test_factory(&db, "fac-wire", "Wire farm");
+
+        // Save a plan with an unsourced Wire input.
+        plan_save_impl(
+            &db,
+            &gd,
+            save_input(
+                "fac-cables",
+                cable_target(),
+                vec![PlanImportSpec {
+                    item_id: "Desc_Wire_C".into(),
+                    source_factory_id: None,
+                    ipm_cap: None,
+                }],
+            ),
+            NOW,
+        )
+        .unwrap();
+
+        let unsourced = db.with(|c| plan_repo::unsourced_inputs_all(c)).unwrap();
+        assert_eq!(unsourced.len(), 1);
+        assert_eq!(unsourced[0].factory_id, "fac-cables");
+
+        // Drag onto the wire factory.
+        let result = assign_import_source_impl(
+            &db,
+            &gd,
+            &unsourced[0].import_id,
+            "fac-wire",
+            NOW,
+        )
+        .unwrap();
+        assert_eq!(result.link_ids.len(), 1, "assigning a source materializes the link");
+
+        let after = db.with(|c| plan_repo::unsourced_inputs_all(c)).unwrap();
+        assert!(after.is_empty(), "the input is no longer unsourced");
+
+        let links = db.with(|c| logistics_repo::link_list(c)).unwrap();
+        let link = links.iter().find(|l| l.id == result.link_ids[0]).unwrap();
+        assert_eq!(link.from_factory_id, "fac-wire");
+        assert_eq!(link.to_factory_id, "fac-cables");
+    }
+
+    #[test]
+    fn assign_import_source_rejects_self_supply() {
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "fac-cables", "Cables v1");
+        plan_save_impl(
+            &db,
+            &gd,
+            save_input(
+                "fac-cables",
+                cable_target(),
+                vec![PlanImportSpec {
+                    item_id: "Desc_Wire_C".into(),
+                    source_factory_id: None,
+                    ipm_cap: None,
+                }],
+            ),
+            NOW,
+        )
+        .unwrap();
+        let unsourced = db.with(|c| plan_repo::unsourced_inputs_all(c)).unwrap();
+        let err = assign_import_source_impl(&db, &gd, &unsourced[0].import_id, "fac-cables", NOW)
+            .unwrap_err();
         assert!(matches!(err, AppError::Invalid(_)));
     }
 
