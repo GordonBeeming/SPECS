@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Plus, Share2, X } from "lucide-react";
 
 import { FilterSelect } from "@/shared/ui/FilterSelect";
 import { Icon } from "@/shared/ui/Icon";
@@ -10,6 +10,8 @@ import { useItems, useRecipes } from "@/features/library/hooks/useLibrary";
 export interface PlanTargetsBarProps {
   targets: PlanTargetSpec[];
   itemNames: Map<string, string>;
+  /** Open the picker immediately (first-run "what should this make?"). */
+  autoOpenAdd?: boolean;
   onAddTarget: (itemId: string) => void;
   onRemoveTarget: (itemId: string) => void;
   onSetTargetIpm: (itemId: string, ipm: number) => void;
@@ -20,6 +22,7 @@ export interface PlanTargetsBarProps {
 export function PlanTargetsBar({
   targets,
   itemNames,
+  autoOpenAdd,
   onAddTarget,
   onRemoveTarget,
   onSetTargetIpm,
@@ -27,6 +30,9 @@ export function PlanTargetsBar({
   const items = useItems();
   const recipes = useRecipes();
   const [adding, setAdding] = useState(false);
+  useEffect(() => {
+    if (autoOpenAdd) setAdding(true);
+  }, [autoOpenAdd]);
 
   const targetOptions = useMemo(
     () => buildTargetOptions(items.data, recipes.data),
@@ -62,9 +68,21 @@ export function PlanTargetsBar({
               const v = Number(e.target.value);
               if (Number.isFinite(v) && v > 0) onSetTargetIpm(t.itemId, v);
             }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            }}
             className="h-7 w-20 rounded-md border border-border bg-bg px-2 text-sm tabular-nums text-fg outline-none focus:border-primary"
           />
           <span className="text-xs text-fg-muted">/min</span>
+          {t.exportIpm != null && t.exportIpm > 0 && (
+            <span
+              className="flex items-center gap-0.5 rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] tabular-nums text-accent"
+              title={`${t.exportIpm}/min offered to other factories (edit on the node)`}
+            >
+              <Share2 className="h-2.5 w-2.5" />
+              {t.exportIpm}
+            </span>
+          )}
           <button
             type="button"
             aria-label={`Remove ${itemNames.get(t.itemId) ?? t.itemId}`}
@@ -79,6 +97,7 @@ export function PlanTargetsBar({
         <div className="w-72">
           <FilterSelect
             compact
+            autoFocus
             ariaLabel="Add product"
             options={available}
             value={null}

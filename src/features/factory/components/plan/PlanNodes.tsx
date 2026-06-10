@@ -1,5 +1,5 @@
 import { Handle, Position } from "@xyflow/react";
-import { CircleAlert, Hammer, PackageOpen, Plus, Trash2, TriangleAlert } from "lucide-react";
+import { CircleAlert, Share2, SlidersHorizontal, TriangleAlert } from "lucide-react";
 
 import { Icon } from "@/shared/ui/Icon";
 import { FilterSelect, type FilterOption } from "@/shared/ui/FilterSelect";
@@ -12,9 +12,9 @@ export const PLAN_NODE_WIDTH = 250;
 export function planNodeHeight(node: PlanNode): number {
   switch (node.kind) {
     case "recipe":
-      return 132;
+      return 150;
     case "import":
-      return 96 + node.allocations.length * 44 + (node.unassignedIpm > 0 ? 28 : 0);
+      return 96 + node.allocations.length * 26 + (node.unassignedIpm > 0 ? 28 : 0);
     case "raw":
       return 76;
     case "byproduct":
@@ -46,15 +46,23 @@ function FlowHandles({ left = true, right = true }: { left?: boolean; right?: bo
 export interface RecipeStepNodeProps {
   node: Extract<PlanNode, { kind: "recipe" }>;
   recipeOptions: FilterOption[];
+  /** The target's current export slice (null/undefined = none). */
+  exportIpm: number | null;
   onSwapRecipe: (itemId: string, recipeId: string) => void;
-  onSupplyFromElsewhere: (itemId: string) => void;
+  onOpenSources: (itemId: string) => void;
+  /** Make this item a product exporting `ipm`/min (adds the target). */
+  onStartExport: (itemId: string, ipm: number) => void;
+  onSetExport: (itemId: string, exportIpm: number | null) => void;
 }
 
 export function RecipeStepNodeCard({
   node,
   recipeOptions,
+  exportIpm,
   onSwapRecipe,
-  onSupplyFromElsewhere,
+  onOpenSources,
+  onStartExport,
+  onSetExport,
 }: RecipeStepNodeProps) {
   return (
     <div
@@ -71,7 +79,7 @@ export function RecipeStepNodeCard({
         </div>
         {node.isTarget && (
           <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-white">
-            Target
+            Product
           </span>
         )}
       </div>
@@ -80,7 +88,10 @@ export function RecipeStepNodeCard({
         {node.powerMw.toFixed(1)} MW
       </div>
       <div className="mt-1 tabular-nums font-semibold text-fg">{rate(node.outputIpm)}</div>
-      {recipeOptions.length > 1 && (
+
+      {/* Every step gets the recipe picker — re-recipe any link in the
+          chain and the upstream re-derives. */}
+      {recipeOptions.length > 0 && (
         <div className="nodrag mt-2">
           <FilterSelect
             compact
@@ -94,16 +105,57 @@ export function RecipeStepNodeCard({
           />
         </div>
       )}
-      {!node.isTarget && (
-        <button
-          type="button"
-          onClick={() => onSupplyFromElsewhere(node.itemId)}
-          className="nodrag mt-2 flex w-full items-center justify-center gap-1.5 rounded border border-dashed border-border px-2 py-1 text-[11px] text-fg-muted hover:border-accent hover:text-fg"
-        >
-          <PackageOpen className="h-3 w-3" />
-          Supply from elsewhere
-        </button>
-      )}
+
+      <div className="nodrag mt-2 flex items-center justify-between gap-2">
+        {!node.isTarget ? (
+          <button
+            type="button"
+            onClick={() => onOpenSources(node.itemId)}
+            className="flex items-center gap-1 rounded border border-dashed border-border px-2 py-1 text-[11px] text-fg-muted hover:border-accent hover:text-fg"
+          >
+            <SlidersHorizontal className="h-3 w-3" />
+            Sources
+          </button>
+        ) : (
+          <span />
+        )}
+        {node.isTarget && exportIpm != null ? (
+          <label className="flex items-center gap-1 text-[11px] text-fg-muted">
+            <Share2 className="h-3 w-3 text-accent" />
+            Export
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={exportIpm}
+              aria-label={`Export rate for ${node.itemName}`}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (Number.isFinite(v) && v >= 0) onSetExport(node.itemId, v);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
+              className="h-6 w-16 rounded-md border border-border bg-bg px-1.5 tabular-nums text-fg outline-none focus:border-primary"
+            />
+            /min
+          </label>
+        ) : (
+          <button
+            type="button"
+            onClick={() =>
+              node.isTarget
+                ? onSetExport(node.itemId, Math.round(node.outputIpm))
+                : onStartExport(node.itemId, Math.round(node.outputIpm))
+            }
+            title="Offer this item to other factories"
+            className="flex items-center gap-1 rounded border border-dashed border-border px-2 py-1 text-[11px] text-fg-muted hover:border-accent hover:text-fg"
+          >
+            <Share2 className="h-3 w-3" />
+            Export
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -112,26 +164,19 @@ export function RecipeStepNodeCard({
 
 export interface ImportNodeProps {
   node: Extract<PlanNode, { kind: "import" }>;
-  factoryOptions: FilterOption[];
-  /** Current specs for this item, in declared order. */
-  sources: Array<{ sourceFactoryId: string | null; ipmCap: number | null }>;
   factoryNames: Map<string, string>;
-  onSetSource: (itemId: string, index: number, factoryId: string | null) => void;
-  onSetCap: (itemId: string, index: number, cap: number | null) => void;
-  onAddSource: (itemId: string) => void;
-  onRemoveSource: (itemId: string, index: number) => void;
-  onBuildHere: (itemId: string) => void;
+  /** True when a local line also builds this item (mixed sourcing). */
+  hasLocal: boolean;
+  onOpenSources: (itemId: string) => void;
+  onAddLocal: (itemId: string) => void;
 }
 
 export function ImportNodeCard({
   node,
-  factoryOptions,
-  sources,
-  onSetSource,
-  onSetCap,
-  onAddSource,
-  onRemoveSource,
-  onBuildHere,
+  factoryNames,
+  hasLocal,
+  onOpenSources,
+  onAddLocal,
 }: ImportNodeProps) {
   return (
     <div
@@ -145,11 +190,26 @@ export function ImportNodeCard({
           <Icon itemId={node.itemId} alt="" className="h-6 w-6 shrink-0" />
           <div className="min-w-0">
             <div className="truncate font-medium text-fg">{node.itemName}</div>
-            <div className="text-[10px] uppercase tracking-wide text-fg-muted">Input</div>
+            <div className="text-[10px] uppercase tracking-wide text-fg-muted">
+              {hasLocal ? "Imported share" : "Input"}
+            </div>
           </div>
         </div>
         <span className="tabular-nums font-semibold text-fg">{rate(node.ipm)}</span>
       </div>
+
+      {node.allocations.length > 0 && (
+        <ul className="mt-2 space-y-0.5">
+          {node.allocations.map((a, i) => (
+            <li key={`${a.sourceFactoryId}-${i}`} className="flex items-center justify-between gap-2">
+              <span className="truncate text-fg">
+                {factoryNames.get(a.sourceFactoryId) ?? a.sourceFactoryId}
+              </span>
+              <span className="tabular-nums text-fg-muted">{rate(a.resolvedIpm)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {node.unassignedIpm > 0 && (
         <div className="mt-2 flex items-center gap-1.5 rounded bg-warning/15 px-2 py-1 text-[11px] text-warning">
@@ -158,61 +218,24 @@ export function ImportNodeCard({
         </div>
       )}
 
-      <div className="nodrag mt-2 flex flex-col gap-1.5">
-        {sources.map((src, idx) => (
-          <div key={idx} className="flex items-center gap-1.5">
-            <div className="min-w-0 flex-1">
-              <FilterSelect
-                compact
-                ariaLabel={`Source factory for ${node.itemName}`}
-                options={factoryOptions}
-                value={src.sourceFactoryId}
-                placeholder="Pick a source factory…"
-                onChange={(next) => onSetSource(node.itemId, idx, next)}
-              />
-            </div>
-            <input
-              type="number"
-              min={1}
-              value={src.ipmCap ?? ""}
-              placeholder="cap"
-              aria-label={`Cap for source ${idx + 1}`}
-              onChange={(e) => {
-                const v = e.target.value === "" ? null : Number(e.target.value);
-                onSetCap(node.itemId, idx, v !== null && Number.isFinite(v) && v > 0 ? v : null);
-              }}
-              className="h-9 w-16 rounded-md border border-border bg-bg px-2 tabular-nums text-fg outline-none focus:border-primary"
-            />
-            {sources.length > 1 && (
-              <button
-                type="button"
-                aria-label="Remove source"
-                onClick={() => onRemoveSource(node.itemId, idx)}
-                className="rounded p-1 text-fg-muted hover:bg-border hover:text-danger"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-        ))}
-        <div className="flex items-center justify-between gap-2">
+      <div className="nodrag mt-2 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => onOpenSources(node.itemId)}
+          className="flex items-center gap-1 rounded border border-dashed border-border px-2 py-1 text-[11px] text-fg-muted hover:border-accent hover:text-fg"
+        >
+          <SlidersHorizontal className="h-3 w-3" />
+          Sources
+        </button>
+        {!hasLocal && (
           <button
             type="button"
-            onClick={() => onAddSource(node.itemId)}
+            onClick={() => onAddLocal(node.itemId)}
             className="flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-fg-muted hover:bg-border hover:text-fg"
           >
-            <Plus className="h-3 w-3" />
-            Add source
+            Build it here too
           </button>
-          <button
-            type="button"
-            onClick={() => onBuildHere(node.itemId)}
-            className="flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-fg-muted hover:bg-border hover:text-fg"
-          >
-            <Hammer className="h-3 w-3" />
-            Build it here
-          </button>
-        </div>
+        )}
       </div>
     </div>
   );

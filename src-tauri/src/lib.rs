@@ -134,6 +134,7 @@ pub fn run() {
             features::planner::commands::factory_plan_save,
             features::planner::commands::factory_plan_layout_set,
             features::planner::commands::list_unsourced_inputs,
+            features::planner::commands::list_export_offers,
             features::planner::commands::factory_plan_assign_import_source,
         ])
         .run(tauri::generate_context!())

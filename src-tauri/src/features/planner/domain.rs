@@ -494,6 +494,7 @@ fn allocate_import_specs(
 /// back as `PlanGraph.warnings` (warn, don't block). Only structural
 /// failures (unknown item, no recipe, dataset cycle) return `Err`.
 pub fn compute_plan_graph(
+    factory_id: &str,
     targets: &[PlanTargetSpec],
     unlocked_alts: &HashSet<String>,
     available_supply: &HashMap<String, f32>,
@@ -531,6 +532,21 @@ pub fn compute_plan_graph(
         .iter()
         .filter(|s| !target_ipms.contains_key(s.item_id.as_str()))
         .map(|s| s.item_id.clone())
+        .collect();
+
+    // A source row pointing at THIS factory means "also build it
+    // here": external sources absorb up to their caps and the local
+    // line elastically builds the remainder. Items with import rows
+    // but no self row are fully imported (the original cut).
+    let external_specs: Vec<PlanImportSpec> = imports
+        .iter()
+        .filter(|sp| sp.source_factory_id.as_deref() != Some(factory_id))
+        .cloned()
+        .collect();
+    let self_items: HashSet<String> = imports
+        .iter()
+        .filter(|sp| sp.source_factory_id.as_deref() == Some(factory_id))
+        .map(|sp| sp.item_id.clone())
         .collect();
 
     // Honour the user's recipe choices, dropping invalid ids the same
@@ -577,6 +593,74 @@ pub fn compute_plan_graph(
         )?;
     }
 
+    // Mixed items expand in waves: every round computes each mixed
+    // item's local remainder (demand − external caps) and seeds the
+    // delta back through the normal recursion. A seed can add demand
+    // to ANOTHER mixed item, so repeat until the deltas dry up —
+    // demand only ever grows, so this converges (20 rounds is far
+    // beyond any sane chain depth).
+    let mixed_items: Vec<String> = {
+        let mut v: Vec<String> = cut_items
+            .iter()
+            .filter(|i| self_items.contains(*i))
+            .cloned()
+            .collect();
+        v.sort();
+        v
+    };
+    let mut seeded_local: HashMap<String, f32> = HashMap::new();
+    if !mixed_items.is_empty() {
+        for _round in 0..20 {
+            let mut any_delta = false;
+            for item in &mixed_items {
+                let demand = *imported_demand.get(item).unwrap_or(&0.0);
+                // External reservation in declared order. Unsourced
+                // rows only reserve what they're capped at — an
+                // uncapped "future factory" row can't starve the
+                // local line to zero.
+                let mut remaining = demand;
+                for spec in external_specs.iter().filter(|sp| sp.item_id == *item) {
+                    let take = if spec.source_factory_id.is_some() {
+                        remaining.min(spec.ipm_cap.unwrap_or(f32::INFINITY))
+                    } else {
+                        remaining.min(spec.ipm_cap.unwrap_or(0.0))
+                    };
+                    remaining = (remaining - take.max(0.0)).max(0.0);
+                }
+                let local_needed = remaining;
+                let already = *seeded_local.get(item).unwrap_or(&0.0);
+                let delta = local_needed - already;
+                if delta > 1e-3 {
+                    any_delta = true;
+                    seeded_local.insert(item.clone(), local_needed);
+                    // Un-cut the item for this seed so its own recipe
+                    // node grows by exactly `delta`.
+                    let mut cut_without = cut_items.clone();
+                    cut_without.remove(item);
+                    collect_demands(
+                        item,
+                        delta,
+                        unlocked_alts,
+                        available_supply,
+                        &cut_without,
+                        game_data,
+                        &mut raw_demand,
+                        &mut imported_demand,
+                        &mut item_demands,
+                        &mut item_recipes,
+                        &mut visit_order,
+                        &mut supply_cache,
+                        &mut struct_cache,
+                        &mut visiting,
+                    )?;
+                }
+            }
+            if !any_delta {
+                break;
+            }
+        }
+    }
+
     let mut nodes: Vec<PlanNode> = Vec::new();
     let mut edges: Vec<PlanEdge> = Vec::new();
     let mut warnings: Vec<PlanWarning> = Vec::new();
@@ -595,11 +679,42 @@ pub fn compute_plan_graph(
         let stage = build_stage(item_id, demand, recipe, game_data);
         let node_key = recipe_node_key(item_id);
 
-        // Input edges: every item folds to exactly one producer node
-        // (the fold in collect_demands guarantees it), so the producer
-        // kind is unambiguous.
+        // Input edges. Mixed items have TWO producers — the local
+        // line and the import — so consumers get a proportional edge
+        // from each; everything else folds to a single producer.
         for io in &stage.inputs {
-            let from = if cut_items.contains(&io.item_id) {
+            let is_cut = cut_items.contains(&io.item_id);
+            let local = *seeded_local.get(&io.item_id).unwrap_or(&0.0);
+            let total = *imported_demand.get(&io.item_id).unwrap_or(&0.0);
+            if is_cut && local > 1e-3 && total > 1e-3 {
+                let local_frac = (local / total).min(1.0);
+                let local_ipm = io.per_minute * local_frac;
+                let import_ipm = io.per_minute - local_ipm;
+                if local_ipm > 1e-3 {
+                    let from = recipe_node_key(&io.item_id);
+                    edges.push(PlanEdge {
+                        id: format!("{from}->{node_key}:local"),
+                        from_node: from,
+                        to_node: node_key.clone(),
+                        item_id: io.item_id.clone(),
+                        item_name: io.item_name.clone(),
+                        ipm: local_ipm,
+                    });
+                }
+                if import_ipm > 1e-3 {
+                    let from = import_node_key(&io.item_id);
+                    edges.push(PlanEdge {
+                        id: format!("{from}->{node_key}:import"),
+                        from_node: from,
+                        to_node: node_key.clone(),
+                        item_id: io.item_id.clone(),
+                        item_name: io.item_name.clone(),
+                        ipm: import_ipm,
+                    });
+                }
+                continue;
+            }
+            let from = if is_cut {
                 import_node_key(&io.item_id)
             } else if game_data.is_extracted_resource(&io.item_id) {
                 raw_node_key(&io.item_id)
@@ -681,12 +796,19 @@ pub fn compute_plan_graph(
         }
     }
 
-    // Import nodes — one per cut item with demand, sorted likewise.
+    // Import nodes — one per cut item with EXTERNAL demand (a mixed
+    // item whose local line covers everything has no import node).
     let mut import_items: Vec<(&String, &f32)> = imported_demand.iter().collect();
     import_items.sort_by(|a, b| a.0.cmp(b.0));
-    for (item_id, demand) in import_items {
+    for (item_id, total_demand) in import_items {
+        let local = *seeded_local.get(item_id.as_str()).unwrap_or(&0.0);
+        let external = (*total_demand - local).max(0.0);
+        if external <= 1e-3 {
+            continue;
+        }
+        let demand = &external;
         let (allocations, unassigned, has_unsourced_spec) =
-            allocate_import_specs(item_id, *demand, imports);
+            allocate_import_specs(item_id, *demand, &external_specs);
         if unassigned > 0.0 {
             if has_unsourced_spec || allocations.is_empty() {
                 warnings.push(PlanWarning::ImportUnsourced {
@@ -772,7 +894,7 @@ mod tests {
     // ---------- compute_plan_graph tests ----------
 
     fn target(item: &str, ipm: f32) -> PlanTargetSpec {
-        PlanTargetSpec { item_id: item.to_string(), ipm }
+        PlanTargetSpec { item_id: item.to_string(), ipm, export_ipm: None }
     }
 
     fn import_spec(item: &str, source: Option<&str>, cap: Option<f32>) -> PlanImportSpec {
@@ -798,6 +920,7 @@ mod tests {
     fn raw_and_unknown_targets_are_structural_errors() {
         let gd = GameData::from_bundled().unwrap();
         let raw = compute_plan_graph(
+            "fac-self",
             &[target("Desc_OreIron_C", 30.0)],
             &unlocked(),
             &HashMap::new(),
@@ -809,6 +932,7 @@ mod tests {
         assert!(matches!(raw, PlannerError::NoRecipeForTarget { .. }));
 
         let unknown = compute_plan_graph(
+            "fac-self",
             &[target("Desc_DefinitelyNotAThing_C", 30.0)],
             &unlocked(),
             &HashMap::new(),
@@ -840,6 +964,7 @@ mod tests {
 
         let recipe_for_ingot = |supply: &HashMap<String, f32>| {
             let graph = compute_plan_graph(
+                "fac-self",
                 &[target("Desc_IronIngot_C", 60.0)],
                 &alts,
                 supply,
@@ -880,6 +1005,7 @@ mod tests {
             "Recipe_DefinitelyNotARecipe_C".to_string(),
         );
         let graph = compute_plan_graph(
+            "fac-self",
             &[target("Desc_IronIngot_C", 60.0)],
             &unlocked(),
             &supply,
@@ -906,6 +1032,7 @@ mod tests {
         // where the bug originally lived.
         let gd = GameData::from_bundled().unwrap();
         let graph = compute_plan_graph(
+            "fac-self",
             &[target("Desc_AluminumPlate_C", 60.0)],
             &unlocked(),
             &HashMap::new(),
@@ -930,6 +1057,7 @@ mod tests {
         // Cable @60 needs ~120 Wire: first source saturates its 50
         // cap, the second absorbs the rest.
         let graph = compute_plan_graph(
+            "fac-self",
             &[target("Desc_Cable_C", 60.0)],
             &unlocked(),
             &supply,
@@ -966,6 +1094,7 @@ mod tests {
         let mut supply = HashMap::new();
         supply.insert("Desc_OreIron_C".into(), 100000.0);
         let graph = compute_plan_graph(
+            "fac-self",
             &[target("Desc_IronPlateReinforced_C", 10.0)],
             &unlocked(),
             &supply,
@@ -987,9 +1116,91 @@ mod tests {
     }
 
     #[test]
+    fn mixed_source_splits_local_and_external_production() {
+        let gd = GameData::from_bundled().unwrap();
+        let mut supply = HashMap::new();
+        supply.insert("Desc_OreCopper_C".into(), 100000.0);
+        // Cable @60 needs 120 Wire. External factory caps at 50; a
+        // self row keeps the local line, which builds the other 70.
+        let graph = compute_plan_graph(
+            "fac-self",
+            &[target("Desc_Cable_C", 60.0)],
+            &unlocked(),
+            &supply,
+            &[
+                import_spec("Desc_Wire_C", Some("fac-wire"), Some(50.0)),
+                import_spec("Desc_Wire_C", Some("fac-self"), None),
+            ],
+            &HashMap::new(),
+            &gd,
+        )
+        .unwrap();
+
+        let wire_recipe = graph
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                PlanNode::Recipe { item_id, output_ipm, .. } if item_id == "Desc_Wire_C" =>
+                    Some(*output_ipm),
+                _ => None,
+            })
+            .expect("local wire line exists");
+        assert!((wire_recipe - 70.0).abs() < 0.5, "local builds the remainder, got {wire_recipe}");
+
+        let import = graph
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                PlanNode::Import { item_id, ipm, allocations, unassigned_ipm, .. }
+                    if item_id == "Desc_Wire_C" =>
+                    Some((*ipm, allocations.clone(), *unassigned_ipm)),
+                _ => None,
+            })
+            .expect("import node carries the external share");
+        assert!((import.0 - 50.0).abs() < 0.5);
+        assert_eq!(import.1.len(), 1);
+        assert!((import.1[0].resolved_ipm - 50.0).abs() < 0.5);
+        assert_eq!(import.2, 0.0, "local elasticity leaves nothing unassigned");
+        assert!(graph.warnings.iter().all(|w| !matches!(w, PlanWarning::ImportShort { .. })));
+
+        // The local line pulls copper upstream — ore demand reflects
+        // only the 70/min remainder (70 wire → 35 ingot → 35 ore).
+        let ore = graph.raw_demand.get("Desc_OreCopper_C").copied().unwrap_or(0.0);
+        assert!((ore - 35.0).abs() < 1.0, "got {ore}");
+
+        // Consumers get a split edge from each producer.
+        let to_cable: Vec<&PlanEdge> = graph
+            .edges
+            .iter()
+            .filter(|e| e.to_node == "recipe:Desc_Cable_C" && e.item_id == "Desc_Wire_C")
+            .collect();
+        assert_eq!(to_cable.len(), 2, "one edge from the local line, one from the import");
+    }
+
+    #[test]
+    fn removing_the_self_row_is_a_full_cut() {
+        let gd = GameData::from_bundled().unwrap();
+        let graph = compute_plan_graph(
+            "fac-self",
+            &[target("Desc_Cable_C", 60.0)],
+            &unlocked(),
+            &HashMap::new(),
+            &[import_spec("Desc_Wire_C", Some("fac-wire"), None)],
+            &HashMap::new(),
+            &gd,
+        )
+        .unwrap();
+        assert!(
+            !recipe_keys(&graph).contains(&"recipe:Desc_Wire_C"),
+            "no self row → no local line"
+        );
+    }
+
+    #[test]
     fn empty_targets_compute_an_empty_graph() {
         let gd = GameData::from_bundled().unwrap();
         let graph = compute_plan_graph(
+            "fac-self",
             &[],
             &unlocked(),
             &HashMap::new(),
@@ -1007,6 +1218,7 @@ mod tests {
         let mut supply = HashMap::new();
         supply.insert("Desc_OreCopper_C".into(), 1000.0);
         let graph = compute_plan_graph(
+            "fac-self",
             &[target("Desc_Cable_C", 60.0)],
             &unlocked(),
             &supply,
@@ -1058,6 +1270,7 @@ mod tests {
         // Cable consumes Wire; Wire is also its own target. One Wire
         // node sized for both demands.
         let graph = compute_plan_graph(
+            "fac-self",
             &[target("Desc_Cable_C", 60.0), target("Desc_Wire_C", 30.0)],
             &unlocked(),
             &supply,
@@ -1093,6 +1306,7 @@ mod tests {
         // subtree (and its ore demand) must vanish, replaced by an
         // import node carrying the unassigned demand.
         let graph = compute_plan_graph(
+            "fac-self",
             &[target("Desc_Cable_C", 60.0)],
             &unlocked(),
             &supply,
@@ -1141,6 +1355,7 @@ mod tests {
         // Cable @60 needs 120 Wire/min on the standard chain. Source A
         // caps at 50 → 70 short, sourced-only → ImportShort.
         let graph = compute_plan_graph(
+            "fac-self",
             &[target("Desc_Cable_C", 60.0)],
             &unlocked(),
             &supply,
@@ -1172,6 +1387,7 @@ mod tests {
         // Zero supply — legacy path would error Insufficient; the plan
         // graph computes anyway and warns (warn, don't block).
         let graph = compute_plan_graph(
+            "fac-self",
             &[target("Desc_IronIngot_C", 60.0)],
             &unlocked(),
             &HashMap::new(),
@@ -1195,6 +1411,7 @@ mod tests {
         supply.insert("Desc_OreIron_C".into(), 100000.0);
 
         let auto = compute_plan_graph(
+            "fac-self",
             &[target("Desc_IronIngot_C", 60.0)],
             &unlocked(),
             &supply,
@@ -1218,6 +1435,7 @@ mod tests {
         let mut overrides = HashMap::new();
         overrides.insert("Desc_IronIngot_C".to_string(), pure_iron.id.clone());
         let swapped = compute_plan_graph(
+            "fac-self",
             &[target("Desc_IronIngot_C", 60.0)],
             &alts,
             &supply,
@@ -1258,6 +1476,7 @@ mod tests {
         // Cutting the target itself would delete the whole plan; the
         // spec is ignored and the target still builds here.
         let graph = compute_plan_graph(
+            "fac-self",
             &[target("Desc_Cable_C", 60.0)],
             &unlocked(),
             &supply,
@@ -1279,6 +1498,7 @@ mod tests {
         // Plastic via the standard recipe emits Heavy Oil Residue as a
         // byproduct — the graph shows it as an explicit sink node.
         let graph = compute_plan_graph(
+            "fac-self",
             &[target("Desc_Plastic_C", 60.0)],
             &unlocked(),
             &HashMap::new(),

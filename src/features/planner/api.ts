@@ -1,6 +1,7 @@
 import { invoke } from "@/shared/tauri/invoke";
 import type {
   ComputePlanInput,
+  ExportOffer,
   ComputePlanResult,
   FactoryPlan,
   SavePlanInput,
@@ -19,6 +20,8 @@ export const plannerApi = {
     invoke<void>("factory_plan_layout_set", { factoryId, nodeKey, x, y }),
   listUnsourcedInputs: () =>
     invoke<UnsourcedInput[]>("list_unsourced_inputs"),
+  listExportOffers: () =>
+    invoke<ExportOffer[]>("list_export_offers"),
   assignImportSource: (importId: string, sourceFactoryId: string) =>
     invoke<SavePlanResult>("factory_plan_assign_import_source", {
       importId,

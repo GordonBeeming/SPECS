@@ -35,7 +35,7 @@ import { PowerView } from "@/features/power/components/PowerView";
 import { ResourcesView } from "@/features/resources/components/ResourcesView";
 import { MapView } from "@/features/map/components/MapView";
 import { PlanDesignerView } from "@/features/factory/components/plan/PlanDesignerView";
-import { useNavStore } from "@/shared/nav-store";
+import { takePlanFirstRunFlag, useNavStore } from "@/shared/nav-store";
 import { ErrorBoundary } from "@/shared/ui/ErrorBoundary";
 import { useUndoStore } from "@/shared/undo/store";
 
@@ -96,6 +96,7 @@ export function AppShell() {
   // Which factory the full-screen plan designer is editing, and where
   // its back button returns to.
   const [planFactoryId, setPlanFactoryId] = useState<string | null>(null);
+  const [planFirstRun, setPlanFirstRun] = useState(false);
   const [planReturnRoute, setPlanReturnRoute] = useState<Route>("factories");
 
   // Cross-slice deep linking: the Network view's "open in graph" button
@@ -111,6 +112,7 @@ export function AppShell() {
       const factoryId = useNavStore.getState().takePendingFactoryId();
       if (!factoryId) return;
       setPlanFactoryId(factoryId);
+      setPlanFirstRun(takePlanFirstRunFlag());
       setPlanReturnRoute((prev) => (route === "plan" ? prev : route));
     }
     setRoute(next);
@@ -220,7 +222,12 @@ export function AppShell() {
           <ErrorBoundary key={`plan-${planFactoryId}`} label="The plan designer">
             <PlanDesignerView
               factoryId={planFactoryId}
+              firstRun={planFirstRun}
               onBack={() => setRoute(planReturnRoute)}
+              onDeleted={() => {
+                setPlanFactoryId(null);
+                setRoute(planReturnRoute);
+              }}
             />
           </ErrorBoundary>
         </div>

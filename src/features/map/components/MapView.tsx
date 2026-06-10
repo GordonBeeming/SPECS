@@ -39,6 +39,8 @@ import {
   Droplets,
   Factory as FactoryGlyph,
   GripVertical,
+  Maximize2,
+  Minimize2,
   Pencil,
   Sparkles,
   Unlink,
@@ -243,14 +245,20 @@ export function MapView() {
   // Armed water placement: the next map click drops a group there.
   // The cursor itself becomes a droplet so the mode is unmissable.
   const [placingWater, setPlacingWater] = useState(false);
+  // Armed factory placement: the next map click opens the name
+  // popover at that spot — place first, name second.
+  const [placingFactory, setPlacingFactory] = useState(false);
   useEffect(() => {
-    if (!placingWater) return;
+    if (!placingWater && !placingFactory) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPlacingWater(false);
+      if (e.key === "Escape") {
+        setPlacingWater(false);
+        setPlacingFactory(false);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [placingWater]);
+  }, [placingWater, placingFactory]);
   const [showAllLinks, setShowAllLinks] = useState(() =>
     readBool(STORAGE.showAllLinks, true),
   );
@@ -484,30 +492,18 @@ export function MapView() {
               Show water extractors
             </label>
             <Button
-              onClick={() => {
-                // Same flow as right-click, anchored at the view's
-                // centre — discoverability for the context-menu path.
-                const rect = containerRef.current?.getBoundingClientRect();
-                if (!rect) return;
-                const map = clientToMap(
-                  rect.left + rect.width / 2,
-                  rect.top + rect.height / 2,
-                );
-                if (!map) return;
-                setSelectedNodeId(null);
-                setSelectedFactoryId(null);
-                setQuickCreate({
-                  screenX: rect.width / 2,
-                  screenY: rect.height / 2,
-                  mapX: map.x,
-                  mapY: map.y,
-                });
-              }}
-              aria-label="Create a new factory"
-              title="Create a factory pin (tip: right-click anywhere on the map)"
+              onClick={() => setPlacingFactory((v) => !v)}
+              aria-label={placingFactory ? "Cancel factory placement" : "Place a new factory"}
+              aria-pressed={placingFactory}
+              title={
+                placingFactory
+                  ? "Click the map to place · Esc to cancel"
+                  : "Click, then click the map where the factory goes (right-click works too)"
+              }
+              variant={placingFactory ? "ghost" : "primary"}
             >
               <Sparkles className="h-4 w-4" />
-              New factory
+              {placingFactory ? "Click the map…" : "New factory"}
             </Button>
           </div>
         </div>
@@ -601,6 +597,25 @@ export function MapView() {
             </button>
             <button
               type="button"
+              aria-label={placingFactory ? "Cancel factory placement" : "Place a factory"}
+              aria-pressed={placingFactory}
+              title={
+                placingFactory
+                  ? "Click the map to place · Esc to cancel"
+                  : "Place a factory — click, then click the map"
+              }
+              onClick={() => setPlacingFactory((v) => !v)}
+              className={`relative inline-flex h-8 w-8 items-center justify-center rounded-md border ${
+                placingFactory
+                  ? "border-primary bg-primary/25 text-fg"
+                  : "border-border bg-bg-raised/90 text-fg hover:bg-bg-raised"
+              }`}
+            >
+              <FactoryGlyph className="h-4 w-4 text-primary" />
+              <Plus className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-bg-raised text-fg" />
+            </button>
+            <button
+              type="button"
               aria-label={placingWater ? "Cancel water placement" : "Place water extractors"}
               aria-pressed={placingWater}
               title={
@@ -646,8 +661,27 @@ export function MapView() {
               >
                 <div
                   className="relative"
-                  style={{ width: MAP_W, height: MAP_H, cursor: placingWater ? WATER_CURSOR : undefined }}
+                  style={{
+                    width: MAP_W,
+                    height: MAP_H,
+                    cursor: placingWater ? WATER_CURSOR : placingFactory ? "crosshair" : undefined,
+                  }}
                   onClick={(e) => {
+                    if (placingFactory) {
+                      const map = clientToMap(e.clientX, e.clientY);
+                      const rect = containerRef.current?.getBoundingClientRect();
+                      if (!map || !rect) return;
+                      setPlacingFactory(false);
+                      setSelectedNodeId(null);
+                      setSelectedFactoryId(null);
+                      setQuickCreate({
+                        screenX: e.clientX - rect.left,
+                        screenY: e.clientY - rect.top,
+                        mapX: map.x,
+                        mapY: map.y,
+                      });
+                      return;
+                    }
                     if (placingWater) {
                       const map = clientToMap(e.clientX, e.clientY);
                       if (!map) return;
@@ -870,6 +904,7 @@ export function MapView() {
                       <FactoryPin
                         key={f.id}
                         factory={f}
+                        onOpenPlan={() => openPlanDesigner(f.id)}
                         hasPower={hasPower}
                         unsourcedCount={unsourcedByFactory.get(f.id)?.length ?? 0}
                         dragging={dragging === f.id}
@@ -1052,7 +1087,7 @@ export function MapView() {
             >
               <QuickCreateFactoryPopover
                 pending={createFactory.isPending}
-                onCreate={(name, openPlan) => {
+                onCreate={(name) => {
                   const { worldX, worldY } = pctToWorld(
                     quickCreate.mapX / MAP_W,
                     quickCreate.mapY / MAP_H,
@@ -1065,11 +1100,10 @@ export function MapView() {
                           .setPosition({ id: factory.id, worldX, worldY })
                           .finally(() => factories.refetch());
                         setQuickCreate(null);
-                        if (openPlan) {
-                          openPlanDesigner(factory.id);
-                        } else {
-                          setSelectedFactoryId(factory.id);
-                        }
+                        // Straight into planning: the designer opens
+                        // with the product picker ready and a
+                        // "Cancel & delete" escape hatch.
+                        openPlanDesigner(factory.id, true);
                       },
                     },
                   );
@@ -1235,6 +1269,8 @@ export function MapView() {
 
 interface FactoryPinProps {
   factory: { id: string; name: string; worldX: number; worldY: number; iconId?: string };
+  /** Double-click — jump straight into the production plan. */
+  onOpenPlan: () => void;
   /** True if this factory has any power_gen rows — surfaces a ⚡ corner badge so power-bearing factories read distinctly. */
   hasPower?: boolean;
   /** Inputs still waiting on a source factory — danger corner badge with the count. */
@@ -1398,6 +1434,7 @@ function InputLinesLayer({
 
 function FactoryPin({
   factory,
+  onOpenPlan,
   hasPower,
   unsourcedCount = 0,
   linkHover,
@@ -1432,7 +1469,11 @@ function FactoryPin({
           : "border-primary bg-bg-raised/95 hover:bg-bg-raised"
       }`}
       style={{ left: `${px}px`, top: `${py}px` }}
-      title={`${factory.name} — click for details, drag to move`}
+      title={`${factory.name} — click for details, double-click to open the plan, drag to move`}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        onOpenPlan();
+      }}
       onMouseEnter={onLinkHoverEnter}
       onMouseLeave={onLinkHoverLeave}
       onMouseDown={(e) => {
@@ -1517,7 +1558,7 @@ function FactoryPin({
 
 interface QuickCreateFactoryPopoverProps {
   pending: boolean;
-  onCreate: (name: string, openPlan: boolean) => void;
+  onCreate: (name: string) => void;
   onClose: () => void;
 }
 
@@ -1544,29 +1585,21 @@ function QuickCreateFactoryPopover({ pending, onCreate, onClose }: QuickCreateFa
         value={name}
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && valid && !pending) onCreate(name.trim(), false);
+          if (e.key === "Enter" && valid && !pending) onCreate(name.trim());
           if (e.key === "Escape") onClose();
         }}
         placeholder="Factory name…"
         aria-label="Factory name"
         className="mt-2 h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-fg outline-none focus:border-primary"
       />
-      <div className="mt-2 flex items-center justify-end gap-2">
-        <Button
-          variant="ghost"
-          disabled={!valid || pending}
-          onClick={() => onCreate(name.trim(), false)}
-          className="px-2.5 py-1 text-xs"
-        >
-          Create
-        </Button>
+      <div className="mt-2 flex items-center justify-end">
         <Button
           disabled={!valid || pending}
-          onClick={() => onCreate(name.trim(), true)}
+          onClick={() => onCreate(name.trim())}
           className="px-2.5 py-1 text-xs"
         >
           <Workflow className="h-3 w-3" />
-          Create & plan
+          {pending ? "Creating…" : "Create & plan"}
         </Button>
       </div>
     </Card>
@@ -1586,6 +1619,8 @@ interface FactoryPopoverProps {
   onClose: () => void;
 }
 
+const POPOVER_SIZE_STORAGE = "specs:map:factoryPopoverLarge";
+
 function FactoryPopover({
   factoryId,
   hasPower,
@@ -1598,6 +1633,19 @@ function FactoryPopover({
 }: FactoryPopoverProps) {
   const detail = useFactoryDetail(factoryId);
   const recipes = useRecipes();
+  // Small by default; the expand toggle is remembered so planning
+  // sessions that live in this card keep it big.
+  const [large, setLarge] = useState(
+    () => localStorage.getItem(POPOVER_SIZE_STORAGE) === "1",
+  );
+  const toggleSize = () => {
+    setLarge((v) => {
+      try {
+        localStorage.setItem(POPOVER_SIZE_STORAGE, v ? "0" : "1");
+      } catch {}
+      return !v;
+    });
+  };
   const f = detail.data?.factory;
   const ledger = detail.data?.ledger;
 
@@ -1665,7 +1713,7 @@ function FactoryPopover({
       .map((f) => ({ itemId: f.itemId, itemName: f.itemName, bound: f.fromNodesPerMinute ?? 0 }));
   }, [ledger, requires]);
   return (
-    <Card className="w-[320px] p-3">
+    <Card className={`${large ? "w-[460px] max-h-[70vh] overflow-y-auto" : "w-[320px]"} p-3`}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           {f?.iconId ? (
@@ -1684,14 +1732,26 @@ function FactoryPopover({
             </div>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="rounded p-1 text-fg-muted hover:bg-border hover:text-fg"
-        >
-          ×
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={toggleSize}
+            aria-pressed={large}
+            aria-label={large ? "Shrink details" : "Expand details"}
+            title={large ? "Back to the compact card" : "Bigger card — easier to scan exports and inputs"}
+            className="rounded p-1 text-fg-muted hover:bg-border hover:text-fg"
+          >
+            {large ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded p-1 text-fg-muted hover:bg-border hover:text-fg"
+          >
+            ×
+          </button>
+        </div>
       </div>
 
       {(() => {

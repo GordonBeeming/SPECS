@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import type { PlanNode } from "@/features/planner/types";
@@ -47,36 +47,67 @@ const importNode: Extract<PlanNode, { kind: "import" }> = {
   unassignedIpm: 120,
 };
 
+const recipeCardProps = {
+  recipeOptions: [],
+  exportIpm: null as number | null,
+  onSwapRecipe: vi.fn(),
+  onOpenSources: vi.fn(),
+  onStartExport: vi.fn(),
+  onSetExport: vi.fn(),
+};
+
 describe("RecipeStepNodeCard", () => {
-  it("shows the bank summary and a Target badge for target items", () => {
-    render(
-      <RecipeStepNodeCard
-        node={recipeNode}
-        recipeOptions={[]}
-        onSwapRecipe={() => {}}
-        onSupplyFromElsewhere={() => {}}
-      />,
-    );
+  it("shows the bank summary and a Product badge for target items", () => {
+    render(<RecipeStepNodeCard node={recipeNode} {...recipeCardProps} />);
     expect(screen.getByText("Cable")).toBeInTheDocument();
     expect(screen.getByText(/2× Constructor @ 100%/)).toBeInTheDocument();
-    expect(screen.getByText("Target")).toBeInTheDocument();
-    // Targets are built here by definition — no cut affordance.
-    expect(screen.queryByText(/Supply from elsewhere/)).not.toBeInTheDocument();
+    expect(screen.getByText("Product")).toBeInTheDocument();
+    // Targets are built here by definition — no sources affordance.
+    expect(screen.queryByText("Sources")).not.toBeInTheDocument();
   });
 
-  it("cuts to an input via Supply from elsewhere on non-target steps", async () => {
+  it("opens the sources panel for non-target steps", async () => {
     const user = userEvent.setup();
-    const onCut = vi.fn();
+    const onOpenSources = vi.fn();
     render(
       <RecipeStepNodeCard
         node={{ ...recipeNode, isTarget: false, targetIpm: null }}
-        recipeOptions={[]}
-        onSwapRecipe={() => {}}
-        onSupplyFromElsewhere={onCut}
+        {...recipeCardProps}
+        onOpenSources={onOpenSources}
       />,
     );
-    await user.click(screen.getByText(/Supply from elsewhere/));
-    expect(onCut).toHaveBeenCalledWith("Desc_Cable_C");
+    await user.click(screen.getByText("Sources"));
+    expect(onOpenSources).toHaveBeenCalledWith("Desc_Cable_C");
+  });
+
+  it("starts an export on a non-target step at the current rate", async () => {
+    const user = userEvent.setup();
+    const onStartExport = vi.fn();
+    render(
+      <RecipeStepNodeCard
+        node={{ ...recipeNode, isTarget: false, targetIpm: null }}
+        {...recipeCardProps}
+        onStartExport={onStartExport}
+      />,
+    );
+    await user.click(screen.getByText("Export"));
+    expect(onStartExport).toHaveBeenCalledWith("Desc_Cable_C", 60);
+  });
+
+  it("edits the export slice inline on exporting targets", () => {
+    const onSetExport = vi.fn();
+    render(
+      <RecipeStepNodeCard
+        node={recipeNode}
+        {...recipeCardProps}
+        exportIpm={30}
+        onSetExport={onSetExport}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Export rate for Cable"), {
+      target: { value: "45" },
+    });
+    expect(onSetExport).toHaveBeenCalledWith("Desc_Cable_C", 45);
   });
 
   it("swaps the recipe through the picker", async () => {
@@ -85,12 +116,12 @@ describe("RecipeStepNodeCard", () => {
     render(
       <RecipeStepNodeCard
         node={{ ...recipeNode, isTarget: false, targetIpm: null }}
+        {...recipeCardProps}
         recipeOptions={[
           { value: "Recipe_Cable_C", label: "Cable" },
           { value: "Recipe_Alternate_Cable_C", label: "Alternate: Insulated Cable", group: "Alternate" },
         ]}
         onSwapRecipe={onSwap}
-        onSupplyFromElsewhere={() => {}}
       />,
     );
     await user.click(screen.getByRole("combobox"));
@@ -101,40 +132,41 @@ describe("RecipeStepNodeCard", () => {
 
 describe("ImportNodeCard", () => {
   const baseProps = {
-    factoryOptions: [{ value: "fac-wire", label: "Wire farm" }],
     factoryNames: new Map([["fac-wire", "Wire farm"]]),
-    onSetSource: vi.fn(),
-    onSetCap: vi.fn(),
-    onAddSource: vi.fn(),
-    onRemoveSource: vi.fn(),
-    onBuildHere: vi.fn(),
+    hasLocal: false,
+    onOpenSources: vi.fn(),
+    onAddLocal: vi.fn(),
   };
 
   it("flags unsourced demand as a warning state, not an error", () => {
-    render(
-      <ImportNodeCard
-        node={importNode}
-        sources={[{ sourceFactoryId: null, ipmCap: null }]}
-        {...baseProps}
-      />,
-    );
+    render(<ImportNodeCard node={importNode} {...baseProps} />);
     expect(screen.getByText(/Unsourced/)).toBeInTheDocument();
     expect(screen.getByText(/a future factory will supply this/)).toBeInTheDocument();
   });
 
-  it("expands back into the graph via Build it here", async () => {
+  it("lists allocations with factory names and offers Build it here", async () => {
     const user = userEvent.setup();
-    const onBuildHere = vi.fn();
+    const onAddLocal = vi.fn();
     render(
       <ImportNodeCard
-        node={importNode}
-        sources={[{ sourceFactoryId: null, ipmCap: null }]}
+        node={{
+          ...importNode,
+          allocations: [{ sourceFactoryId: "fac-wire", resolvedIpm: 50 }],
+          unassignedIpm: 0,
+        }}
         {...baseProps}
-        onBuildHere={onBuildHere}
+        onAddLocal={onAddLocal}
       />,
     );
-    await user.click(screen.getByText(/Build it here/));
-    expect(onBuildHere).toHaveBeenCalledWith("Desc_Wire_C");
+    expect(screen.getByText("Wire farm")).toBeInTheDocument();
+    await user.click(screen.getByText("Build it here too"));
+    expect(onAddLocal).toHaveBeenCalledWith("Desc_Wire_C");
+  });
+
+  it("labels the imported share when a local line also builds it", () => {
+    render(<ImportNodeCard node={importNode} {...baseProps} hasLocal />);
+    expect(screen.getByText("Imported share")).toBeInTheDocument();
+    expect(screen.queryByText("Build it here too")).not.toBeInTheDocument();
   });
 });
 

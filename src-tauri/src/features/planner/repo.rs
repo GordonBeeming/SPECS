@@ -18,6 +18,8 @@ fn ipm_from_x100(v: i64) -> f32 {
 pub struct PlanTargetRow {
     pub item_id: String,
     pub ipm: f32,
+    /// Slice of `ipm` offered to other factories. `None` = not exported.
+    pub export_ipm: Option<f32>,
     pub sort_order: i64,
 }
 
@@ -40,7 +42,7 @@ pub fn plan_targets_for_factory(
     factory_id: &str,
 ) -> Result<Vec<PlanTargetRow>> {
     let mut stmt = conn.prepare(
-        "SELECT item_id, ipm_x100, sort_order
+        "SELECT item_id, ipm_x100, export_ipm_x100, sort_order
          FROM factory_plan_target
          WHERE factory_id = ?
          ORDER BY sort_order, item_id",
@@ -49,7 +51,8 @@ pub fn plan_targets_for_factory(
         Ok(PlanTargetRow {
             item_id: r.get(0)?,
             ipm: ipm_from_x100(r.get(1)?),
-            sort_order: r.get(2)?,
+            export_ipm: r.get::<_, Option<i64>>(2)?.map(ipm_from_x100),
+            sort_order: r.get(3)?,
         })
     })?;
     let mut out = Vec::new();
@@ -73,8 +76,9 @@ pub fn plan_targets_replace(
     )?;
     let mut stmt = conn.prepare(
         "INSERT INTO factory_plan_target
-            (id, factory_id, item_id, ipm_x100, sort_order, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (id, factory_id, item_id, ipm_x100, export_ipm_x100, sort_order,
+             created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )?;
     for t in targets {
         stmt.execute(params![
@@ -82,6 +86,7 @@ pub fn plan_targets_replace(
             factory_id,
             t.item_id,
             ipm_to_x100(t.ipm),
+            t.export_ipm.map(ipm_to_x100),
             t.sort_order,
             now,
             now,
@@ -230,6 +235,32 @@ pub struct UnsourcedInputRow {
     pub factory_id: String,
     pub item_id: String,
     pub ipm_cap: Option<f32>,
+}
+
+/// `(factory_id, target)` for every factory with a plan — feeds the
+/// export-offer listing.
+pub fn plan_targets_all(conn: &Connection) -> Result<Vec<(String, PlanTargetRow)>> {
+    let mut stmt = conn.prepare(
+        "SELECT factory_id, item_id, ipm_x100, export_ipm_x100, sort_order
+         FROM factory_plan_target
+         ORDER BY factory_id, sort_order",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            PlanTargetRow {
+                item_id: r.get(1)?,
+                ipm: ipm_from_x100(r.get(2)?),
+                export_ipm: r.get::<_, Option<i64>>(3)?.map(ipm_from_x100),
+                sort_order: r.get(4)?,
+            },
+        ))
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
 }
 
 /// Every import across the playthrough still waiting for a source
@@ -394,8 +425,8 @@ mod tests {
                 c,
                 "fac-1",
                 &[
-                    PlanTargetRow { item_id: "Desc_Cable_C".into(), ipm: 60.0, sort_order: 0 },
-                    PlanTargetRow { item_id: "Desc_Wire_C".into(), ipm: 12.5, sort_order: 1 },
+                    PlanTargetRow { item_id: "Desc_Cable_C".into(), ipm: 60.0, export_ipm: Some(30.0), sort_order: 0 },
+                    PlanTargetRow { item_id: "Desc_Wire_C".into(), ipm: 12.5, export_ipm: None, sort_order: 1 },
                 ],
                 NOW,
             )?;
@@ -419,6 +450,8 @@ mod tests {
         assert_eq!(targets[0].item_id, "Desc_Cable_C");
         assert!((targets[0].ipm - 60.0).abs() < 1e-3);
         assert!((targets[1].ipm - 12.5).abs() < 1e-3, "x100 storage must keep 12.5 exact");
+        assert!((targets[0].export_ipm.unwrap() - 30.0).abs() < 1e-3, "export slice round-trips");
+        assert_eq!(targets[1].export_ipm, None);
 
         let recipes = db.with(|c| plan_recipes_for_factory(c, "fac-1")).unwrap();
         assert_eq!(recipes, vec![("Desc_IronIngot_C".into(), "Recipe_PureIronIngot_C".into())]);
@@ -435,13 +468,13 @@ mod tests {
             plan_targets_replace(
                 c,
                 "fac-1",
-                &[PlanTargetRow { item_id: "Desc_Cable_C".into(), ipm: 60.0, sort_order: 0 }],
+                &[PlanTargetRow { item_id: "Desc_Cable_C".into(), ipm: 60.0, export_ipm: Some(30.0), sort_order: 0 }],
                 NOW,
             )?;
             plan_targets_replace(
                 c,
                 "fac-1",
-                &[PlanTargetRow { item_id: "Desc_Rotor_C".into(), ipm: 10.0, sort_order: 0 }],
+                &[PlanTargetRow { item_id: "Desc_Rotor_C".into(), ipm: 10.0, export_ipm: None, sort_order: 0 }],
                 NOW,
             )
         })
@@ -458,7 +491,7 @@ mod tests {
             plan_targets_replace(
                 c,
                 "fac-1",
-                &[PlanTargetRow { item_id: "Desc_Cable_C".into(), ipm: 60.0, sort_order: 0 }],
+                &[PlanTargetRow { item_id: "Desc_Cable_C".into(), ipm: 60.0, export_ipm: Some(30.0), sort_order: 0 }],
                 NOW,
             )?;
             plan_imports_replace(c, "fac-1", &[import("imp-1", "Desc_Wire_C", None)], NOW)?;

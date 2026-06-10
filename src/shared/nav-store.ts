@@ -44,11 +44,29 @@ export const useNavStore = create<NavState>((set, get) => ({
   },
 }));
 
+interface PlanIntentState {
+  planFirstRun: boolean;
+}
+
+// Module-level because zustand's NavState is already shaped — a tiny
+// side-channel flag the shell takes (read + clear) alongside the
+// pending factory id.
+const planIntent: PlanIntentState = { planFirstRun: false };
+
+export function takePlanFirstRunFlag(): boolean {
+  const v = planIntent.planFirstRun;
+  planIntent.planFirstRun = false;
+  return v;
+}
+
 /**
  * Open the full-screen production-plan designer for a factory from
  * anywhere (factory detail, factories list, map pin popovers).
+ * `firstRun` marks a just-created factory: the designer auto-opens
+ * the product picker and offers "Cancel & delete".
  */
-export function openPlanDesigner(factoryId: string) {
+export function openPlanDesigner(factoryId: string, firstRun = false) {
+  planIntent.planFirstRun = firstRun;
   useNavStore.getState().selectFactory(factoryId);
   useNavStore.getState().goTo("plan");
 }

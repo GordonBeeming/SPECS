@@ -12,7 +12,6 @@ import type {
 } from "@/features/planner/types";
 import { queryKeys } from "@/shared/query/keys";
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
-import { useUndoStore } from "@/shared/undo/store";
 
 /** Compute is debounced so slider scrubs / fast typing don't queue a
  * Tauri round-trip per keystroke. 250 ms keeps the graph feeling live. */
@@ -101,6 +100,7 @@ export function usePlanDesigner(factoryId: string) {
     const handle = window.setTimeout(() => {
       plannerApi
         .computePlan({
+          factoryId,
           targets: working.targets,
           imports: working.imports,
           recipeOverrides: working.recipeOverrides,
@@ -135,7 +135,7 @@ export function usePlanDesigner(factoryId: string) {
       update((prev) =>
         prev.targets.some((t) => t.itemId === itemId)
           ? prev
-          : { ...prev, targets: [...prev.targets, { itemId, ipm }] },
+          : { ...prev, targets: [...prev.targets, { itemId, ipm, exportIpm: null }] },
       ),
     [update],
   );
@@ -158,22 +158,69 @@ export function usePlanDesigner(factoryId: string) {
     [update],
   );
 
-  /** "Supply from elsewhere" — cut the graph at this item. */
-  const cutToImport = useCallback(
-    (itemId: string) =>
-      update((prev) =>
-        prev.imports.some((i) => i.itemId === itemId)
-          ? prev
-          : {
-              ...prev,
-              imports: [...prev.imports, { itemId, sourceFactoryId: null, ipmCap: null }],
-            },
-      ),
+  /** Set / clear how much of a target is offered for export. */
+  const setTargetExport = useCallback(
+    (itemId: string, exportIpm: number | null) =>
+      update((prev) => ({
+        ...prev,
+        targets: prev.targets.map((t) =>
+          t.itemId === itemId ? { ...t, exportIpm } : t,
+        ),
+      })),
     [update],
   );
 
-  /** "Build it here" — remove the cut; the subtree re-expands. */
-  const buildHere = useCallback(
+  /**
+   * Add an external source for an item. The first external also adds
+   * the self row ("build it here") so local production continues —
+   * external caps reduce what the local line builds.
+   */
+  const addExternalSource = useCallback(
+    (itemId: string, sourceFactoryId: string | null, ipmCap: number | null) =>
+      update((prev) => {
+        const hasAny = prev.imports.some((i) => i.itemId === itemId);
+        const selfRow = { itemId, sourceFactoryId: factoryId, ipmCap: null };
+        const next = [...prev.imports];
+        if (!hasAny) next.push(selfRow);
+        next.push({ itemId, sourceFactoryId, ipmCap });
+        return { ...prev, imports: next };
+      }),
+    [update, factoryId],
+  );
+
+  /** Remove the local line — everything imports (the full cut). */
+  const removeLocalSource = useCallback(
+    (itemId: string) =>
+      update((prev) => ({
+        ...prev,
+        imports: prev.imports.filter(
+          (i) => !(i.itemId === itemId && i.sourceFactoryId === factoryId),
+        ),
+      })),
+    [update, factoryId],
+  );
+
+  /** Bring the local line back ("build it here"). */
+  const addLocalSource = useCallback(
+    (itemId: string) =>
+      update((prev) =>
+        prev.imports.some(
+          (i) => i.itemId === itemId && i.sourceFactoryId === factoryId,
+        )
+          ? prev
+          : {
+              ...prev,
+              imports: [
+                ...prev.imports,
+                { itemId, sourceFactoryId: factoryId, ipmCap: null },
+              ],
+            },
+      ),
+    [update, factoryId],
+  );
+
+  /** Drop every source row for the item — pure local production. */
+  const clearSources = useCallback(
     (itemId: string) =>
       update((prev) => ({
         ...prev,
@@ -214,15 +261,6 @@ export function usePlanDesigner(factoryId: string) {
     [update],
   );
 
-  const addImportSource = useCallback(
-    (itemId: string) =>
-      update((prev) => ({
-        ...prev,
-        imports: [...prev.imports, { itemId, sourceFactoryId: null, ipmCap: null }],
-      })),
-    [update],
-  );
-
   const removeImportSource = useCallback(
     (itemId: string, index: number) =>
       update((prev) => {
@@ -259,37 +297,18 @@ export function usePlanDesigner(factoryId: string) {
   }, [queryClient, factoryId]);
 
   const save = useCallback(async (): Promise<SavePlanResult | null> => {
-    if (!working || !persisted) return null;
-    const previous = workingFromPlan(persisted);
+    if (!working) return null;
     const next = working;
     setSaving(true);
     setSaveError(null);
-    let result: SavePlanResult | null = null;
     try {
-      // Replay-based undo: reversing a save is just re-saving the
-      // previously persisted inputs — far more robust than restoring
-      // machine/link rows one by one.
-      await useUndoStore.getState().push({
-        label: "Save plan",
-        apply: async () => {
-          result = await plannerApi.savePlan({
-            factoryId,
-            targets: next.targets,
-            imports: next.imports,
-            recipeOverrides: next.recipeOverrides,
-          });
-          invalidateAfterSave();
-        },
-        reverse: async () => {
-          await plannerApi.savePlan({
-            factoryId,
-            targets: previous.targets,
-            imports: previous.imports,
-            recipeOverrides: previous.recipeOverrides,
-          });
-          invalidateAfterSave();
-        },
+      const result = await plannerApi.savePlan({
+        factoryId,
+        targets: next.targets,
+        imports: next.imports,
+        recipeOverrides: next.recipeOverrides,
       });
+      invalidateAfterSave();
       return result;
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
@@ -297,7 +316,30 @@ export function usePlanDesigner(factoryId: string) {
     } finally {
       setSaving(false);
     }
-  }, [working, persisted, factoryId, invalidateAfterSave]);
+  }, [working, factoryId, invalidateAfterSave]);
+
+  // Background autosave: once edits settle (and the graph computed
+  // without a structural error), persist — leaving the screen can't
+  // lose work. The save itself re-runs compute server-side.
+  const saveRef = useRef(save);
+  useEffect(() => {
+    saveRef.current = save;
+  }, [save]);
+  useEffect(() => {
+    if (!dirty || saving) return;
+    if (!compute || compute.kind !== "ok") return;
+    const handle = window.setTimeout(() => {
+      void saveRef.current();
+    }, 1200);
+    return () => window.clearTimeout(handle);
+  }, [dirty, saving, compute]);
+
+  /** Awaitable flush for navigation (Back). */
+  const flush = useCallback(async () => {
+    if (dirty) {
+      await saveRef.current();
+    }
+  }, [dirty]);
 
   return {
     planQuery,
@@ -311,13 +353,16 @@ export function usePlanDesigner(factoryId: string) {
     addTarget,
     removeTarget,
     setTargetIpm,
-    cutToImport,
-    buildHere,
+    setTargetExport,
+    addExternalSource,
+    removeLocalSource,
+    addLocalSource,
+    clearSources,
     setImportSource,
     setImportCap,
-    addImportSource,
     removeImportSource,
     setRecipeOverride,
     save,
+    flush,
   };
 }

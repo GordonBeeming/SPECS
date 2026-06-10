@@ -12,10 +12,12 @@ export type PlannerError =
 
 // ---- Production plan (graph-first designer) ----
 
-/** "Make `ipm`/min of `itemId` in this factory." */
+/** "Make `ipm`/min of `itemId` in this factory." `exportIpm` is the
+ * slice offered to other factories; the rest stays local. */
 export interface PlanTargetSpec {
   itemId: string;
   ipm: number;
+  exportIpm?: number | null;
 }
 
 /**
@@ -127,6 +129,7 @@ export interface FactoryPlan {
 }
 
 export interface ComputePlanInput {
+  factoryId: string;
   targets: PlanTargetSpec[];
   imports?: PlanImportSpec[];
   recipeOverrides?: Record<string, string>;
@@ -157,4 +160,20 @@ export interface UnsourcedInput {
   itemId: string;
   itemName: string;
   ipmCap: number | null;
+}
+
+/** One product a factory offers for export, with current draw-down. */
+export interface ExportOfferProduct {
+  itemId: string;
+  itemName: string;
+  exportIpm: number;
+  drawnIpm: number;
+  /** export − drawn, floored at 0 — 0 still means "exportable". */
+  remainingIpm: number;
+}
+
+export interface ExportOffer {
+  factoryId: string;
+  factoryName: string;
+  products: ExportOfferProduct[];
 }

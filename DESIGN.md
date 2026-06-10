@@ -268,32 +268,61 @@ Layout, top to bottom:
 Node cards (all 250 px wide, `tabular-nums` for rates):
 
 - **Step** (`recipe:*` keys) — neutral card: item icon + name,
-  `count× Building @ clock%`, MW, out-rate. A recipe `FilterSelect`
-  (standard + unlocked alts producing that item; Unpackage filtered)
-  swaps the recipe in place — node keys are item-based so the card
-  keeps its position. Footer action: **Supply from elsewhere**,
-  which collapses the upstream subtree into an Input node. Target
-  steps get a primary-coloured border + a `Target` badge.
-- **Input** (`import:*`) — accent-bordered card for items that
-  arrive from another factory. Lists each assigned source (factory
-  `FilterSelect` + optional ipm cap) and the demand it covers. With
-  no source it shows an amber **Unsourced** badge ("a future
-  factory will supply this") — a fully valid, saveable state; the
-  whole point of planning the endgame backwards. Footer action:
-  **Build it here** (removes the cut, the subtree re-expands).
+  `count× Building @ clock%`, MW, out-rate. EVERY step carries the
+  recipe `FilterSelect` (standard + unlocked alts; Unpackage
+  filtered) so any link in the chain re-recipes in place — node
+  keys are item-based so the card keeps its position. Footer:
+  **Sources** (opens the sources panel) and **Export** (offers the
+  item to other factories — see exports below). Product steps get a
+  primary border + `Product` badge and edit their export slice
+  inline.
+- **Input** (`import:*`) — accent-bordered card for the item share
+  that arrives from other factories. Lists each allocation
+  (factory + ipm); unassigned demand shows the amber **Unsourced**
+  badge ("a future factory will supply this") — a fully valid,
+  saveable state. An item can be **mixed**: external sources absorb
+  up to their caps and the local line elastically builds the
+  remainder (a self-source row marks "build it here"). Removing the
+  local source makes it a full import; "Build it here too" brings
+  it back.
+- **Sources panel** — docked right of the canvas per item: the
+  local line (with its current remainder), external rows
+  (cap-editable), and an add-list that leads with factories
+  EXPORTING the item (name + remaining capacity = export − what
+  others already draw; 0 remaining stays selectable — bump
+  production there later). Non-exporters sit behind a divider for
+  plan-backwards work, plus "a future factory" for fully unsourced.
+- **Exports** — a target's `export_ipm` is the slice offered to
+  other factories ("produce 500, export 300, keep 200"). The Export
+  button on any step adds the item as a product at its current
+  rate; the slice is editable inline on the node and shows as an ↗
+  badge on the product chip.
 - **Raw** (`raw:*`) — leaf card for mined/pumped items: demand vs
   claimed-node supply, success tone when covered, danger + icon
   when short.
 - **Byproduct** (`byproduct:*`) — muted sink card for surplus
   outputs nobody consumes (no netting in v1; honesty over magic).
 
-Edges carry the item name + ipm as their label. Node drags persist
-to `factory_plan_layout` (sparse; missing row = dagre position).
-Saving runs everything in one transaction: plan inputs persist, the
-graph recomputes server-side, plan-managed machines regenerate
-(manual machines survive via `plan_node_key IS NULL`), sourced
-inputs become logistics links, and the action lands on the undo
-stack as one group.
+Edges carry the item name + ipm as their label; mixed items emit a
+proportional edge from each producer (local line + import). Node
+drags persist to `factory_plan_layout` (sparse; missing row = dagre
+position). **The camera never moves on its own** — no fit/zoom/pan
+on click or recompute; `Auto-arrange` is the explicit button that
+re-runs the layout (and refits, since the user asked). Plans
+**auto-save** once edits settle, and Back flushes any remainder —
+leaving the designer can't lose work. Saving runs in one
+transaction: plan inputs persist, the graph recomputes server-side,
+plan-managed machines regenerate (manual machines survive via
+`plan_node_key IS NULL`), and sourced inputs become logistics links
+(self rows never do — they're the local-production marker).
+
+The header edits the factory in place: click the name to rename,
+the icon to open the icon picker, the trash to delete (the
+confirmation lists factories that currently draw inputs from this
+one). New factories place-first on the map (arm button or
+right-click → click the spot → name → straight into the designer
+with the product picker open and a "Cancel & delete" escape hatch);
+the first product stamps the factory icon when none is set.
 
 The legacy "Build to target" panel, the stage-list preview, and the
 cross-factory Planner wizard are retired; manual "Add machine"

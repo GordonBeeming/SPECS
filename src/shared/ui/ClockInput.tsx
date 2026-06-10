@@ -71,7 +71,12 @@ export function ClockInput({
         }}
         onBlur={(e) => commit(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") commit((e.target as HTMLInputElement).value);
+          if (e.key === "Enter") {
+            const el = e.target as HTMLInputElement;
+            commit(el.value);
+            // Blur so "type 200, hit Enter" visibly takes effect.
+            el.blur();
+          }
         }}
         className="h-7 w-[4.5rem] shrink-0 rounded-md border border-border bg-bg px-1.5 text-[12px] tabular-nums text-fg outline-none focus:border-primary disabled:opacity-50"
         aria-label={ariaLabel}

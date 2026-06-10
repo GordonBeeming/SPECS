@@ -36,6 +36,9 @@ interface BaseProps {
   ariaLabel?: string;
   /** Render compact (h-9) instead of standard (h-10). Defaults to standard. */
   compact?: boolean;
+  /** Focus the input on mount — with `immediate`, that opens the list
+      straight away (used by "Add product"-style reveals). */
+  autoFocus?: boolean;
 }
 
 interface SingleProps extends BaseProps {
@@ -151,6 +154,7 @@ export function FilterSelect(props: FilterSelectProps) {
       <div className="relative">
         <ComboboxInput
           aria-label={props.ariaLabel}
+          autoFocus={props.autoFocus}
           displayValue={() => selectedLabel}
           placeholder={props.placeholder ?? "Type to filter…"}
           onChange={(e) => setQuery(e.target.value)}

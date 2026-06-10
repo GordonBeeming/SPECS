@@ -82,7 +82,11 @@ fn plan_get_impl(db: &PlaythroughDb, factory_id: &str) -> AppResult<FactoryPlan>
         factory_id: factory_id.to_string(),
         targets: targets
             .into_iter()
-            .map(|t| super::dto::PlanTargetSpec { item_id: t.item_id, ipm: t.ipm })
+            .map(|t| super::dto::PlanTargetSpec {
+                item_id: t.item_id,
+                ipm: t.ipm,
+                export_ipm: t.export_ipm,
+            })
             .collect(),
         recipe_overrides: recipes.into_iter().collect(),
         imports: imports
@@ -121,6 +125,7 @@ fn plan_save_impl(
     // The graph is recomputed server-side from the submitted inputs —
     // a client-supplied graph is never trusted for materialization.
     let graph = compute_plan_graph(
+        &input.factory_id,
         &input.targets,
         &unlocked,
         &supply,
@@ -150,6 +155,7 @@ fn plan_save_impl(
             .map(|(i, t)| plan_repo::PlanTargetRow {
                 item_id: t.item_id.clone(),
                 ipm: t.ipm,
+                export_ipm: t.export_ipm,
                 sort_order: i as i64,
             })
             .collect();
@@ -219,9 +225,15 @@ fn plan_save_impl(
             let PlanNode::Import { item_id, allocations, .. } = node else {
                 continue;
             };
+            // Self rows ("build it here") never become logistics links —
+            // they're the local production marker, not a route.
             let sourced_rows: Vec<&plan_repo::PlanImportRow> = import_rows
                 .iter()
-                .filter(|r| &r.item_id == item_id && r.source_factory_id.is_some())
+                .filter(|r| {
+                    &r.item_id == item_id
+                        && r.source_factory_id.is_some()
+                        && r.source_factory_id.as_deref() != Some(input.factory_id.as_str())
+                })
                 .collect();
             for (row, alloc) in sourced_rows.iter().zip(allocations.iter()) {
                 if alloc.resolved_ipm <= 1e-3 {
@@ -283,6 +295,7 @@ pub fn factory_plan_compute(
     let db = require_active(&active)?;
     let (unlocked, supply) = gather_plan_context(&db, &game_data)?;
     match compute_plan_graph(
+        &input.factory_id,
         &input.targets,
         &unlocked,
         &supply,
@@ -331,6 +344,73 @@ pub fn list_unsourced_inputs(
             ipm_cap: r.ipm_cap,
         })
         .collect())
+}
+
+/// What every factory offers for export, with how much other
+/// factories already draw — feeds the designer's source picker.
+fn export_offers_impl(
+    db: &PlaythroughDb,
+    game_data: &GameData,
+) -> AppResult<Vec<super::dto::ExportOffer>> {
+    let targets = db.with(|c| plan_repo::plan_targets_all(c).map_err(AppError::from))?;
+    let factories = db.with(|c| factory_repo::factory_list(c).map_err(AppError::from))?;
+    let links = db.with(|c| logistics_repo::link_list(c).map_err(AppError::from))?;
+    let factory_names: std::collections::HashMap<String, String> =
+        factories.into_iter().map(|f| (f.id, f.name)).collect();
+
+    // Σ outbound link ipm per (factory, item) — what's already spoken for.
+    let mut drawn: std::collections::HashMap<(String, String), f32> =
+        std::collections::HashMap::new();
+    for l in links {
+        *drawn
+            .entry((l.from_factory_id, l.item_id))
+            .or_insert(0.0) += l.items_per_minute;
+    }
+
+    let mut by_factory: std::collections::HashMap<String, Vec<super::dto::ExportOfferProduct>> =
+        std::collections::HashMap::new();
+    for (fid, t) in targets {
+        let Some(export) = t.export_ipm else { continue };
+        if export <= 0.0 {
+            continue;
+        }
+        let drawn_ipm = *drawn
+            .get(&(fid.clone(), t.item_id.clone()))
+            .unwrap_or(&0.0);
+        by_factory.entry(fid).or_default().push(super::dto::ExportOfferProduct {
+            item_name: game_data
+                .item(&t.item_id)
+                .map(|i| i.name.clone())
+                .unwrap_or_else(|| t.item_id.clone()),
+            item_id: t.item_id,
+            export_ipm: export,
+            drawn_ipm,
+            remaining_ipm: (export - drawn_ipm).max(0.0),
+        });
+    }
+
+    let mut out: Vec<super::dto::ExportOffer> = by_factory
+        .into_iter()
+        .map(|(factory_id, products)| super::dto::ExportOffer {
+            factory_name: factory_names
+                .get(&factory_id)
+                .cloned()
+                .unwrap_or_else(|| factory_id.clone()),
+            factory_id,
+            products,
+        })
+        .collect();
+    out.sort_by_key(|o| o.factory_name.to_lowercase());
+    Ok(out)
+}
+
+#[tauri::command]
+pub fn list_export_offers(
+    active: State<ActivePlaythrough>,
+    game_data: State<GameData>,
+) -> AppResult<Vec<super::dto::ExportOffer>> {
+    let db = require_active(&active)?;
+    export_offers_impl(&db, &game_data)
 }
 
 fn assign_import_source_impl(
@@ -445,7 +525,7 @@ mod tests {
     }
 
     fn cable_target() -> Vec<PlanTargetSpec> {
-        vec![PlanTargetSpec { item_id: "Desc_Cable_C".into(), ipm: 60.0 }]
+        vec![PlanTargetSpec { item_id: "Desc_Cable_C".into(), ipm: 60.0, export_ipm: None }]
     }
 
     #[test]
@@ -575,7 +655,7 @@ mod tests {
             &gd,
             save_input(
                 "fac-1",
-                vec![PlanTargetSpec { item_id: "Desc_Cable_C".into(), ipm: 0.0 }],
+                vec![PlanTargetSpec { item_id: "Desc_Cable_C".into(), ipm: 0.0, export_ipm: None }],
                 vec![],
             ),
             NOW,

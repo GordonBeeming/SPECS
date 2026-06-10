@@ -63,12 +63,15 @@ pub enum PlannerError {
 
 // ---- Production plan (graph-first designer) ----
 
-/// "Make `ipm`/min of `item_id` in this factory."
+/// "Make `ipm`/min of `item_id` in this factory." `export_ipm` is the
+/// slice offered to other factories; the rest stays local.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanTargetSpec {
     pub item_id: String,
     pub ipm: f32,
+    #[serde(default)]
+    pub export_ipm: Option<f32>,
 }
 
 /// "Item `item_id` arrives from elsewhere — cut the graph here."
@@ -251,6 +254,9 @@ pub struct FactoryPlan {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ComputePlanInput {
+    /// Needed to recognise self-source rows ("build it here") in the
+    /// import list.
+    pub factory_id: String,
     pub targets: Vec<PlanTargetSpec>,
     #[serde(default)]
     pub imports: Vec<PlanImportSpec>,
@@ -292,6 +298,28 @@ pub struct SavePlanResult {
     pub machine_ids: Vec<String>,
     /// Logistics links materialized for sourced imports.
     pub link_ids: Vec<String>,
+}
+
+/// One product a factory offers for export, with how much of the
+/// offer other factories already draw via logistics links.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportOfferProduct {
+    pub item_id: String,
+    pub item_name: String,
+    pub export_ipm: f32,
+    pub drawn_ipm: f32,
+    /// `export - drawn`, floored at 0 — 0 still means "exportable,
+    /// bump production there first".
+    pub remaining_ipm: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportOffer {
+    pub factory_id: String,
+    pub factory_name: String,
+    pub products: Vec<ExportOfferProduct>,
 }
 
 /// One input across the playthrough still waiting on a source factory

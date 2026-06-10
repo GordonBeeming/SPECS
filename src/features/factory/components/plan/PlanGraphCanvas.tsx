@@ -4,6 +4,7 @@ import {
   Controls,
   type Edge,
   type Node,
+  Panel,
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
@@ -18,6 +19,8 @@ import * as dagreNs from "dagre";
 const dagre: typeof import("dagre") =
   (dagreNs as unknown as { default?: typeof import("dagre") }).default ??
   (dagreNs as unknown as typeof import("dagre"));
+
+import { useQueryClient } from "@tanstack/react-query";
 
 import { plannerApi } from "@/features/planner/api";
 import { useThemeMode } from "@/shared/theme/useThemeMode";
@@ -39,16 +42,16 @@ export interface PlanGraphCanvasProps {
   graph: PlanGraph;
   layout: PlanLayoutEntry[];
   recipesByOutput: Map<string, Recipe[]>;
-  factoryOptions: FilterOption[];
   factoryNames: Map<string, string>;
-  importsByItem: Map<string, Array<{ sourceFactoryId: string | null; ipmCap: number | null }>>;
+  /** itemId → its export slice (targets only). */
+  exportByItem: Map<string, number | null>;
+  /** Items with a local "build it here" source row. */
+  localItems: Set<string>;
   onSwapRecipe: (itemId: string, recipeId: string) => void;
-  onSupplyFromElsewhere: (itemId: string) => void;
-  onBuildHere: (itemId: string) => void;
-  onSetImportSource: (itemId: string, index: number, factoryId: string | null) => void;
-  onSetImportCap: (itemId: string, index: number, cap: number | null) => void;
-  onAddImportSource: (itemId: string) => void;
-  onRemoveImportSource: (itemId: string, index: number) => void;
+  onOpenSources: (itemId: string) => void;
+  onStartExport: (itemId: string, ipm: number) => void;
+  onSetExport: (itemId: string, exportIpm: number | null) => void;
+  onAddLocal: (itemId: string) => void;
 }
 
 /** How a node relates to the current selection: the clicked node, a
@@ -67,7 +70,9 @@ const EMPHASIS_CLASS: Record<PlanEmphasis, string> = {
   none: "",
   selected: "rounded-md ring-2 ring-primary ring-offset-2 ring-offset-bg",
   neighbour: "rounded-md ring-2 ring-accent/80 ring-offset-2 ring-offset-bg",
-  dim: "opacity-35",
+  // pointer-events-none: a dimmed card can't eat a click meant for
+  // something else (mis-cutting the wrong item).
+  dim: "opacity-35 pointer-events-none",
 };
 
 function PlanFlowNodeComponent({ data }: { data: PlanFlowData }) {
@@ -91,8 +96,11 @@ function renderPlanCard(data: PlanFlowData) {
         <RecipeStepNodeCard
           node={planNode}
           recipeOptions={options}
+          exportIpm={canvas.exportByItem.get(planNode.itemId) ?? null}
           onSwapRecipe={canvas.onSwapRecipe}
-          onSupplyFromElsewhere={canvas.onSupplyFromElsewhere}
+          onOpenSources={canvas.onOpenSources}
+          onStartExport={canvas.onStartExport}
+          onSetExport={canvas.onSetExport}
         />
       );
     }
@@ -100,14 +108,10 @@ function renderPlanCard(data: PlanFlowData) {
       return (
         <ImportNodeCard
           node={planNode}
-          factoryOptions={canvas.factoryOptions}
           factoryNames={canvas.factoryNames}
-          sources={canvas.importsByItem.get(planNode.itemId) ?? []}
-          onSetSource={canvas.onSetImportSource}
-          onSetCap={canvas.onSetImportCap}
-          onAddSource={canvas.onAddImportSource}
-          onRemoveSource={canvas.onRemoveImportSource}
-          onBuildHere={canvas.onBuildHere}
+          hasLocal={canvas.localItems.has(planNode.itemId)}
+          onOpenSources={canvas.onOpenSources}
+          onAddLocal={canvas.onAddLocal}
         />
       );
     case "raw":
@@ -264,18 +268,28 @@ function CanvasInner(props: PlanGraphCanvasProps) {
     setEdges(initialEdges);
   }, [initialEdges, setEdges]);
 
-  // Refit when the graph's shape changes (target added, subtree cut) so
-  // new nodes never land off-screen.
+  // The view NEVER moves on its own — no fit/zoom/pan on recompute or
+  // click (it was jarring mid-edit). `fitView` runs once on mount via
+  // the prop; after that the user owns the camera. Auto-arrange below
+  // is the explicit opt-in for re-running the layout.
   const { fitView } = useReactFlow();
-  const shapeKey = useMemo(
-    () => graph.nodes.map((n) => n.nodeKey).join("|"),
-    [graph],
-  );
-  useEffect(() => {
-    requestAnimationFrame(() => {
-      fitView({ duration: 250, padding: 0.15 });
-    });
-  }, [shapeKey, fitView]);
+  const queryClient = useQueryClient();
+  const autoArrange = () => {
+    const computed = autoLayout(graph);
+    setNodes((prev) =>
+      prev.map((n) => ({
+        ...n,
+        position: computed.get(n.id) ?? n.position,
+      })),
+    );
+    // Persist so the arrangement survives reloads, then refit once —
+    // this is user-initiated, so moving the camera is expected.
+    for (const [key, pos] of computed) {
+      void plannerApi.setPlanLayout(factoryId, key, pos.x, pos.y);
+    }
+    queryClient.invalidateQueries({ queryKey: ["factory", "plan", factoryId] });
+    requestAnimationFrame(() => fitView({ duration: 250, padding: 0.15 }));
+  };
 
   return (
     <ReactFlow
@@ -288,7 +302,7 @@ function CanvasInner(props: PlanGraphCanvasProps) {
       fitView
       minZoom={0.1}
       proOptions={{ hideAttribution: true }}
-      onNodeClick={(_, node) => setSelectedKey((cur) => (cur === node.id ? null : node.id))}
+      onNodeClick={(_, node) => setSelectedKey(node.id)}
       onPaneClick={() => setSelectedKey(null)}
       onNodeDragStop={(_, node) => {
         void plannerApi.setPlanLayout(factoryId, node.id, node.position.x, node.position.y);
@@ -296,6 +310,16 @@ function CanvasInner(props: PlanGraphCanvasProps) {
     >
       <Background />
       <Controls />
+      <Panel position="top-right">
+        <button
+          type="button"
+          onClick={autoArrange}
+          title="Re-run the automatic layout (also refits the view)"
+          className="rounded-md border border-border bg-bg-raised/95 px-2.5 py-1.5 text-xs font-medium text-fg shadow hover:border-primary"
+        >
+          Auto-arrange
+        </button>
+      </Panel>
     </ReactFlow>
   );
 }
