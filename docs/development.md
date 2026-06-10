@@ -26,6 +26,7 @@ core version and host triple. That confirms IPC is working.
 
 | Command                              | What it does                                                  |
 | ------------------------------------ | ------------------------------------------------------------- |
+| `./run.sh`                           | `bun run tauri:dev`, but kills any stale dev server holding port 1420 first |
 | `bun run tauri:dev`                  | Tauri shell + Vite with the dev config overlay (the daily driver) |
 | `bun run dev`                        | Vite only — browser, no Rust core                             |
 | `bun run build`                      | Vite production build                                         |
