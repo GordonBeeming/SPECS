@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Check, Loader2, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Atom, Check, Loader2, Pencil, Trash2 } from "lucide-react";
 
 import { Button } from "@/shared/ui/Button";
 import { Icon } from "@/shared/ui/Icon";
@@ -211,6 +211,28 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
         <span className="text-sm text-fg-muted">Production plan</span>
 
         <div className="ml-auto flex items-center gap-3 text-sm tabular-nums text-fg-muted">
+          {working && (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={working.includeSam || (graph?.samForced ?? false)}
+              disabled={graph?.samForced ?? false}
+              onClick={() => designer.setIncludeSam(!working.includeSam)}
+              title={
+                graph?.samForced
+                  ? "A product in this plan can only be made with SAM"
+                  : "Allow recipes whose chain needs SAM in this plan"
+              }
+              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
+                working.includeSam || graph?.samForced
+                  ? "border-primary/60 bg-primary/10 text-primary"
+                  : "border-border text-fg-muted hover:border-primary hover:text-fg"
+              } disabled:cursor-not-allowed disabled:opacity-70`}
+            >
+              <Atom className="h-3.5 w-3.5" />
+              SAM
+            </button>
+          )}
           {graph && graph.nodes.length > 0 && (
             <span>
               {graph.totalMachines} machines · {graph.totalPowerMw.toFixed(1)} MW

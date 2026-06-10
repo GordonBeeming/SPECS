@@ -156,6 +156,9 @@ pub enum PlanNode {
         item_id: String,
         item_name: String,
         surplus_ipm: f32,
+        /// Fluids can't be sunk — a fluid surplus stalls the line.
+        #[serde(default)]
+        is_fluid: bool,
     },
 }
 
@@ -179,6 +182,11 @@ pub struct PlanEdge {
     pub item_id: String,
     pub item_name: String,
     pub ipm: f32,
+    /// A byproduct being fed back into the chain (item isn't the
+    /// producing node's primary output). Rendered distinctly — piping
+    /// these wrong is how lines stall.
+    #[serde(default)]
+    pub is_reuse: bool,
 }
 
 /// Non-blocking findings. The plan always computes and always saves;
@@ -205,6 +213,16 @@ pub enum PlanWarning {
         item_name: String,
         gap_ipm: f32,
     },
+    /// A liquid byproduct nobody consumes — solids can go to the sink,
+    /// a stranded fluid stalls the whole line in game.
+    FluidSurplus {
+        item_id: String,
+        item_name: String,
+        ipm: f32,
+    },
+    /// The optimizer failed or ran out of budget; the graph shown is
+    /// the greedy standard-recipe chain instead.
+    OptimizerFellBack { reason: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -217,6 +235,34 @@ pub struct PlanGraph {
     /// Raw demand at the leaves, per item.
     pub raw_demand: HashMap<String, f32>,
     pub warnings: Vec<PlanWarning>,
+    /// True when a target can only be made with SAM, so the per-plan
+    /// "Include SAM" toggle was forced on (UI renders it disabled).
+    #[serde(default)]
+    pub sam_forced: bool,
+}
+
+/// Per-compute knobs the designer sends along with the plan inputs.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanComputeOptions {
+    /// Allow recipes whose chain needs SAM. Per-plan (persisted with
+    /// the factory's plan); defaults off.
+    #[serde(default)]
+    pub include_sam: bool,
+    /// Global guard for the optimizer; on overrun the greedy chain is
+    /// shown instead (warn, don't block).
+    #[serde(default = "default_solver_budget_ms")]
+    pub solver_budget_ms: u64,
+}
+
+fn default_solver_budget_ms() -> u64 {
+    2000
+}
+
+impl Default for PlanComputeOptions {
+    fn default() -> Self {
+        Self { include_sam: false, solver_budget_ms: default_solver_budget_ms() }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -245,6 +291,9 @@ pub struct PlanImportRowDto {
 pub struct FactoryPlan {
     pub factory_id: String,
     pub targets: Vec<PlanTargetSpec>,
+    /// Per-plan SAM toggle, persisted in `factory_plan_option`.
+    #[serde(default)]
+    pub include_sam: bool,
     /// item id → recipe id the user chose for that item.
     pub recipe_overrides: HashMap<String, String>,
     pub imports: Vec<PlanImportRowDto>,
@@ -262,6 +311,8 @@ pub struct ComputePlanInput {
     pub imports: Vec<PlanImportSpec>,
     #[serde(default)]
     pub recipe_overrides: HashMap<String, String>,
+    #[serde(default)]
+    pub options: PlanComputeOptions,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -280,6 +331,8 @@ pub struct SavePlanInput {
     pub imports: Vec<PlanImportSpec>,
     #[serde(default)]
     pub recipe_overrides: HashMap<String, String>,
+    #[serde(default)]
+    pub options: PlanComputeOptions,
     /// Distance baked into materialized logistics links. The React
     /// side defaults this to 1000 m; the picker refines it later.
     #[serde(default = "default_link_distance")]

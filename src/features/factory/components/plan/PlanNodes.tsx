@@ -286,9 +286,13 @@ export function RawInputNodeCard({ node }: { node: Extract<PlanNode, { kind: "ra
 // ---- Byproduct ----
 
 export function ByproductNodeCard({ node }: { node: Extract<PlanNode, { kind: "byproduct" }> }) {
+  // A solid surplus goes to the AWESOME sink; a fluid surplus has no
+  // sink and stalls the line — same data, very different urgency.
   return (
     <div
-      className="rounded-md border border-dashed border-border bg-bg-raised/60 p-3 text-xs shadow-sm"
+      className={`rounded-md border border-dashed p-3 text-xs shadow-sm ${
+        node.isFluid ? "border-danger/60 bg-danger/5" : "border-border bg-bg-raised/60"
+      }`}
       style={{ width: PLAN_NODE_WIDTH }}
     >
       <FlowHandles right={false} />
@@ -297,7 +301,13 @@ export function ByproductNodeCard({ node }: { node: Extract<PlanNode, { kind: "b
           <Icon itemId={node.itemId} alt="" className="h-5 w-5 shrink-0" />
           <div className="min-w-0">
             <div className="truncate text-fg-muted">{node.itemName}</div>
-            <div className="text-[10px] uppercase tracking-wide text-fg-muted">Byproduct</div>
+            <div
+              className={`text-[10px] uppercase tracking-wide ${
+                node.isFluid ? "text-danger" : "text-fg-muted"
+              }`}
+            >
+              {node.isFluid ? "Fluid surplus — will stall" : "Byproduct → sink"}
+            </div>
           </div>
         </div>
         <span className="tabular-nums text-fg-muted">{rate(node.surplusIpm)}</span>

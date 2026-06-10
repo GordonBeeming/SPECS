@@ -80,6 +80,8 @@ export type PlanNode =
       itemId: string;
       itemName: string;
       surplusIpm: number;
+      /** Fluids can't be sunk — a fluid surplus stalls the line. */
+      isFluid: boolean;
     };
 
 export interface PlanEdge {
@@ -89,12 +91,16 @@ export interface PlanEdge {
   itemId: string;
   itemName: string;
   ipm: number;
+  /** Byproduct fed back into the chain — rendered distinctly. */
+  isReuse: boolean;
 }
 
 export type PlanWarning =
   | { kind: "rawShort"; itemId: string; itemName: string; demandIpm: number; claimedIpm: number }
   | { kind: "importUnsourced"; itemId: string; itemName: string; ipm: number }
-  | { kind: "importShort"; itemId: string; itemName: string; gapIpm: number };
+  | { kind: "importShort"; itemId: string; itemName: string; gapIpm: number }
+  | { kind: "fluidSurplus"; itemId: string; itemName: string; ipm: number }
+  | { kind: "optimizerFellBack"; reason: string };
 
 export interface PlanGraph {
   nodes: PlanNode[];
@@ -103,6 +109,16 @@ export interface PlanGraph {
   totalPowerMw: number;
   rawDemand: Record<string, number>;
   warnings: PlanWarning[];
+  /** A target needs SAM, so the per-plan toggle was forced on. */
+  samForced: boolean;
+}
+
+/** Per-compute knobs sent alongside the plan inputs. */
+export interface PlanComputeOptions {
+  /** Allow recipes whose chain needs SAM (per plan, default off). */
+  includeSam: boolean;
+  /** Global optimizer guard; overruns fall back to the greedy chain. */
+  solverBudgetMs: number;
 }
 
 export interface PlanLayoutEntry {
@@ -123,6 +139,8 @@ export interface PlanImportRow {
 export interface FactoryPlan {
   factoryId: string;
   targets: PlanTargetSpec[];
+  /** Per-plan SAM toggle, persisted with the plan. */
+  includeSam: boolean;
   recipeOverrides: Record<string, string>;
   imports: PlanImportRow[];
   layout: PlanLayoutEntry[];
@@ -133,6 +151,7 @@ export interface ComputePlanInput {
   targets: PlanTargetSpec[];
   imports?: PlanImportSpec[];
   recipeOverrides?: Record<string, string>;
+  options?: PlanComputeOptions;
 }
 
 export type ComputePlanResult =
@@ -144,6 +163,7 @@ export interface SavePlanInput {
   targets: PlanTargetSpec[];
   imports?: PlanImportSpec[];
   recipeOverrides?: Record<string, string>;
+  options?: PlanComputeOptions;
   defaultLinkDistanceM?: number;
 }
 

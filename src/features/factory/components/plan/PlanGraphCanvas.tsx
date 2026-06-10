@@ -241,14 +241,21 @@ function CanvasInner(props: PlanGraphCanvasProps) {
         const incoming = selectedKey !== null && e.toNode === selectedKey;
         const outgoing = selectedKey !== null && e.fromNode === selectedKey;
         const connected = incoming || outgoing;
-        const stroke = incoming
-          ? "var(--color-accent, var(--color-primary))"
-          : "var(--color-primary)";
+        // Reuse lines (a byproduct fed back into the chain) read amber:
+        // they're the part of the build that stalls everything when the
+        // pipes are wrong, so they must not blend in with primary flows.
+        const stroke = e.isReuse
+          ? "var(--color-warning)"
+          : incoming
+            ? "var(--color-accent, var(--color-primary))"
+            : "var(--color-primary)";
         return {
           id: e.id,
           source: e.fromNode,
           target: e.toNode,
-          label: `${e.itemName} · ${e.ipm % 1 === 0 ? e.ipm.toFixed(0) : e.ipm.toFixed(1)}/min`,
+          label: `${e.itemName} · ${e.ipm % 1 === 0 ? e.ipm.toFixed(0) : e.ipm.toFixed(1)}/min${
+            e.isReuse ? " (reuse)" : ""
+          }`,
           animated: selectedKey ? connected : animate,
           style: {
             stroke,
