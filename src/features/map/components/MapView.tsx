@@ -84,7 +84,37 @@ const STORAGE = {
   hiddenResources: "specs:map:hiddenResources",
   hiddenPurities: "specs:map:hiddenPurities",
   showAllLinks: "specs:map:showAllLinks",
+  transform: "specs:map:transform",
 } as const;
+
+// Where the map starts when there's no saved view (and where the
+// Reset button returns to).
+const DEFAULT_SCALE = 0.6;
+
+/** Last pan/zoom state, restored on mount so leaving the tab and
+ * coming back continues exactly where the user was. */
+function readTransform(): { scale: number; x: number; y: number } | null {
+  try {
+    const v = localStorage.getItem(STORAGE.transform);
+    if (!v) return null;
+    const p: unknown = JSON.parse(v);
+    if (
+      typeof p === "object" && p !== null &&
+      typeof (p as { scale?: unknown }).scale === "number" &&
+      typeof (p as { x?: unknown }).x === "number" &&
+      typeof (p as { y?: unknown }).y === "number"
+    ) {
+      const t = p as { scale: number; x: number; y: number };
+      if (
+        Number.isFinite(t.scale) && t.scale >= 0.4 && t.scale <= 6 &&
+        Number.isFinite(t.x) && Number.isFinite(t.y)
+      ) {
+        return t;
+      }
+    }
+  } catch {}
+  return null;
+}
 
 function readBool(key: string, fallback: boolean): boolean {
   try {
@@ -127,6 +157,22 @@ export function MapView() {
   const queryClient = useQueryClient();
   const wrapRef = useRef<ReactZoomPanPinchRef | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // Saved pan/zoom — read once on mount; every transform change
+  // (throttled) writes it back so returning to the tab restores the
+  // exact view.
+  const [initialTransform] = useState(readTransform);
+  const saveTransformTimer = useRef<number | null>(null);
+  const persistTransform = (state: { scale: number; positionX: number; positionY: number }) => {
+    if (saveTransformTimer.current) window.clearTimeout(saveTransformTimer.current);
+    saveTransformTimer.current = window.setTimeout(() => {
+      try {
+        localStorage.setItem(
+          STORAGE.transform,
+          JSON.stringify({ scale: state.scale, x: state.positionX, y: state.positionY }),
+        );
+      } catch {}
+    }, 150);
+  };
 
   // Filter state survives reloads via localStorage — the player set
   // these to suit how they're working, surfacing a fresh default
@@ -458,7 +504,7 @@ export function MapView() {
             <button
               type="button"
               aria-label="Reset view"
-              onClick={() => wrapRef.current?.resetTransform()}
+              onClick={() => wrapRef.current?.setTransform(0, 0, DEFAULT_SCALE)}
               className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-bg-raised/90 text-fg hover:bg-bg-raised"
             >
               <RotateCcw className="h-4 w-4" />
@@ -470,7 +516,10 @@ export function MapView() {
               ref={wrapRef}
               minScale={0.4}
               maxScale={6}
-              initialScale={0.6}
+              initialScale={initialTransform?.scale ?? DEFAULT_SCALE}
+              initialPositionX={initialTransform?.x ?? 0}
+              initialPositionY={initialTransform?.y ?? 0}
+              onTransform={(ref: ReactZoomPanPinchRef) => persistTransform(ref.state)}
               limitToBounds={false}
               // Wheel step is the multiplier per tick — the lib's
               // default 0.2 is huge on a Mac trackpad (every scroll
