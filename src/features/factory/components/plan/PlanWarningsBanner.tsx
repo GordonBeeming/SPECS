@@ -43,7 +43,9 @@ export function PlanWarningsBanner({ warnings }: { warnings: PlanWarning[] }) {
     >
       <div className="flex items-center gap-1.5 font-semibold text-warning">
         <TriangleAlert className="h-3.5 w-3.5" />
-        Heads up — this plan isn't fully supplied yet
+        {warnings.every((w) => w.kind === "rawShort" || w.kind === "importUnsourced" || w.kind === "importShort")
+          ? "Heads up — this plan isn't fully supplied yet"
+          : "Heads up — this plan needs a look"}
       </div>
       <ul className="mt-1 flex flex-col gap-0.5 pl-5 text-fg-muted">
         {warnings.map((w, i) => (

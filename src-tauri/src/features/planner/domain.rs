@@ -1426,10 +1426,20 @@ pub fn compute_plan_graph_greedy(
     }
 
     for (item_id, surplus) in byproducts {
+        let is_fluid = game_data.item(&item_id).map(|i| i.is_fluid).unwrap_or(false);
+        // Same contract as the optimizer path: a stranded liquid is a
+        // stall risk and must reach the banner, not just the node.
+        if is_fluid && surplus > 1e-3 {
+            warnings.push(PlanWarning::FluidSurplus {
+                item_id: item_id.clone(),
+                item_name: item_name(&item_id, game_data),
+                ipm: surplus,
+            });
+        }
         nodes.push(PlanNode::Byproduct {
             node_key: byproduct_node_key(&item_id),
             item_name: item_name(&item_id, game_data),
-            is_fluid: game_data.item(&item_id).map(|i| i.is_fluid).unwrap_or(false),
+            is_fluid,
             item_id,
             surplus_ipm: surplus,
         });
