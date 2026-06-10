@@ -170,12 +170,18 @@ function InlineEditor({
   const shardClockCap = clockCapForShards(powerShardCount);
 
   const submit = () => {
-    if (!Number.isFinite(count) || count < 1 || count > 10_000) {
-      setError("Count must be between 1 and 10,000.");
+    // Count, shard count and sloop slots are integer columns backend-side
+    // — a typed "1.5" must fail here, not as a DB constraint error.
+    if (!Number.isInteger(count) || count < 1 || count > 10_000) {
+      setError("Count must be a whole number between 1 and 10,000.");
       return;
     }
     if (!Number.isFinite(clockPct) || clockPct < 1 || clockPct > 250) {
       setError("Clock must be between 1% and 250%.");
+      return;
+    }
+    if (!Number.isInteger(powerShardCount) || powerShardCount < 0 || powerShardCount > 3) {
+      setError("Power shards must be a whole number between 0 and 3.");
       return;
     }
     if (clockPct > shardClockCap) {
@@ -186,9 +192,13 @@ function InlineEditor({
       );
       return;
     }
-    if (somersloopSlotsFilled > slots) {
+    if (
+      !Number.isInteger(somersloopSlotsFilled) ||
+      somersloopSlotsFilled < 0 ||
+      somersloopSlotsFilled > slots
+    ) {
       setError(
-        `This building only has ${slots} Somersloop slot${slots === 1 ? "" : "s"}.`,
+        `Somersloop slots must be a whole number between 0 and ${slots}.`,
       );
       return;
     }

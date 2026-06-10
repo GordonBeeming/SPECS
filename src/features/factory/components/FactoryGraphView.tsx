@@ -223,9 +223,10 @@ function GraphInner({ factoryId, machines, buildingNames, recipeNames, layouts }
     if (editingId) {
       // requestAnimationFrame so the DOM has flushed the resized node
       // before xyflow measures it for the fit.
-      requestAnimationFrame(() => {
+      const rafId = requestAnimationFrame(() => {
         fitView({ duration: 200, padding: 0.2 });
       });
+      return () => cancelAnimationFrame(rafId);
     }
   }, [editingId, fitView]);
 
