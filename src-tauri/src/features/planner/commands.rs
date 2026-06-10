@@ -115,8 +115,11 @@ fn plan_get_impl(db: &PlaythroughDb, factory_id: &str) -> AppResult<FactoryPlan>
     let recipes = db.with(|c| plan_repo::plan_recipes_for_factory(c, factory_id).map_err(AppError::from))?;
     let imports = db.with(|c| plan_repo::plan_imports_for_factory(c, factory_id).map_err(AppError::from))?;
     let layout = db.with(|c| plan_repo::plan_layouts_for_factory(c, factory_id).map_err(AppError::from))?;
+    let include_sam =
+        db.with(|c| plan_repo::plan_option_include_sam(c, factory_id).map_err(AppError::from))?;
     Ok(FactoryPlan {
         factory_id: factory_id.to_string(),
+        include_sam,
         targets: targets
             .into_iter()
             .map(|t| super::dto::PlanTargetSpec {
@@ -170,6 +173,7 @@ fn plan_save_impl(
         &input.imports,
         &input.recipe_overrides,
         &export_capacity,
+        &input.options,
         game_data,
     )
     .map_err(|e| AppError::Invalid(format!("plan does not compute: {e:?}")))?;
@@ -222,6 +226,7 @@ fn plan_save_impl(
             })
             .collect();
         plan_repo::plan_imports_replace(&tx, &input.factory_id, &import_rows, now)?;
+        plan_repo::plan_option_upsert(&tx, &input.factory_id, input.options.include_sam, now)?;
 
         // Regenerate the plan-managed machines. Manual machines
         // (plan_node_key IS NULL) survive untouched.
@@ -342,6 +347,7 @@ pub fn factory_plan_compute(
         &input.imports,
         &input.recipe_overrides,
         &export_capacity,
+        &input.options,
         &game_data,
     ) {
         Ok(graph) => Ok(ComputePlanResult::Ok { graph }),
@@ -499,6 +505,10 @@ fn assign_import_source_impl(
             targets: plan.targets,
             imports,
             recipe_overrides: plan.recipe_overrides,
+            options: super::dto::PlanComputeOptions {
+                include_sam: plan.include_sam,
+                ..Default::default()
+            },
             default_link_distance_m: 1000,
         },
         now,
@@ -564,6 +574,7 @@ mod tests {
             targets,
             imports,
             recipe_overrides: Default::default(),
+            options: Default::default(),
             default_link_distance_m: 1000,
         }
     }

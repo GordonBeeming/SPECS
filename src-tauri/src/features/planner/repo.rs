@@ -316,6 +316,33 @@ pub fn plan_import_get(
 
 // ---- Layout ----
 
+/// Per-plan solver options (just the SAM gate today).
+pub fn plan_option_include_sam(conn: &Connection, factory_id: &str) -> Result<bool> {
+    let mut stmt = conn
+        .prepare("SELECT include_sam FROM factory_plan_option WHERE factory_id = ?")?;
+    let mut rows = stmt.query_map([factory_id], |r| r.get::<_, i64>(0))?;
+    match rows.next() {
+        Some(v) => Ok(v? != 0),
+        None => Ok(false),
+    }
+}
+
+pub fn plan_option_upsert(
+    conn: &Connection,
+    factory_id: &str,
+    include_sam: bool,
+    now: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO factory_plan_option (factory_id, include_sam, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(factory_id) DO UPDATE SET
+            include_sam = excluded.include_sam, updated_at = excluded.updated_at",
+        params![factory_id, include_sam as i64, now],
+    )?;
+    Ok(())
+}
+
 pub fn plan_layout_upsert(
     conn: &Connection,
     factory_id: &str,

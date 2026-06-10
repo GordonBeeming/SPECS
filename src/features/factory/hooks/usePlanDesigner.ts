@@ -17,10 +17,26 @@ import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythrou
  * Tauri round-trip per keystroke. 250 ms keeps the graph feeling live. */
 const COMPUTE_DEBOUNCE_MS = 250;
 
+/** Global optimizer guard. localStorage-tunable until a settings
+ * surface exists; overruns fall back to the greedy chain server-side. */
+const SOLVER_BUDGET_STORAGE = "specs:solver:budget-ms";
+const DEFAULT_SOLVER_BUDGET_MS = 2000;
+
+function solverBudgetMs(): number {
+  try {
+    const v = Number(localStorage.getItem(SOLVER_BUDGET_STORAGE));
+    return Number.isFinite(v) && v > 0 ? v : DEFAULT_SOLVER_BUDGET_MS;
+  } catch {
+    return DEFAULT_SOLVER_BUDGET_MS;
+  }
+}
+
 export interface PlanWorkingState {
   targets: PlanTargetSpec[];
   imports: PlanImportSpec[];
   recipeOverrides: Record<string, string>;
+  /** Per-plan SAM gate (solver candidate filter). */
+  includeSam: boolean;
 }
 
 function workingFromPlan(plan: FactoryPlan): PlanWorkingState {
@@ -32,6 +48,7 @@ function workingFromPlan(plan: FactoryPlan): PlanWorkingState {
       ipmCap: i.ipmCap,
     })),
     recipeOverrides: { ...plan.recipeOverrides },
+    includeSam: plan.includeSam ?? false,
   };
 }
 
@@ -92,6 +109,7 @@ export function usePlanDesigner(factoryId: string) {
           totalPowerMw: 0,
           rawDemand: {},
           warnings: [],
+          samForced: false,
         },
       });
       return;
@@ -108,6 +126,7 @@ export function usePlanDesigner(factoryId: string) {
           targets: working.targets,
           imports: working.imports,
           recipeOverrides: working.recipeOverrides,
+          options: { includeSam: working.includeSam, solverBudgetMs: solverBudgetMs() },
         })
         .then((r) => {
           if (!cancelled) setCompute(r);
@@ -289,6 +308,11 @@ export function usePlanDesigner(factoryId: string) {
     [update],
   );
 
+  const setIncludeSam = useCallback(
+    (includeSam: boolean) => update((prev) => ({ ...prev, includeSam })),
+    [update],
+  );
+
   const setRecipeOverride = useCallback(
     (itemId: string, recipeId: string) =>
       update((prev) => ({
@@ -319,6 +343,7 @@ export function usePlanDesigner(factoryId: string) {
         targets: next.targets,
         imports: next.imports,
         recipeOverrides: next.recipeOverrides,
+        options: { includeSam: next.includeSam, solverBudgetMs: solverBudgetMs() },
       });
       invalidateAfterSave();
       return result;
@@ -374,6 +399,7 @@ export function usePlanDesigner(factoryId: string) {
     setImportCap,
     removeImportSource,
     setRecipeOverride,
+    setIncludeSam,
     save,
     flush,
   };

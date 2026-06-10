@@ -10,9 +10,10 @@ use crate::shared::gamedata::GameData;
 use crate::shared::gamedata::types::Recipe;
 
 use super::dto::{
-    ChainStage, ImportAllocation, PlanEdge, PlanGraph, PlanImportSpec, PlanNode,
-    PlanTargetSpec, PlanWarning, PlannerError, RecipeFlow,
+    ChainStage, ImportAllocation, PlanComputeOptions, PlanEdge, PlanGraph, PlanImportSpec,
+    PlanNode, PlanTargetSpec, PlanWarning, PlannerError, RecipeFlow,
 };
+use super::solver;
 
 /// Per-machine ipm of `item_id` for this recipe at 100% clock with no
 /// amplification.
@@ -508,14 +509,540 @@ fn allocate_import_specs(
     (allocations, unassigned, has_unsourced_spec)
 }
 
-/// Compute the full production graph for a factory's plan inputs.
+/// Compute the production graph: optimizer first, greedy fallback.
+///
+/// The optimizer (see `solver.rs`) picks the recipe MIX that minimises
+/// rarity-weighted raw consumption with byproducts netted against
+/// demand. If it can't (solver error, budget overrun), the greedy
+/// chain below still renders a standard tree instantly, plus an
+/// `OptimizerFellBack` warning — warn, don't block, always.
+#[allow(clippy::too_many_arguments)]
+pub fn compute_plan_graph(
+    factory_id: &str,
+    targets: &[PlanTargetSpec],
+    unlocked_alts: &HashSet<String>,
+    available_supply: &HashMap<String, f32>,
+    imports: &[PlanImportSpec],
+    recipe_overrides: &HashMap<String, String>,
+    export_capacity: &HashMap<(String, String), f32>,
+    options: &PlanComputeOptions,
+    game_data: &GameData,
+) -> Result<PlanGraph, PlannerError> {
+    match compute_plan_graph_solved(
+        factory_id,
+        targets,
+        unlocked_alts,
+        available_supply,
+        imports,
+        recipe_overrides,
+        export_capacity,
+        options,
+        game_data,
+    ) {
+        Ok(graph) => Ok(graph),
+        Err(SolvedComputeError::Structural(e)) => Err(e),
+        Err(SolvedComputeError::Solver(reason)) => {
+            let mut graph = compute_plan_graph_greedy(
+                factory_id,
+                targets,
+                unlocked_alts,
+                available_supply,
+                imports,
+                recipe_overrides,
+                export_capacity,
+                game_data,
+            )?;
+            graph.warnings.push(PlanWarning::OptimizerFellBack { reason });
+            Ok(graph)
+        }
+    }
+}
+
+enum SolvedComputeError {
+    /// Unknown target / no recipe — same contract as the greedy path.
+    Structural(PlannerError),
+    /// The optimizer itself failed; fall back to greedy.
+    Solver(String),
+}
+
+/// The optimizer path: shared validation, mixed-import share passes,
+/// LP solve, then graph assembly from the chosen recipe mix.
+#[allow(clippy::too_many_arguments)]
+fn compute_plan_graph_solved(
+    factory_id: &str,
+    targets: &[PlanTargetSpec],
+    unlocked_alts: &HashSet<String>,
+    available_supply: &HashMap<String, f32>,
+    imports: &[PlanImportSpec],
+    recipe_overrides: &HashMap<String, String>,
+    export_capacity: &HashMap<(String, String), f32>,
+    options: &PlanComputeOptions,
+    game_data: &GameData,
+) -> Result<PlanGraph, SolvedComputeError> {
+    if targets.is_empty() {
+        return Ok(PlanGraph {
+            nodes: vec![],
+            edges: vec![],
+            total_machines: 0,
+            total_power_mw: 0.0,
+            raw_demand: HashMap::new(),
+            warnings: vec![],
+            sam_forced: false,
+        });
+    }
+    for t in targets {
+        if game_data.item(&t.item_id).is_none() {
+            return Err(SolvedComputeError::Structural(PlannerError::UnknownTarget {
+                item_id: t.item_id.clone(),
+            }));
+        }
+        if game_data.recipes_producing(&t.item_id).is_empty() {
+            return Err(SolvedComputeError::Structural(PlannerError::NoRecipeForTarget {
+                item_id: t.item_id.clone(),
+            }));
+        }
+    }
+
+    let target_ipms: HashMap<&str, f32> =
+        targets.iter().map(|t| (t.item_id.as_str(), t.ipm)).collect();
+
+    // Same import bookkeeping as the greedy path: target items are
+    // never cut, self rows mark mixed items, the rest are full cuts.
+    let cut_all: HashSet<String> = imports
+        .iter()
+        .filter(|s| !target_ipms.contains_key(s.item_id.as_str()))
+        .map(|s| s.item_id.clone())
+        .collect();
+    let self_items: HashSet<String> = imports
+        .iter()
+        .filter(|sp| sp.source_factory_id.as_deref() == Some(factory_id))
+        .map(|sp| sp.item_id.clone())
+        .collect();
+    let self_caps: HashMap<String, f32> = imports
+        .iter()
+        .filter(|sp| sp.source_factory_id.as_deref() == Some(factory_id))
+        .filter_map(|sp| sp.ipm_cap.map(|cap| (sp.item_id.clone(), cap.max(0.0))))
+        .collect();
+    let external_specs: Vec<PlanImportSpec> = imports
+        .iter()
+        .filter(|sp| sp.source_factory_id.as_deref() != Some(factory_id))
+        .cloned()
+        .collect();
+    let full_cuts: HashSet<String> =
+        cut_all.iter().filter(|i| !self_items.contains(*i)).cloned().collect();
+    let mixed: Vec<String> = {
+        let mut v: Vec<String> =
+            cut_all.iter().filter(|i| self_items.contains(*i)).cloned().collect();
+        v.sort();
+        v
+    };
+
+    // Honour valid recipe pins, drop stale ones (same rules as greedy).
+    let mut overrides: HashMap<String, String> = HashMap::new();
+    for (item_id, recipe_id) in recipe_overrides {
+        let valid = game_data.recipe(recipe_id).is_some_and(|r| {
+            !is_inverse_recipe(&r.id)
+                && (!r.is_alt || unlocked_alts.contains(&r.id))
+                && r.outputs.iter().any(|o| o.item_id == *item_id)
+        });
+        if valid {
+            overrides.insert(item_id.clone(), recipe_id.clone());
+        }
+    }
+
+    // A SAM-locked target forces the toggle on for this compute; the
+    // UI renders the switch on + disabled.
+    let sam_forced = targets
+        .iter()
+        .any(|t| solver::requires_sam(&t.item_id, game_data, unlocked_alts));
+    let include_sam = options.include_sam || sam_forced;
+
+    let weights = solver::rarity_weights(game_data);
+    let demands: HashMap<String, f32> =
+        targets.iter().map(|t| (t.item_id.clone(), t.ipm)).collect();
+
+    // Mixed items need the chain's consumption before their external
+    // share is known, and the share feeds back into the chain — a
+    // couple of passes converge (recipe mixes are stable; only the
+    // scale shifts).
+    let mut ext_supply: HashMap<String, f32> = HashMap::new();
+    let mut solution: Option<solver::PlanSolution> = None;
+    for _pass in 0..4 {
+        let input = solver::SolveInput {
+            demands: &demands,
+            external_supply: &ext_supply,
+            cut_items: &full_cuts,
+            recipe_overrides: &overrides,
+            unlocked_alts,
+            include_sam,
+        };
+        let sol = solver::solve(game_data, &input, &weights, options.solver_budget_ms)
+            .map_err(|e| match e {
+                solver::SolveError::Unreachable { item_id } => {
+                    SolvedComputeError::Structural(PlannerError::NoRecipeForTarget { item_id })
+                }
+                solver::SolveError::Failed(reason) => SolvedComputeError::Solver(reason),
+            })?;
+
+        let mut next: HashMap<String, f32> = HashMap::new();
+        for item in &mixed {
+            let consumption: f32 = sol
+                .recipes
+                .iter()
+                .filter_map(|(rid, runs)| {
+                    game_data.recipe(rid).map(|r| {
+                        r.inputs
+                            .iter()
+                            .filter(|io| io.item_id == *item)
+                            .map(|io| io.per_minute as f64 * runs)
+                            .sum::<f64>()
+                    })
+                })
+                .sum::<f64>() as f32;
+            let share = if let Some(cap) = self_caps.get(item) {
+                // Pinned local line: external covers everything past it.
+                (consumption - cap.min(consumption)).max(0.0)
+            } else {
+                // Elastic local line: externals reserve what they can
+                // actually deliver, local builds the remainder.
+                let mut remaining = consumption;
+                let mut taken = 0.0;
+                for spec in external_specs.iter().filter(|sp| sp.item_id == *item) {
+                    let take = remaining.min(effective_external_cap(spec, export_capacity)).max(0.0);
+                    taken += take;
+                    remaining -= take;
+                }
+                taken
+            };
+            if share > 1e-3 {
+                next.insert(item.clone(), share);
+            }
+        }
+        let converged = mixed.iter().all(|m| {
+            (next.get(m).copied().unwrap_or(0.0) - ext_supply.get(m).copied().unwrap_or(0.0))
+                .abs()
+                < 1e-2
+        });
+        solution = Some(sol);
+        if converged {
+            break;
+        }
+        ext_supply = next;
+    }
+    let sol = solution.expect("loop always sets a solution");
+
+    Ok(assemble_solved_graph(
+        &sol,
+        &target_ipms,
+        &ext_supply,
+        &external_specs,
+        available_supply,
+        export_capacity,
+        sam_forced,
+        game_data,
+    ))
+}
+
+/// Turn the optimizer's recipe mix into the renderable graph: stages,
+/// per-item flow edges (proportional when an item has several
+/// producers), raw/import leaves, byproduct sinks, warnings.
+#[allow(clippy::too_many_arguments)]
+fn assemble_solved_graph(
+    sol: &solver::PlanSolution,
+    target_ipms: &HashMap<&str, f32>,
+    mixed_ext_supply: &HashMap<String, f32>,
+    external_specs: &[PlanImportSpec],
+    available_supply: &HashMap<String, f32>,
+    export_capacity: &HashMap<(String, String), f32>,
+    sam_forced: bool,
+    game_data: &GameData,
+) -> PlanGraph {
+    let mut warnings: Vec<PlanWarning> = Vec::new();
+
+    // Stages from the chosen mix. Node keys stay item-based (layouts
+    // survive recipe swaps); a second primary producer of the same
+    // item gets a recipe-suffixed key.
+    struct SolvedStage {
+        node_key: String,
+        primary_item: String,
+        stage: ChainStage,
+    }
+    let mut used_keys: HashSet<String> = HashSet::new();
+    let mut stages: Vec<SolvedStage> = Vec::new();
+    for (recipe_id, runs) in &sol.recipes {
+        let Some(recipe) = game_data.recipe(recipe_id) else { continue };
+        let Some(primary) = recipe.outputs.first() else { continue };
+        let demand_ipm = primary.per_minute as f64 * runs;
+        let stage = build_stage(&primary.item_id, demand_ipm as f32, recipe, game_data);
+        let base_key = recipe_node_key(&primary.item_id);
+        let node_key = if used_keys.insert(base_key.clone()) {
+            base_key
+        } else {
+            let k = format!("{base_key}:{recipe_id}");
+            used_keys.insert(k.clone());
+            k
+        };
+        stages.push(SolvedStage { node_key, primary_item: primary.item_id.clone(), stage });
+    }
+
+    // Net flow per (node, item): a recipe consuming its own byproduct
+    // nets out inside the node instead of drawing a self-edge.
+    let mut producers: HashMap<String, Vec<(String, f32)>> = HashMap::new();
+    let mut consumers: HashMap<String, Vec<(String, f32)>> = HashMap::new();
+    for s in &stages {
+        let mut net: HashMap<&str, f32> = HashMap::new();
+        for io in &s.stage.outputs {
+            *net.entry(io.item_id.as_str()).or_insert(0.0) += io.per_minute;
+        }
+        for io in &s.stage.inputs {
+            *net.entry(io.item_id.as_str()).or_insert(0.0) -= io.per_minute;
+        }
+        for (item, ipm) in net {
+            if ipm > 1e-3 {
+                producers.entry(item.to_string()).or_default().push((s.node_key.clone(), ipm));
+            } else if ipm < -1e-3 {
+                consumers.entry(item.to_string()).or_default().push((s.node_key.clone(), -ipm));
+            }
+        }
+    }
+
+    // Raw extraction + imports are producers too.
+    let mut raw_items: Vec<(&String, &f64)> = sol.raw_extraction.iter().collect();
+    raw_items.sort_by(|a, b| a.0.cmp(b.0));
+    for (item, ipm) in &raw_items {
+        producers
+            .entry((*item).clone())
+            .or_default()
+            .push((raw_node_key(item), **ipm as f32));
+    }
+    // Full cuts (from the LP) and mixed external shares both surface
+    // as import nodes.
+    let mut import_ipm: HashMap<String, f32> = sol
+        .imported
+        .iter()
+        .map(|(item, ipm)| (item.clone(), *ipm as f32))
+        .collect();
+    for (item, share) in mixed_ext_supply {
+        *import_ipm.entry(item.clone()).or_insert(0.0) += *share;
+    }
+    for (item, ipm) in &import_ipm {
+        if *ipm > 1e-3 {
+            producers
+                .entry(item.clone())
+                .or_default()
+                .push((import_node_key(item), *ipm));
+        }
+    }
+    // Surplus sinks consume.
+    let mut surplus_items: Vec<(&String, &f64)> = sol.surplus.iter().collect();
+    surplus_items.sort_by(|a, b| a.0.cmp(b.0));
+    for (item, ipm) in &surplus_items {
+        consumers
+            .entry((*item).clone())
+            .or_default()
+            .push((byproduct_node_key(item), **ipm as f32));
+    }
+
+    // Edges: each consumer draws from every producer proportionally to
+    // that producer's share of the item — same convention the greedy
+    // path used for its local/import splits.
+    let mut edges: Vec<PlanEdge> = Vec::new();
+    let mut item_ids: Vec<&String> = consumers.keys().collect();
+    item_ids.sort();
+    for item in item_ids {
+        let needs = &consumers[item];
+        let Some(prods) = producers.get(item) else { continue };
+        let total: f32 = prods.iter().map(|(_, ipm)| ipm).sum();
+        if total <= 1e-3 {
+            continue;
+        }
+        for (to_node, need) in needs {
+            for (from_node, prod) in prods {
+                let ipm = need * (prod / total);
+                if ipm <= 1e-3 || from_node == to_node {
+                    continue;
+                }
+                edges.push(PlanEdge {
+                    id: format!("{from_node}->{to_node}:{item}"),
+                    from_node: from_node.clone(),
+                    to_node: to_node.clone(),
+                    item_id: item.clone(),
+                    item_name: item_name(item, game_data),
+                    ipm,
+                });
+            }
+        }
+    }
+
+    // Emit recipe nodes leaves-first (Kahn over recipe→recipe edges,
+    // recycling loops broken in key order), targets at the end — the
+    // reading order the designer always had.
+    let stage_order = {
+        let keys: Vec<String> = stages.iter().map(|s| s.node_key.clone()).collect();
+        let key_set: HashSet<&String> = keys.iter().collect();
+        let mut deps: HashMap<&String, HashSet<&String>> = HashMap::new();
+        for e in &edges {
+            if key_set.contains(&e.from_node) && key_set.contains(&e.to_node) {
+                deps.entry(&e.to_node).or_default().insert(&e.from_node);
+            }
+        }
+        let mut remaining: Vec<&String> = keys.iter().collect();
+        let mut done: HashSet<&String> = HashSet::new();
+        let mut order: Vec<String> = Vec::new();
+        while !remaining.is_empty() {
+            let idx = remaining
+                .iter()
+                .position(|k| {
+                    deps.get(*k).map(|d| d.iter().all(|f| done.contains(*f))).unwrap_or(true)
+                })
+                // Cycle (e.g. water recycling): take the first node and
+                // let the rest unwind.
+                .unwrap_or(0);
+            let k = remaining.remove(idx);
+            done.insert(k);
+            order.push(k.clone());
+        }
+        order
+    };
+    let mut nodes: Vec<PlanNode> = Vec::new();
+    let mut ordered: Vec<&SolvedStage> = Vec::new();
+    for key in &stage_order {
+        if let Some(s) = stages.iter().find(|s| &s.node_key == key) {
+            ordered.push(s);
+        }
+    }
+    ordered.sort_by_key(|s| target_ipms.contains_key(s.primary_item.as_str()));
+    for s in ordered {
+        let is_target = target_ipms.contains_key(s.primary_item.as_str());
+        nodes.push(PlanNode::Recipe {
+            node_key: s.node_key.clone(),
+            item_id: s.primary_item.clone(),
+            item_name: item_name(&s.primary_item, game_data),
+            recipe_id: s.stage.recipe_id.clone(),
+            recipe_name: s.stage.recipe_name.clone(),
+            building_id: s.stage.building_id.clone(),
+            building_name: s.stage.building_name.clone(),
+            machine_count: s.stage.machine_count,
+            clock_pct: s.stage.clock_pct,
+            power_mw: s.stage.power_mw,
+            output_ipm: s.stage.output_ipm,
+            is_alt: s.stage.is_alt,
+            is_target,
+            target_ipm: target_ipms.get(s.primary_item.as_str()).copied(),
+            inputs: s.stage.inputs.clone(),
+            outputs: s.stage.outputs.clone(),
+        });
+    }
+
+    let mut raw_demand: HashMap<String, f32> = HashMap::new();
+    for (item, ipm) in &raw_items {
+        let ipm = **ipm as f32;
+        raw_demand.insert((*item).clone(), ipm);
+        let claimed = *available_supply.get(*item).unwrap_or(&0.0);
+        nodes.push(PlanNode::Raw {
+            node_key: raw_node_key(item),
+            item_id: (*item).clone(),
+            item_name: item_name(item, game_data),
+            ipm,
+            claimed_supply_ipm: claimed,
+        });
+        if ipm > claimed + 1e-3 {
+            warnings.push(PlanWarning::RawShort {
+                item_id: (*item).clone(),
+                item_name: item_name(item, game_data),
+                demand_ipm: ipm,
+                claimed_ipm: claimed,
+            });
+        }
+    }
+
+    let mut import_items: Vec<(&String, &f32)> = import_ipm.iter().collect();
+    import_items.sort_by(|a, b| a.0.cmp(b.0));
+    for (item, demand) in import_items {
+        if *demand <= 1e-3 {
+            continue;
+        }
+        let (allocations, unassigned, has_unsourced_spec) =
+            allocate_import_specs(item, *demand, external_specs, export_capacity);
+        if unassigned > 0.0 {
+            if has_unsourced_spec || allocations.is_empty() {
+                warnings.push(PlanWarning::ImportUnsourced {
+                    item_id: item.clone(),
+                    item_name: item_name(item, game_data),
+                    ipm: unassigned,
+                });
+            } else {
+                warnings.push(PlanWarning::ImportShort {
+                    item_id: item.clone(),
+                    item_name: item_name(item, game_data),
+                    gap_ipm: unassigned,
+                });
+            }
+        }
+        nodes.push(PlanNode::Import {
+            node_key: import_node_key(item),
+            item_id: item.clone(),
+            item_name: item_name(item, game_data),
+            ipm: *demand,
+            allocations,
+            unassigned_ipm: unassigned,
+        });
+    }
+
+    for (item, surplus) in &surplus_items {
+        let ipm = **surplus as f32;
+        let is_fluid = game_data.item(item).map(|i| i.is_fluid).unwrap_or(false);
+        nodes.push(PlanNode::Byproduct {
+            node_key: byproduct_node_key(item),
+            item_id: (*item).clone(),
+            item_name: item_name(item, game_data),
+            surplus_ipm: ipm,
+            is_fluid,
+        });
+        if is_fluid {
+            warnings.push(PlanWarning::FluidSurplus {
+                item_id: (*item).clone(),
+                item_name: item_name(item, game_data),
+                ipm,
+            });
+        }
+    }
+
+    let total_machines = nodes
+        .iter()
+        .map(|n| match n {
+            PlanNode::Recipe { machine_count, .. } => *machine_count,
+            _ => 0,
+        })
+        .sum();
+    let total_power_mw = nodes
+        .iter()
+        .map(|n| match n {
+            PlanNode::Recipe { power_mw, .. } => *power_mw,
+            _ => 0.0,
+        })
+        .sum();
+
+    PlanGraph {
+        nodes,
+        edges,
+        total_machines,
+        total_power_mw,
+        raw_demand,
+        warnings,
+        sam_forced,
+    }
+}
+
+/// Greedy single-recipe-per-item chain — the optimizer's fallback and
+/// the legacy behaviour pinned by the older tests.
 ///
 /// Unlike the legacy `derive_chain_with_options`, supply NEVER gates
 /// the result — raw gaps, unsourced imports, and cap shortfalls come
 /// back as `PlanGraph.warnings` (warn, don't block). Only structural
 /// failures (unknown item, no recipe, dataset cycle) return `Err`.
 #[allow(clippy::too_many_arguments)]
-pub fn compute_plan_graph(
+pub fn compute_plan_graph_greedy(
     factory_id: &str,
     targets: &[PlanTargetSpec],
     unlocked_alts: &HashSet<String>,
@@ -536,6 +1063,7 @@ pub fn compute_plan_graph(
             total_power_mw: 0.0,
             raw_demand: HashMap::new(),
             warnings: vec![],
+            sam_forced: false,
         });
     }
 
@@ -874,6 +1402,7 @@ pub fn compute_plan_graph(
         nodes.push(PlanNode::Byproduct {
             node_key: byproduct_node_key(&item_id),
             item_name: item_name(&item_id, game_data),
+            is_fluid: game_data.item(&item_id).map(|i| i.is_fluid).unwrap_or(false),
             item_id,
             surplus_ipm: surplus,
         });
@@ -901,6 +1430,9 @@ pub fn compute_plan_graph(
         total_power_mw,
         raw_demand,
         warnings,
+        sam_forced: targets
+            .iter()
+            .any(|t| solver::requires_sam(&t.item_id, game_data, unlocked_alts)),
     })
 }
 
@@ -963,6 +1495,7 @@ mod tests {
             &[],
             &HashMap::new(),
             &HashMap::new(),
+            &PlanComputeOptions::default(),
             &gd,
         )
         .unwrap_err();
@@ -976,6 +1509,7 @@ mod tests {
             &[],
             &HashMap::new(),
             &HashMap::new(),
+            &PlanComputeOptions::default(),
             &gd,
         )
         .unwrap_err();
@@ -1001,7 +1535,9 @@ mod tests {
         alts.insert(pure_iron.id.clone());
 
         let recipe_for_ingot = |supply: &HashMap<String, f32>| {
-            let graph = compute_plan_graph(
+            // Supply-viability steering is a property of the greedy
+            // fallback — the optimizer ranks by map rarity instead.
+            let graph = compute_plan_graph_greedy(
                 "fac-self",
                 &[target("Desc_IronIngot_C", 60.0)],
                 &alts,
@@ -1051,6 +1587,7 @@ mod tests {
             &[],
             &overrides,
             &HashMap::new(),
+            &PlanComputeOptions::default(),
             &gd,
         )
         .expect("stale override must never wedge the plan");
@@ -1079,6 +1616,7 @@ mod tests {
             &[],
             &HashMap::new(),
             &HashMap::new(),
+            &PlanComputeOptions::default(),
             &gd,
         )
         .expect("aluminum chain must compute without cycles");
@@ -1111,6 +1649,7 @@ mod tests {
             ],
             &HashMap::new(),
             &capacity,
+            &PlanComputeOptions::default(),
             &gd,
         )
         .unwrap();
@@ -1146,6 +1685,7 @@ mod tests {
             &[],
             &HashMap::new(),
             &HashMap::new(),
+            &PlanComputeOptions::default(),
             &gd,
         )
         .unwrap();
@@ -1179,6 +1719,7 @@ mod tests {
             ],
             &HashMap::new(),
             &HashMap::new(),
+            &PlanComputeOptions::default(),
             &gd,
         )
         .unwrap();
@@ -1244,6 +1785,7 @@ mod tests {
             ],
             &HashMap::new(),
             &HashMap::new(), // fac-smelter exports nothing
+            &PlanComputeOptions::default(),
             &gd,
         )
         .unwrap();
@@ -1289,6 +1831,7 @@ mod tests {
             ],
             &HashMap::new(),
             &capacity,
+            &PlanComputeOptions::default(),
             &gd,
         )
         .unwrap();
@@ -1329,6 +1872,7 @@ mod tests {
             &[import_spec("Desc_Wire_C", Some("fac-wire"), None)],
             &HashMap::new(),
             &HashMap::new(),
+            &PlanComputeOptions::default(),
             &gd,
         )
         .unwrap();
@@ -1349,6 +1893,7 @@ mod tests {
             &[],
             &HashMap::new(),
             &HashMap::new(),
+            &PlanComputeOptions::default(),
             &gd,
         )
         .unwrap();
@@ -1368,6 +1913,7 @@ mod tests {
             &[],
             &HashMap::new(),
             &HashMap::new(),
+            &PlanComputeOptions::default(),
             &gd,
         )
         .unwrap();
@@ -1421,6 +1967,7 @@ mod tests {
             &[],
             &HashMap::new(),
             &HashMap::new(),
+            &PlanComputeOptions::default(),
             &gd,
         )
         .unwrap();
@@ -1458,6 +2005,7 @@ mod tests {
             &[import_spec("Desc_CopperIngot_C", None, None)],
             &HashMap::new(),
             &HashMap::new(),
+            &PlanComputeOptions::default(),
             &gd,
         )
         .unwrap();
@@ -1508,6 +2056,7 @@ mod tests {
             &[import_spec("Desc_Wire_C", Some("fac-wire"), Some(50.0))],
             &HashMap::new(),
             &HashMap::new(),
+            &PlanComputeOptions::default(),
             &gd,
         )
         .unwrap();
@@ -1541,6 +2090,7 @@ mod tests {
             &[],
             &HashMap::new(),
             &HashMap::new(),
+            &PlanComputeOptions::default(),
             &gd,
         )
         .unwrap();
@@ -1566,6 +2116,7 @@ mod tests {
             &[],
             &HashMap::new(),
             &HashMap::new(),
+            &PlanComputeOptions::default(),
             &gd,
         )
         .unwrap();
@@ -1591,6 +2142,7 @@ mod tests {
             &[],
             &overrides,
             &HashMap::new(),
+            &PlanComputeOptions::default(),
             &gd,
         )
         .unwrap();
@@ -1633,6 +2185,7 @@ mod tests {
             &[import_spec("Desc_Cable_C", Some("fac-other"), None)],
             &HashMap::new(),
             &HashMap::new(),
+            &PlanComputeOptions::default(),
             &gd,
         )
         .unwrap();
@@ -1656,6 +2209,7 @@ mod tests {
             &[],
             &HashMap::new(),
             &HashMap::new(),
+            &PlanComputeOptions::default(),
             &gd,
         )
         .unwrap();

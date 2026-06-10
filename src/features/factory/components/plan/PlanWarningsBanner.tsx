@@ -14,6 +14,10 @@ function warningLine(w: PlanWarning): string {
       return `${w.itemName} — ${rate(w.ipm)} unsourced (a future factory will supply this)`;
     case "importShort":
       return `${w.itemName} — sources are ${rate(w.gapIpm)} short of demand (raise a cap or add a source)`;
+    case "fluidSurplus":
+      return `${w.itemName} — ${rate(w.ipm)} of liquid has no consumer and will stall the line (use it in a recipe or export it)`;
+    case "optimizerFellBack":
+      return `Showing the standard-recipe chain — the optimizer couldn't finish (${w.reason})`;
   }
 }
 
@@ -43,7 +47,10 @@ export function PlanWarningsBanner({ warnings }: { warnings: PlanWarning[] }) {
       </div>
       <ul className="mt-1 flex flex-col gap-0.5 pl-5 text-fg-muted">
         {warnings.map((w, i) => (
-          <li key={`${w.kind}-${w.itemId}-${i}`} className="list-disc">
+          <li
+            key={`${w.kind}-${"itemId" in w ? w.itemId : "general"}-${i}`}
+            className="list-disc"
+          >
             {warningLine(w)}
           </li>
         ))}

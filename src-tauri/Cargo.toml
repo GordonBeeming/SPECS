@@ -47,6 +47,10 @@ rusqlite = { version = "0.38", features = ["bundled"] }
 refinery = { version = "0.9", features = ["rusqlite"] }
 parking_lot = "0.12"
 
+# Pure-Rust simplex LP solver — the plan optimizer (recipe mix that
+# minimises rarity-weighted raw consumption with byproduct netting).
+microlp = "0.2"
+
 [dev-dependencies]
 pretty_assertions = "1"
 

@@ -209,7 +209,7 @@ describe("RawInputNodeCard", () => {
 });
 
 describe("ByproductNodeCard", () => {
-  it("renders the surplus rate", () => {
+  it("marks a stranded fluid as a stall risk", () => {
     render(
       <ByproductNodeCard
         node={{
@@ -218,10 +218,28 @@ describe("ByproductNodeCard", () => {
           itemId: "Desc_HeavyOilResidue_C",
           itemName: "Heavy Oil Residue",
           surplusIpm: 20,
+          isFluid: true,
         }}
       />,
     );
     expect(screen.getByText("Heavy Oil Residue")).toBeInTheDocument();
     expect(screen.getByText("20/min")).toBeInTheDocument();
+    expect(screen.getByText(/will stall/i)).toBeInTheDocument();
+  });
+
+  it("labels a solid surplus as sinkable", () => {
+    render(
+      <ByproductNodeCard
+        node={{
+          kind: "byproduct",
+          nodeKey: "byproduct:Desc_Silica_C",
+          itemId: "Desc_Silica_C",
+          itemName: "Silica",
+          surplusIpm: 25,
+          isFluid: false,
+        }}
+      />,
+    );
+    expect(screen.getByText(/Byproduct → sink/i)).toBeInTheDocument();
   });
 });

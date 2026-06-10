@@ -320,8 +320,33 @@ Node cards (all 250 px wide, `tabular-nums` for rates):
 - **Byproduct** (`byproduct:*`) — muted sink card for surplus
   outputs nobody consumes (no netting in v1; honesty over magic).
 
-Edges carry the item name + ipm as their label; mixed items emit a
-proportional edge from each producer (local line + import). Node
+The graph is computed by an **optimizer**, not a top-down recipe
+walk: a small linear program picks the recipe mix that minimises
+rarity-weighted raw consumption (weights = the whole map's yield per
+resource at a fixed Mk3 @ 100% basis, iron ≈ 1.0; water is treated
+as nearly free because extractors aren't node-bound). Byproducts net
+against demand inside the balance constraints, so recycling loops
+(scrap water back into alumina) and partial byproduct coverage
+(silica from the alumina refinery topped up from quartz) come out
+the way satisfactorytools renders them. Solid surplus goes to a
+"Byproduct → sink" card; a fluid surplus has no sink in game, so its
+card goes red and a warning names the stalled liquid. Recipe pins
+still hold (a pinned item excludes other primary producers), and if
+the solver fails or blows its time budget (2 s, tunable via the
+`specs:solver:budget-ms` localStorage key until a settings page
+exists) the greedy single-recipe chain renders instead, with a
+banner line saying so.
+
+Each plan has a **SAM** toggle in the header
+(persisted in `factory_plan_option`): off by default, it removes
+recipes whose chain needs SAM; a product that can only be made with
+SAM forces it on and disables the switch. The bundled v1.1 dataset
+doesn't ship the converter recipes yet, so the toggle is inert until
+the next dataset refresh.
+
+Edges carry the item name + ipm as their label; items with several
+producers emit a proportional edge from each (local lines, imports,
+byproduct flows alike). Node
 drags persist to `factory_plan_layout` (sparse; missing row = dagre
 position). **The camera never moves on its own** — no fit/zoom/pan
 on click or recompute; `Auto-arrange` is the explicit button that
