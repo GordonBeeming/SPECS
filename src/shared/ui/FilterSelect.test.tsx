@@ -48,14 +48,15 @@ describe("FilterSelect IO strip", () => {
     await user.click(screen.getByRole("combobox"));
 
     const standard = await screen.findByRole("option", { name: /^Computer/ });
-    // Whole rates drop the decimals, fractional rates keep one.
+    // Whole rates drop the decimals; fractional rates keep their exact value.
     expect(standard).toHaveTextContent("10");
     expect(standard).toHaveTextContent("2.5/min");
     expect(standard).toHaveTextContent("→");
 
     const alt = screen.getByRole("option", { name: /Caterium Computer/ });
     expect(alt).toHaveTextContent("52.5");
-    expect(alt).toHaveTextContent("3.8/min");
+    // Exact ratios matter in Satisfactory — 3.75 must not round to 3.8.
+    expect(alt).toHaveTextContent("3.75/min");
   });
 
   it("keeps plain options single-line (no arrow, no rates)", async () => {

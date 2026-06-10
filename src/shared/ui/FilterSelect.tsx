@@ -204,7 +204,10 @@ interface DropdownPanelProps {
 }
 
 function rate(n: number): string {
-  return n % 1 === 0 ? n.toFixed(0) : n.toFixed(1);
+  // Satisfactory ratios are exact (3.75, 1.875) — rounding to one
+  // decimal would mislead anyone balancing a line. Up to 3 decimals,
+  // trailing zeros dropped.
+  return Number(n.toFixed(3)).toString();
 }
 
 function DropdownPanel({ filtered, value, multiple }: DropdownPanelProps) {
@@ -276,7 +279,13 @@ function DropdownPanel({ filtered, value, multiple }: DropdownPanelProps) {
                   // doing the muting, so the strip stays legible in both
                   // states. Wraps so 4-input Manufacturer alts never
                   // overflow the panel.
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] tabular-nums opacity-75">
+                  // aria-hidden: to a screen reader the strip is a run of
+                  // contextless numbers, and it would pollute the option's
+                  // accessible name — the label alone is the name.
+                  <div
+                    aria-hidden="true"
+                    className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] tabular-nums opacity-75"
+                  >
                     {option.io.inputs.map((f) => (
                       <span key={`in-${f.itemId}`} className="flex items-center gap-1">
                         <Icon itemId={f.itemId} alt="" className="h-3.5 w-3.5 shrink-0" />
