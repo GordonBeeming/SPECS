@@ -118,8 +118,26 @@ describe("RecipeStepNodeCard", () => {
         node={{ ...recipeNode, isTarget: false, targetIpm: null }}
         {...recipeCardProps}
         recipeOptions={[
-          { value: "Recipe_Cable_C", label: "Cable" },
-          { value: "Recipe_Alternate_Cable_C", label: "Alternate: Insulated Cable", group: "Alternate" },
+          {
+            value: "Recipe_Cable_C",
+            label: "Cable",
+            io: {
+              inputs: [{ itemId: "Desc_Wire_C", perMinute: 60 }],
+              outputs: [{ itemId: "Desc_Cable_C", perMinute: 30 }],
+            },
+          },
+          {
+            value: "Recipe_Alternate_Cable_C",
+            label: "Alternate: Insulated Cable",
+            group: "Alternate",
+            io: {
+              inputs: [
+                { itemId: "Desc_Wire_C", perMinute: 45 },
+                { itemId: "Desc_Rubber_C", perMinute: 30 },
+              ],
+              outputs: [{ itemId: "Desc_Cable_C", perMinute: 100 }],
+            },
+          },
         ]}
         onSwapRecipe={onSwap}
       />,

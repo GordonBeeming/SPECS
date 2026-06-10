@@ -92,6 +92,10 @@ function renderPlanCard(data: PlanFlowData) {
         value: r.id,
         label: r.name,
         group: r.isAlt ? "Alternate" : "Standard",
+        iconId: r.outputs[0]?.itemId,
+        // Inputs → outputs strip in the dropdown, so alternates can be
+        // compared by ratio before committing to a swap.
+        io: { inputs: r.inputs, outputs: r.outputs },
       }));
       return (
         <RecipeStepNodeCard

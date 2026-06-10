@@ -143,14 +143,15 @@ describe("<MachineNodeCard /> — inline editor", () => {
     await user.click(combobox);
     await user.keyboard("{ArrowDown}");
     await waitFor(() => {
-      // Smelter recipes appear; we look for exact-label matches so the
-      // overlapping /Iron Ingot/i regex doesn't ambiguously match both
-      // "Iron Ingot" and "Pure Iron Ingot (alt)".
+      // Smelter recipes appear; anchored prefixes disambiguate
+      // "Iron Ingot" from "Pure Iron Ingot (alt)". The option's
+      // accessible name now also carries the IO-strip rates, so an
+      // exact-match `$` anchor would never hit.
       expect(
-        screen.getByRole("option", { name: /^Iron Ingot$/ }),
+        screen.getByRole("option", { name: /^Iron Ingot\b/ }),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole("option", { name: /^Pure Iron Ingot \(alt\)$/ }),
+        screen.getByRole("option", { name: /^Pure Iron Ingot \(alt\)/ }),
       ).toBeInTheDocument();
       // Constructor recipe must NOT appear.
       expect(screen.queryByRole("option", { name: /Iron Plate/i })).toBeNull();
