@@ -42,7 +42,6 @@ import {
   Zap,
 } from "lucide-react";
 
-import { NewFactoryPanel } from "./NewFactoryPanel";
 import { MapLinksLayer } from "./MapLinksLayer";
 import { ResourceBudgetPanel } from "@/features/resources/components/ResourceBudgetPanel";
 
@@ -165,7 +164,6 @@ export function MapView() {
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedFactoryId, setSelectedFactoryId] = useState<string | null>(null);
-  const [showNewFactoryPanel, setShowNewFactoryPanel] = useState(false);
   const [showAllLinks, setShowAllLinks] = useState(() =>
     readBool(STORAGE.showAllLinks, true),
   );
@@ -354,8 +352,27 @@ export function MapView() {
               Show factory links
             </label>
             <Button
-              onClick={() => setShowNewFactoryPanel(true)}
-              aria-label="Plan a new factory chain"
+              onClick={() => {
+                // Same flow as right-click, anchored at the view's
+                // centre — discoverability for the context-menu path.
+                const rect = containerRef.current?.getBoundingClientRect();
+                if (!rect) return;
+                const map = clientToMap(
+                  rect.left + rect.width / 2,
+                  rect.top + rect.height / 2,
+                );
+                if (!map) return;
+                setSelectedNodeId(null);
+                setSelectedFactoryId(null);
+                setQuickCreate({
+                  screenX: rect.width / 2,
+                  screenY: rect.height / 2,
+                  mapX: map.x,
+                  mapY: map.y,
+                });
+              }}
+              aria-label="Create a new factory"
+              title="Create a factory pin (tip: right-click anywhere on the map)"
             >
               <Sparkles className="h-4 w-4" />
               New factory
@@ -421,17 +438,6 @@ export function MapView() {
               regardless of pan state. react-zoom-pan-pinch's built-in
               controls are minimal, so we render our own to keep the
               brand styling consistent. */}
-          {showNewFactoryPanel && (
-            <div className="absolute left-3 top-3 z-30">
-              <NewFactoryPanel
-                onClose={() => setShowNewFactoryPanel(false)}
-                onApplied={() => {
-                  void factories.refetch();
-                }}
-              />
-            </div>
-          )}
-
           <div className="absolute right-3 top-3 z-20 flex flex-col gap-1">
             <button
               type="button"

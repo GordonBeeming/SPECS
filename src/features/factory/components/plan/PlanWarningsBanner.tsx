@@ -25,8 +25,6 @@ export function errorLine(e: PlannerError): string {
       return `No recipe produces ${e.itemId} — raw resources come from claimed nodes, not plans`;
     case "cycleDetected":
       return `Recipe cycle involving ${e.itemId} — please report this`;
-    case "insufficient":
-      return "Supply is insufficient for this plan";
   }
 }
 

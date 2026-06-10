@@ -10,9 +10,8 @@ use crate::shared::gamedata::GameData;
 use crate::shared::gamedata::types::Recipe;
 
 use super::dto::{
-    ChainPlan, ChainStage, ImportAllocation, InputSource, InputSourceKind, PlanEdge,
-    PlanGraph, PlanImportSpec, PlanNode, PlanTargetSpec, PlanWarning, PlannerError,
-    RecipeFlow, ResolvedImport,
+    ChainStage, ImportAllocation, PlanEdge, PlanGraph, PlanImportSpec, PlanNode,
+    PlanTargetSpec, PlanWarning, PlannerError, RecipeFlow,
 };
 
 /// Per-machine ipm of `item_id` for this recipe at 100% clock with no
@@ -23,21 +22,6 @@ fn recipe_output_rate(recipe: &Recipe, item_id: &str) -> Option<f32> {
         .iter()
         .find(|o| o.item_id == item_id)
         .map(|o| o.per_minute)
-}
-
-/// Items the user cut out of the build — "this arrives from elsewhere".
-/// The recursion stops at a cut item whether or not a source factory is
-/// assigned yet; an unsourced cut is a fully valid planning state.
-///
-/// For the legacy derive path this set comes from `Factory`-kind
-/// `InputSource`s; `Node` sources are intentionally ignored — they only
-/// make sense for raw items where the chain already terminates.
-fn cut_items_from_sources(sources: &[InputSource]) -> HashSet<String> {
-    sources
-        .iter()
-        .filter(|s| matches!(s.source, InputSourceKind::Factory { .. }))
-        .map(|s| s.item_id.clone())
-        .collect()
 }
 
 /// Unpackage recipes are inverse-utility — they only exist to recover
@@ -439,215 +423,6 @@ fn flow_for(item_id: String, per_minute: f32, game_data: &GameData) -> RecipeFlo
     }
 }
 
-/// Distribute the demand for one pinned item across its matching
-/// `Factory` sources in declared order. Returns the resolved imports
-/// (one per source that contributed) plus any unmet gap.
-fn allocate_imports(
-    item_id: &str,
-    total_demand: f32,
-    sources: &[InputSource],
-    game_data: &GameData,
-) -> (Vec<ResolvedImport>, f32) {
-    let item_name = game_data
-        .item(item_id)
-        .map(|i| i.name.clone())
-        .unwrap_or_else(|| item_id.to_string());
-    let mut remaining = total_demand;
-    let mut resolved: Vec<ResolvedImport> = Vec::new();
-    for src in sources.iter().filter(|s| s.item_id == item_id) {
-        if remaining <= 1e-3 {
-            break;
-        }
-        let InputSourceKind::Factory { id } = &src.source else {
-            continue;
-        };
-        let cap = src.ipm_cap.unwrap_or(f32::INFINITY);
-        let take = remaining.min(cap);
-        if take <= 0.0 {
-            continue;
-        }
-        resolved.push(ResolvedImport {
-            item_id: item_id.to_string(),
-            item_name: item_name.clone(),
-            source_factory_id: id.clone(),
-            resolved_ipm: take,
-        });
-        remaining -= take;
-    }
-    let gap = if remaining > 1e-3 { remaining } else { 0.0 };
-    (resolved, gap)
-}
-
-/// Convenience wrapper around `derive_chain_with_options` for the
-/// no-sources / no-bypass case. Test-only: command-layer callers go
-/// through `derive_chain_with_options` directly so they can pass
-/// pinned sources + bypass flags without juggling defaults.
-#[cfg(test)]
-fn derive_chain(
-    target_item_id: &str,
-    target_ipm: f32,
-    unlocked_alts: &HashSet<String>,
-    available_supply: &HashMap<String, f32>,
-    game_data: &GameData,
-) -> Result<ChainPlan, PlannerError> {
-    derive_chain_with_options(
-        target_item_id,
-        target_ipm,
-        unlocked_alts,
-        available_supply,
-        &[],
-        &HashMap::new(),
-        game_data,
-        false,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn derive_chain_with_options(
-    target_item_id: &str,
-    target_ipm: f32,
-    unlocked_alts: &HashSet<String>,
-    available_supply: &HashMap<String, f32>,
-    sources: &[InputSource],
-    recipes: &HashMap<String, String>,
-    game_data: &GameData,
-    bypass_supply: bool,
-) -> Result<ChainPlan, PlannerError> {
-    if game_data.item(target_item_id).is_none() {
-        return Err(PlannerError::UnknownTarget {
-            item_id: target_item_id.to_string(),
-        });
-    }
-    // Reject only items that have zero recipes producing them — items
-    // that are extracted but *also* appear as recipe byproducts can
-    // still be planned for via that route if the player prefers.
-    if game_data.recipes_producing(target_item_id).is_empty() {
-        return Err(PlannerError::NoRecipeForTarget {
-            item_id: target_item_id.to_string(),
-        });
-    }
-    let mut raw_demand: HashMap<String, f32> = HashMap::new();
-    let mut imported_demand: HashMap<String, f32> = HashMap::new();
-    let mut item_demands: HashMap<String, f32> = HashMap::new();
-    // Seed item_recipes with the user's chosen recipes up-front. The
-    // memoised recipe-pick in `collect_demands` reads from this map
-    // before calling `pick_recipe`, so a valid choice is honoured
-    // throughout the recursion. Invalid ids (recipe not in dataset,
-    // doesn't produce the item, or filtered as alt-locked/inverse)
-    // are dropped here — collect_demands' own pick falls back to the
-    // auto choice, no error to the user.
-    let mut item_recipes: HashMap<String, String> = HashMap::new();
-    for (item_id, recipe_id) in recipes {
-        let valid = game_data.recipe(recipe_id).is_some_and(|r| {
-            !is_inverse_recipe(&r.id)
-                && (!r.is_alt || unlocked_alts.contains(&r.id))
-                && r.outputs.iter().any(|o| o.item_id == *item_id)
-        });
-        if valid {
-            item_recipes.insert(item_id.clone(), recipe_id.clone());
-        }
-    }
-    let mut visit_order: Vec<String> = Vec::new();
-    let mut supply_cache: HashMap<String, bool> = HashMap::new();
-    let mut struct_cache: HashMap<String, bool> = HashMap::new();
-    let mut visiting: HashSet<String> = HashSet::new();
-    let cut_items = cut_items_from_sources(sources);
-    collect_demands(
-        target_item_id,
-        target_ipm,
-        unlocked_alts,
-        available_supply,
-        &cut_items,
-        game_data,
-        &mut raw_demand,
-        &mut imported_demand,
-        &mut item_demands,
-        &mut item_recipes,
-        &mut visit_order,
-        &mut supply_cache,
-        &mut struct_cache,
-        &mut visiting,
-    )?;
-
-    // Resolve every pinned-import item's accumulated demand against
-    // its declared sources. Any gap (demand > sum of caps) bubbles up
-    // as `Insufficient::imports`.
-    let mut resolved_imports: Vec<ResolvedImport> = Vec::new();
-    let mut import_gap: HashMap<String, f32> = HashMap::new();
-    for (item_id, demand) in &imported_demand {
-        let (resolved, gap) = allocate_imports(item_id, *demand, sources, game_data);
-        resolved_imports.extend(resolved);
-        if gap > 0.0 {
-            import_gap.insert(item_id.clone(), gap);
-        }
-    }
-
-    // Compare raw demand to the supply pool. If anything is short,
-    // surface the gap — the UI shows it as "needs 240 Water/min,
-    // claim a water well". When `bypass_supply` is set, skip the
-    // gate (both raw + import gaps) so the chain materialises anyway.
-    if !bypass_supply {
-        let mut missing: HashMap<String, f32> = HashMap::new();
-        for (item, demand) in &raw_demand {
-            let supply = *available_supply.get(item).unwrap_or(&0.0);
-            if *demand > supply + 1e-3 {
-                missing.insert(item.clone(), demand - supply);
-            }
-        }
-        if !missing.is_empty() || !import_gap.is_empty() {
-            return Err(PlannerError::Insufficient {
-                missing,
-                imports: import_gap,
-            });
-        }
-    }
-
-    // Sort imports deterministically so test pins (and the React
-    // render order) don't drift with HashMap iteration.
-    resolved_imports.sort_by(|a, b| {
-        a.item_id
-            .cmp(&b.item_id)
-            .then_with(|| a.source_factory_id.cmp(&b.source_factory_id))
-    });
-
-    // Phase 2: build one ChainStage per visited item in leaves-first
-    // order, sizing each on its accumulated demand. The dedup in
-    // phase 1 means Iron Rod shows up exactly once even when both
-    // Rotor and Screw need it.
-    let stages: Vec<ChainStage> = visit_order
-        .iter()
-        .map(|item_id| {
-            let demand = *item_demands.get(item_id).unwrap_or(&0.0);
-            let recipe_id = item_recipes
-                .get(item_id)
-                .expect("collect_demands records a recipe per visited item");
-            let recipe = game_data
-                .recipe(recipe_id)
-                .expect("recipe id came from gamedata");
-            build_stage(item_id, demand, recipe, game_data)
-        })
-        .collect();
-
-    let total_machines = stages.iter().map(|s| s.machine_count).sum();
-    let total_power_mw = stages.iter().map(|s| s.power_mw).sum();
-    let target_item_name = game_data
-        .item(target_item_id)
-        .map(|i| i.name.clone())
-        .unwrap_or_else(|| target_item_id.to_string());
-
-    Ok(ChainPlan {
-        target_item_id: target_item_id.to_string(),
-        target_item_name,
-        target_ipm,
-        stages,
-        total_machines,
-        total_power_mw,
-        raw_demand,
-        imports: resolved_imports,
-        pinned_demand: imported_demand,
-    })
-}
-
 // ---- Production-plan graph (graph-first designer) ----
 
 pub fn recipe_node_key(item_id: &str) -> String {
@@ -974,341 +749,9 @@ pub fn compute_plan_graph(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::features::planner::dto::InputSourceKind;
 
     fn unlocked() -> HashSet<String> {
         HashSet::new()
-    }
-
-    #[test]
-    fn iron_ingot_at_60_ipm_with_iron_ore_supply_uses_standard_recipe() {
-        let gd = GameData::from_bundled().unwrap();
-        let mut supply = HashMap::new();
-        supply.insert("Desc_OreIron_C".into(), 1000.0);
-        let plan =
-            derive_chain("Desc_IronIngot_C", 60.0, &unlocked(), &supply, &gd).unwrap();
-        assert_eq!(plan.target_ipm, 60.0);
-        // Standard 1:1 Iron Ingot → 1 stage, no water dependency.
-        assert_eq!(plan.stages.len(), 1);
-        assert_eq!(plan.stages[0].output_item_id, "Desc_IronIngot_C");
-        assert!(plan.raw_demand.contains_key("Desc_OreIron_C"));
-        assert!(!plan.raw_demand.contains_key("Desc_Water_C"));
-        assert!(plan.imports.is_empty());
-    }
-
-    #[test]
-    fn pure_iron_ingot_alt_only_chosen_when_water_supplied() {
-        let gd = GameData::from_bundled().unwrap();
-        let pure_iron = gd
-            .recipes()
-            .iter()
-            .find(|r| r.is_alt && r.outputs.iter().any(|o| o.item_id == "Desc_IronIngot_C") && r.inputs.iter().any(|i| i.item_id == "Desc_Water_C"))
-            .expect("dataset should ship a water-using iron-ingot alt");
-        let mut unlocked = HashSet::new();
-        unlocked.insert(pure_iron.id.clone());
-
-        let mut supply_no_water = HashMap::new();
-        supply_no_water.insert("Desc_OreIron_C".into(), 10000.0);
-        let plan_no_water =
-            derive_chain("Desc_IronIngot_C", 60.0, &unlocked, &supply_no_water, &gd).unwrap();
-        assert!(
-            plan_no_water.stages[0].recipe_id != pure_iron.id,
-            "without water supply the planner must fall back to the standard recipe — got {}",
-            plan_no_water.stages[0].recipe_id
-        );
-
-        let mut supply_with_water = supply_no_water.clone();
-        supply_with_water.insert("Desc_Water_C".into(), 1000.0);
-        let plan_with_water =
-            derive_chain("Desc_IronIngot_C", 60.0, &unlocked, &supply_with_water, &gd).unwrap();
-        // Pure Iron Ingot has a higher per-machine rate than the
-        // standard recipe; the picker should choose it when its inputs
-        // are viable.
-        assert_eq!(plan_with_water.stages.last().unwrap().recipe_id, pure_iron.id);
-        assert!(plan_with_water.raw_demand.contains_key("Desc_Water_C"));
-    }
-
-    #[test]
-    fn missing_raw_supply_returns_insufficient_with_the_gap() {
-        let gd = GameData::from_bundled().unwrap();
-        // No supply at all.
-        let supply = HashMap::new();
-        let err =
-            derive_chain("Desc_IronIngot_C", 30.0, &unlocked(), &supply, &gd).unwrap_err();
-        match err {
-            PlannerError::Insufficient { missing, imports } => {
-                assert!(missing.contains_key("Desc_OreIron_C"));
-                assert!(imports.is_empty(), "no pinned sources → imports empty");
-            }
-            other => panic!("expected Insufficient, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn raw_target_is_rejected_with_no_recipe_error() {
-        let gd = GameData::from_bundled().unwrap();
-        let supply = HashMap::new();
-        let err = derive_chain("Desc_OreIron_C", 30.0, &unlocked(), &supply, &gd).unwrap_err();
-        assert!(matches!(err, PlannerError::NoRecipeForTarget { .. }));
-    }
-
-    #[test]
-    fn unknown_target_surfaces_dataset_error() {
-        let gd = GameData::from_bundled().unwrap();
-        let err =
-            derive_chain("Desc_DefinitelyNotAThing_C", 30.0, &unlocked(), &HashMap::new(), &gd)
-                .unwrap_err();
-        assert!(matches!(err, PlannerError::UnknownTarget { .. }));
-    }
-
-    #[test]
-    fn rotor_at_60_per_min_produces_correct_rates_with_no_duplicates() {
-        let gd = GameData::from_bundled().unwrap();
-        let mut supply = HashMap::new();
-        supply.insert("Desc_OreIron_C".into(), 100000.0);
-        let plan = derive_chain("Desc_Rotor_C", 60.0, &unlocked(), &supply, &gd).unwrap();
-
-        let mut seen: HashSet<&str> = HashSet::new();
-        for s in &plan.stages {
-            assert!(
-                seen.insert(s.output_item_id.as_str()),
-                "duplicate stage for {}",
-                s.output_item_id,
-            );
-        }
-
-        let target = plan
-            .stages
-            .iter()
-            .find(|s| s.output_item_id == "Desc_Rotor_C")
-            .expect("rotor stage present");
-        let rotor_out = target
-            .outputs
-            .iter()
-            .find(|o| o.item_id == "Desc_Rotor_C")
-            .unwrap();
-        assert!(
-            (rotor_out.per_minute - 60.0).abs() < 0.05,
-            "expected rotor output ≈ 60/min, got {}",
-            rotor_out.per_minute,
-        );
-    }
-
-    #[test]
-    fn chain_stages_arrive_in_dependency_order_leaves_first() {
-        let gd = GameData::from_bundled().unwrap();
-        let mut supply = HashMap::new();
-        supply.insert("Desc_OreIron_C".into(), 10000.0);
-        let plan = derive_chain("Desc_IronPlateReinforced_C", 10.0, &unlocked(), &supply, &gd)
-            .unwrap();
-        let target_idx = plan.stages.iter().position(|s| s.output_item_id == "Desc_IronPlateReinforced_C");
-        assert_eq!(target_idx, Some(plan.stages.len() - 1));
-    }
-
-    // ---------- Input-source override tests ----------
-
-    /// Helper — make a Factory-kind InputSource.
-    fn fac(item: &str, factory_id: &str, cap: Option<f32>) -> InputSource {
-        InputSource {
-            item_id: item.to_string(),
-            source: InputSourceKind::Factory {
-                id: factory_id.to_string(),
-            },
-            ipm_cap: cap,
-        }
-    }
-
-    #[test]
-    fn pinning_an_intermediate_cuts_upstream_stages_and_emits_resolved_import() {
-        let gd = GameData::from_bundled().unwrap();
-        let mut supply = HashMap::new();
-        // Iron Ore supply is provided so the non-imported branch
-        // (Screw demand → Iron Rod → Iron Ingot → Iron Ore) still
-        // resolves. The pinned item is Iron Plate.
-        supply.insert("Desc_OreIron_C".into(), 100000.0);
-        let sources = vec![fac("Desc_IronPlate_C", "fac-plates-v1", Some(60.0))];
-
-        let plan = derive_chain_with_options(
-            "Desc_IronPlateReinforced_C",
-            10.0,
-            &unlocked(),
-            &supply,
-            &sources,
-            &HashMap::new(),
-            &gd,
-            false,
-        )
-        .unwrap();
-
-        // No Iron Plate stage should appear — its production is imported.
-        assert!(
-            plan.stages.iter().all(|s| s.output_item_id != "Desc_IronPlate_C"),
-            "Iron Plate stage should be cut when pinned: {:?}",
-            plan.stages.iter().map(|s| s.output_item_id.as_str()).collect::<Vec<_>>()
-        );
-        // ResolvedImport row exists for Iron Plate from the pinned factory.
-        let imp = plan
-            .imports
-            .iter()
-            .find(|i| i.item_id == "Desc_IronPlate_C")
-            .expect("ResolvedImport for Iron Plate");
-        assert_eq!(imp.source_factory_id, "fac-plates-v1");
-        assert!(imp.resolved_ipm > 0.0);
-        // Reinforced Iron Plate is the final stage.
-        assert_eq!(plan.stages.last().unwrap().output_item_id, "Desc_IronPlateReinforced_C");
-    }
-
-    #[test]
-    fn pinned_source_cap_below_demand_returns_insufficient_imports_gap() {
-        let gd = GameData::from_bundled().unwrap();
-        let mut supply = HashMap::new();
-        supply.insert("Desc_OreIron_C".into(), 100000.0);
-        // 10 Reinforced Iron Plates/min requires ~30 Iron Plate/min
-        // (standard recipe is 6 Plate → 5 Reinforced). Cap at 5 → gap.
-        let sources = vec![fac("Desc_IronPlate_C", "fac-plates-v1", Some(5.0))];
-        let err = derive_chain_with_options(
-            "Desc_IronPlateReinforced_C",
-            10.0,
-            &unlocked(),
-            &supply,
-            &sources,
-            &HashMap::new(),
-            &gd,
-            false,
-        )
-        .unwrap_err();
-        match err {
-            PlannerError::Insufficient { missing, imports } => {
-                assert!(missing.is_empty(), "raw supply was sufficient");
-                let gap = imports
-                    .get("Desc_IronPlate_C")
-                    .copied()
-                    .expect("Iron Plate import gap reported");
-                assert!(gap > 0.0, "expected positive gap, got {gap}");
-            }
-            other => panic!("expected Insufficient::imports, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn multiple_factory_sources_for_same_item_distribute_by_declared_order() {
-        let gd = GameData::from_bundled().unwrap();
-        let mut supply = HashMap::new();
-        supply.insert("Desc_OreIron_C".into(), 100000.0);
-        // Reinforced Iron Plate @ 10/min needs ~30 Iron Plate/min.
-        // First source cap 12 → it fills 12; second cap 100 → fills the rest.
-        let sources = vec![
-            fac("Desc_IronPlate_C", "fac-A", Some(12.0)),
-            fac("Desc_IronPlate_C", "fac-B", Some(100.0)),
-        ];
-        let plan = derive_chain_with_options(
-            "Desc_IronPlateReinforced_C",
-            10.0,
-            &unlocked(),
-            &supply,
-            &sources,
-            &HashMap::new(),
-            &gd,
-            false,
-        )
-        .unwrap();
-        let a = plan
-            .imports
-            .iter()
-            .find(|i| i.source_factory_id == "fac-A")
-            .expect("fac-A entry");
-        let b = plan
-            .imports
-            .iter()
-            .find(|i| i.source_factory_id == "fac-B")
-            .expect("fac-B entry");
-        assert!(
-            (a.resolved_ipm - 12.0).abs() < 1e-3,
-            "fac-A should saturate at cap 12, got {}",
-            a.resolved_ipm
-        );
-        assert!(b.resolved_ipm > 0.0, "fac-B should pick up the remainder");
-    }
-
-    #[test]
-    fn bypass_supply_ignores_import_cap_gap() {
-        let gd = GameData::from_bundled().unwrap();
-        let mut supply = HashMap::new();
-        supply.insert("Desc_OreIron_C".into(), 100000.0);
-        let sources = vec![fac("Desc_IronPlate_C", "fac-A", Some(1.0))];
-        // bypass_supply = true → returns a plan even though the cap is short.
-        let plan = derive_chain_with_options(
-            "Desc_IronPlateReinforced_C",
-            10.0,
-            &unlocked(),
-            &supply,
-            &sources,
-            &HashMap::new(),
-            &gd,
-            true,
-        )
-        .unwrap();
-        assert!(!plan.imports.is_empty());
-    }
-
-    #[test]
-    fn user_chosen_recipe_replaces_the_greedy_pick() {
-        // The greedy pick prefers Recipe_AluminaSolution_C for Silica
-        // (50/min > Recipe_Silica_C's 37.5/min, both non-alt). If the
-        // user explicitly picks Recipe_Silica_C for Silica, the planner
-        // honours that and uses Raw Quartz instead.
-        let gd = GameData::from_bundled().unwrap();
-        let supply = HashMap::new();
-        let mut recipes = HashMap::new();
-        recipes.insert("Desc_Silica_C".to_string(), "Recipe_Silica_C".to_string());
-        let plan = derive_chain_with_options(
-            "Desc_AluminumPlate_C",
-            60.0,
-            &unlocked(),
-            &supply,
-            &[],
-            &recipes,
-            &gd,
-            true, // bypass_supply
-        )
-        .expect("must derive without cycles");
-        let silica_stage = plan
-            .stages
-            .iter()
-            .find(|s| s.output_item_id == "Desc_Silica_C")
-            .expect("silica stage present");
-        assert_eq!(silica_stage.recipe_id, "Recipe_Silica_C");
-        // Knock-on: Raw Quartz must appear in raw_demand now that the
-        // Silica stage uses the Quartz recipe instead of the byproduct
-        // path through Alumina Solution.
-        assert!(plan.raw_demand.contains_key("Desc_RawQuartz_C"));
-    }
-
-    #[test]
-    fn invalid_recipe_choice_falls_back_to_auto_pick() {
-        // If the user hands in a recipe that doesn't produce the item
-        // (or doesn't exist), the planner ignores it and uses the
-        // greedy pick — no error, no wedge.
-        let gd = GameData::from_bundled().unwrap();
-        let mut supply = HashMap::new();
-        supply.insert("Desc_OreIron_C".into(), 10000.0);
-        let mut recipes = HashMap::new();
-        recipes.insert(
-            "Desc_IronIngot_C".to_string(),
-            "Recipe_DefinitelyNotARecipe_C".to_string(),
-        );
-        let plan = derive_chain_with_options(
-            "Desc_IronIngot_C",
-            60.0,
-            &unlocked(),
-            &supply,
-            &[],
-            &recipes,
-            &gd,
-            false,
-        )
-        .expect("must derive even with invalid recipe choice");
-        assert_eq!(plan.stages[0].recipe_id, "Recipe_IngotIron_C");
     }
 
     #[test]
@@ -1324,39 +767,6 @@ mod tests {
         let json = serde_json::to_string(&err).expect("serialise");
         assert!(json.contains("\"itemId\":\"Desc_AluminaSolution_C\""), "got {json}");
         assert!(json.contains("\"kind\":\"cycleDetected\""), "got {json}");
-    }
-
-    #[test]
-    fn unpackage_recipes_are_skipped_so_alumina_chains_dont_cycle() {
-        // Regression for the cycle bug: without filtering Unpackage_*
-        // recipes the planner picked `Recipe_UnpackageAlumina_C` to
-        // produce Alumina Solution (high per-machine output rate),
-        // which needs Packaged Alumina, whose only producer needs
-        // Alumina Solution back. Now the planner falls back to the
-        // direct Bauxite+Water recipe and the chain resolves.
-        //
-        // Empty supply forces the structural-viable path — that's
-        // where the cycle originally surfaced (no `available_supply`
-        // means no recipe is supply-viable, so all picks happen via
-        // the structural fallback).
-        let gd = GameData::from_bundled().unwrap();
-        let supply = HashMap::new();
-        let plan = derive_chain_with_options(
-            "Desc_AluminumPlate_C",
-            60.0,
-            &unlocked(),
-            &supply,
-            &[],
-            &HashMap::new(),
-            &gd,
-            true, // bypass_supply — we just want the chain to build
-        )
-        .expect("Alclad Aluminum Sheet must derive without cycles");
-        assert!(
-            plan.stages.iter().all(|s| !is_inverse_recipe(&s.recipe_id)),
-            "no stage should use an Unpackage_* recipe"
-        );
-        assert!(plan.stages.len() >= 4, "expected a multi-stage chain");
     }
 
     // ---------- compute_plan_graph tests ----------
@@ -1382,6 +792,198 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn raw_and_unknown_targets_are_structural_errors() {
+        let gd = GameData::from_bundled().unwrap();
+        let raw = compute_plan_graph(
+            &[target("Desc_OreIron_C", 30.0)],
+            &unlocked(),
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            &gd,
+        )
+        .unwrap_err();
+        assert!(matches!(raw, PlannerError::NoRecipeForTarget { .. }));
+
+        let unknown = compute_plan_graph(
+            &[target("Desc_DefinitelyNotAThing_C", 30.0)],
+            &unlocked(),
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            &gd,
+        )
+        .unwrap_err();
+        assert!(matches!(unknown, PlannerError::UnknownTarget { .. }));
+    }
+
+    #[test]
+    fn supply_viability_still_steers_the_recipe_pick() {
+        // Ported from the legacy derive tests: the water-using Pure
+        // Iron Ingot alt only wins the pick when water is actually
+        // claimable; without it the planner falls back to standard.
+        let gd = GameData::from_bundled().unwrap();
+        let pure_iron = gd
+            .recipes()
+            .iter()
+            .find(|r| {
+                r.is_alt
+                    && r.outputs.iter().any(|o| o.item_id == "Desc_IronIngot_C")
+                    && r.inputs.iter().any(|i| i.item_id == "Desc_Water_C")
+            })
+            .expect("dataset ships a water-using iron-ingot alt");
+        let mut alts = HashSet::new();
+        alts.insert(pure_iron.id.clone());
+
+        let recipe_for_ingot = |supply: &HashMap<String, f32>| {
+            let graph = compute_plan_graph(
+                &[target("Desc_IronIngot_C", 60.0)],
+                &alts,
+                supply,
+                &[],
+                &HashMap::new(),
+                &gd,
+            )
+            .unwrap();
+            graph
+                .nodes
+                .iter()
+                .find_map(|n| match n {
+                    PlanNode::Recipe { item_id, recipe_id, .. }
+                        if item_id == "Desc_IronIngot_C" =>
+                        Some(recipe_id.clone()),
+                    _ => None,
+                })
+                .expect("ingot node")
+        };
+
+        let mut iron_only = HashMap::new();
+        iron_only.insert("Desc_OreIron_C".to_string(), 10000.0);
+        assert_ne!(recipe_for_ingot(&iron_only), pure_iron.id);
+
+        let mut with_water = iron_only.clone();
+        with_water.insert("Desc_Water_C".to_string(), 1000.0);
+        assert_eq!(recipe_for_ingot(&with_water), pure_iron.id);
+    }
+
+    #[test]
+    fn invalid_recipe_override_falls_back_to_auto_pick() {
+        let gd = GameData::from_bundled().unwrap();
+        let mut supply = HashMap::new();
+        supply.insert("Desc_OreIron_C".into(), 10000.0);
+        let mut overrides = HashMap::new();
+        overrides.insert(
+            "Desc_IronIngot_C".to_string(),
+            "Recipe_DefinitelyNotARecipe_C".to_string(),
+        );
+        let graph = compute_plan_graph(
+            &[target("Desc_IronIngot_C", 60.0)],
+            &unlocked(),
+            &supply,
+            &[],
+            &overrides,
+            &gd,
+        )
+        .expect("stale override must never wedge the plan");
+        let recipe = graph
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                PlanNode::Recipe { recipe_id, .. } => Some(recipe_id.clone()),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(recipe, "Recipe_IngotIron_C");
+    }
+
+    #[test]
+    fn unpackage_recipes_never_enter_the_graph() {
+        // Regression port: Unpackage_* candidates once cycled alumina
+        // chains. Empty supply forces the structural-fallback path
+        // where the bug originally lived.
+        let gd = GameData::from_bundled().unwrap();
+        let graph = compute_plan_graph(
+            &[target("Desc_AluminumPlate_C", 60.0)],
+            &unlocked(),
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            &gd,
+        )
+        .expect("aluminum chain must compute without cycles");
+        for n in &graph.nodes {
+            if let PlanNode::Recipe { recipe_id, .. } = n {
+                assert!(!is_inverse_recipe(recipe_id), "{recipe_id} is an Unpackage recipe");
+            }
+        }
+        assert!(recipe_keys(&graph).len() >= 4, "expected a multi-step chain");
+    }
+
+    #[test]
+    fn multiple_sources_for_one_item_allocate_in_declared_order() {
+        let gd = GameData::from_bundled().unwrap();
+        let mut supply = HashMap::new();
+        supply.insert("Desc_OreCopper_C".into(), 100000.0);
+        // Cable @60 needs ~120 Wire: first source saturates its 50
+        // cap, the second absorbs the rest.
+        let graph = compute_plan_graph(
+            &[target("Desc_Cable_C", 60.0)],
+            &unlocked(),
+            &supply,
+            &[
+                import_spec("Desc_Wire_C", Some("fac-A"), Some(50.0)),
+                import_spec("Desc_Wire_C", Some("fac-B"), None),
+            ],
+            &HashMap::new(),
+            &gd,
+        )
+        .unwrap();
+        let allocations = graph
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                PlanNode::Import { item_id, allocations, unassigned_ipm, .. }
+                    if item_id == "Desc_Wire_C" =>
+                    Some((allocations.clone(), *unassigned_ipm)),
+                _ => None,
+            })
+            .expect("wire import node");
+        assert_eq!(allocations.0.len(), 2);
+        assert_eq!(allocations.0[0].source_factory_id, "fac-A");
+        assert!((allocations.0[0].resolved_ipm - 50.0).abs() < 1e-3);
+        assert_eq!(allocations.0[1].source_factory_id, "fac-B");
+        assert!((allocations.0[1].resolved_ipm - 70.0).abs() < 0.5);
+        assert_eq!(allocations.1, 0.0, "everything covered → nothing unassigned");
+        assert!(graph.warnings.is_empty(), "{:?}", graph.warnings);
+    }
+
+    #[test]
+    fn recipe_nodes_arrive_leaves_first_with_no_duplicates() {
+        let gd = GameData::from_bundled().unwrap();
+        let mut supply = HashMap::new();
+        supply.insert("Desc_OreIron_C".into(), 100000.0);
+        let graph = compute_plan_graph(
+            &[target("Desc_IronPlateReinforced_C", 10.0)],
+            &unlocked(),
+            &supply,
+            &[],
+            &HashMap::new(),
+            &gd,
+        )
+        .unwrap();
+        let keys = recipe_keys(&graph);
+        let mut seen = HashSet::new();
+        for k in &keys {
+            assert!(seen.insert(*k), "duplicate node {k}");
+        }
+        assert_eq!(
+            keys.last().copied(),
+            Some("recipe:Desc_IronPlateReinforced_C"),
+            "the target sits at the end of the leaves-first order"
+        );
     }
 
     #[test]
@@ -1704,34 +1306,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn node_kind_sources_do_not_alter_planning() {
-        // Node kind is parsed but not yet consumed by the planner —
-        // declaring one for a raw item should leave the plan identical
-        // to the no-sources case.
-        let gd = GameData::from_bundled().unwrap();
-        let mut supply = HashMap::new();
-        supply.insert("Desc_OreIron_C".into(), 1000.0);
-        let sources = vec![InputSource {
-            item_id: "Desc_OreIron_C".into(),
-            source: InputSourceKind::Node {
-                id: "node-iron-5".into(),
-            },
-            ipm_cap: Some(60.0),
-        }];
-        let baseline = derive_chain("Desc_IronIngot_C", 60.0, &unlocked(), &supply, &gd).unwrap();
-        let with_node = derive_chain_with_options(
-            "Desc_IronIngot_C",
-            60.0,
-            &unlocked(),
-            &supply,
-            &sources,
-            &HashMap::new(),
-            &gd,
-            false,
-        )
-        .unwrap();
-        assert_eq!(baseline.stages.len(), with_node.stages.len());
-        assert!(with_node.imports.is_empty(), "Node sources don't emit imports yet");
-    }
 }

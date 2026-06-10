@@ -39,75 +39,6 @@ pub struct RecipeFlow {
     pub per_minute: f32,
 }
 
-/// User-declared input to the planner: "for item X, treat factory Y (or
-/// node Z) as the source and stop the upstream recursion here".
-///
-/// `Factory` cuts the chain at the named item and binds a real
-/// logistics link from `id → target_factory` on apply.
-///
-/// `Node` is parsed for forward-compatibility but treated as plain raw
-/// supply for now — the apply step does not yet rebind
-/// `resource_node_claim.factory_id_nullable`. The variant exists so the
-/// React side can already emit it without a future schema change to
-/// the IPC payload.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase", tag = "kind")]
-pub enum InputSourceKind {
-    Factory { id: String },
-    Node { id: String },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct InputSource {
-    /// Item the source supplies (`Desc_*_C`).
-    pub item_id: String,
-    pub source: InputSourceKind,
-    /// Maximum items-per-minute the source can supply. `None` ≈
-    /// unbounded — useful when the user hasn't measured spare capacity.
-    pub ipm_cap: Option<f32>,
-}
-
-/// What the planner actually consumed from a user-declared
-/// `InputSource`. Emitted only for `Factory` sources because they're
-/// the ones that become logistics links on apply.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct ResolvedImport {
-    pub item_id: String,
-    pub item_name: String,
-    pub source_factory_id: String,
-    pub resolved_ipm: f32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct ChainPlan {
-    pub target_item_id: String,
-    pub target_item_name: String,
-    pub target_ipm: f32,
-    pub stages: Vec<ChainStage>,
-    pub total_machines: i64,
-    pub total_power_mw: f32,
-    /// Final raw-resource demand at the leaves of the chain. The
-    /// `available_supply` snapshot is compared against this when
-    /// deciding whether the planner returns a viable `ChainPlan` or
-    /// a `PlannerError::Insufficient`.
-    pub raw_demand: HashMap<String, f32>,
-    /// `Factory`-kind input sources the planner consumed. One entry per
-    /// (item, source factory) pair, ipm summed across the chain. The
-    /// in-factory apply path turns each into a logistics link.
-    #[serde(default)]
-    pub imports: Vec<ResolvedImport>,
-    /// Total demand for each pinned item across the whole chain.
-    /// Surfaced separately so the UI can show "you pinned at cap 60
-    /// but the chain needs 100" warnings without the planner having
-    /// to error out — sum of `imports[*].resolved_ipm` for the item
-    /// is the bound-capped amount; the difference is the gap.
-    #[serde(default)]
-    pub pinned_demand: HashMap<String, f32>,
-}
-
 /// Errors a derive_chain call can return. Distinct variants so the UI
 /// can route each to a different surface (insufficient supply → claim
 /// more nodes; no recipe → out of dataset; cycle → bug report).
@@ -124,99 +55,10 @@ pub enum PlannerError {
     /// No recipe in the dataset produces this item (e.g. a raw
     /// resource — the user should claim nodes, not build a chain).
     NoRecipeForTarget { item_id: String },
-    /// At least one input down the chain has no path back to a
-    /// supplied raw resource — and/or pinned input sources couldn't
-    /// cover the demand. `missing` is the raw-supply gap per item;
-    /// `imports` is the gap per item that the user *did* pin a source
-    /// for but whose combined caps fell short. Both populated together
-    /// when both conditions hit.
-    Insufficient {
-        missing: HashMap<String, f32>,
-        #[serde(default)]
-        imports: HashMap<String, f32>,
-    },
     /// Recipe graph has a cycle we couldn't break — should never
     /// happen in vanilla Satisfactory but we surface it loudly if it
     /// does so a dataset typo doesn't infinite-loop the planner.
     CycleDetected { item_id: String },
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DeriveChainInput {
-    pub target_item_id: String,
-    pub target_ipm: f32,
-    /// When true, build the plan even if raw supply doesn't cover
-    /// the chain's demand. The UI surfaces this as 'Place anyway' so
-    /// the player can put pins on the map immediately and bind nodes
-    /// in afterwards instead of being blocked until they've claimed
-    /// every required raw.
-    #[serde(default)]
-    pub bypass_supply: bool,
-    /// User-pinned input sources. Empty by default — when populated,
-    /// the planner cuts the upstream tree at each matching item and
-    /// (for `Factory` sources) emits a `ResolvedImport`.
-    #[serde(default)]
-    pub sources: Vec<InputSource>,
-    /// The recipes the user has chosen for each item, keyed by item id
-    /// → recipe id. The planner validates each entry (recipe must
-    /// produce the item, not be alt-locked, not be an inverse recipe);
-    /// invalid entries silently fall back to the auto-pick so a stale
-    /// id can't wedge the chain. Empty by default — every item then
-    /// uses the planner's greedy pick.
-    #[serde(default)]
-    pub recipes: HashMap<String, String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", tag = "kind")]
-pub enum DeriveChainResult {
-    Ok { plan: ChainPlan },
-    Err { error: PlannerError },
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ApplyChainPlanInput {
-    pub plan: ChainPlan,
-    /// Used as the factory name prefix: factories land as
-    /// "<prefix> — <recipe name>". Trimmed; defaults to the target
-    /// item's name when empty.
-    pub naming_prefix: String,
-    /// Distance in metres baked into the auto-generated logistics
-    /// links between consecutive stages. Defaults to 1000 m on the
-    /// React side.
-    pub default_link_distance_m: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct ApplyChainPlanResult {
-    /// Factory ids created, in stage order.
-    pub factory_ids: Vec<String>,
-    /// Logistics link ids created.
-    pub link_ids: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ApplyChainToFactoryInput {
-    /// Target factory the new machines land in. Must already exist in
-    /// the playthrough.
-    pub factory_id: String,
-    pub plan: ChainPlan,
-    /// Distance in metres baked into the auto-generated logistics
-    /// links from `ResolvedImport.source_factory_id → factory_id`.
-    pub default_link_distance_m: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct ApplyChainToFactoryResult {
-    /// Machine ids created inside `factory_id`, in stage order.
-    pub machine_ids: Vec<String>,
-    /// Logistics link ids created — one per `ChainPlan.imports` entry.
-    pub link_ids: Vec<String>,
 }
 
 // ---- Production plan (graph-first designer) ----
