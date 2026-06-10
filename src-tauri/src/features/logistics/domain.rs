@@ -49,7 +49,7 @@ pub fn plan_belts(
     let mut tiers: Vec<&BeltTier> = belts.iter().collect();
     // Highest capacity first — gives single-tier plans a natural ordering
     // and makes the "primary is always the bigger one" invariant trivial.
-    tiers.sort_by(|a, b| b.items_per_minute.cmp(&a.items_per_minute));
+    tiers.sort_by_key(|t| std::cmp::Reverse(t.items_per_minute));
 
     let mut plans = Vec::new();
 
@@ -101,7 +101,7 @@ pub fn plan_pipes(
     }
 
     let mut tiers: Vec<&PipeTier> = pipes.iter().collect();
-    tiers.sort_by(|a, b| b.cubic_meters_per_minute.cmp(&a.cubic_meters_per_minute));
+    tiers.sort_by_key(|t| std::cmp::Reverse(t.cubic_meters_per_minute));
 
     let mut plans = Vec::new();
 

@@ -3,10 +3,33 @@
 
 use std::collections::HashMap;
 
-use crate::shared::gamedata::GameData;
-use crate::shared::gamedata::types::{MapNode, NodeKind, NodePurity};
+use serde::Deserialize;
 
-use super::repo::ClaimRow;
+use crate::shared::gamedata::GameData;
+use crate::shared::gamedata::types::{MapNode, Miner, NodeKind, NodePurity};
+
+use super::dto::{PurityCount, ResourceBudget, ResourceBudgetRow};
+use super::repo::{ClaimRow, WaterGroupRow};
+
+/// Water Extractor output at 100% clock (m³/min) — game constant, the
+/// open-water counterpart of the fracking 60 base below.
+pub const WATER_PUMP_IPM: f32 = 120.0;
+
+/// Total m³/min a group of free-placed water extractors produces —
+/// both banks summed, each `count × 120 × clock`.
+pub fn water_group_output_ipm(group: &WaterGroupRow) -> f32 {
+    let bank = |count: i64, clock_pct: f32| -> f32 {
+        if clock_pct <= 0.0 || !clock_pct.is_finite() || count < 1 {
+            return 0.0;
+        }
+        count as f32 * WATER_PUMP_IPM * (clock_pct / 100.0)
+    };
+    bank(group.count, group.clock_pct)
+        + match (group.count2, group.clock2_pct) {
+            (Some(c), Some(p)) => bank(c, p),
+            _ => 0.0,
+        }
+}
 
 /// Items-per-minute a single extractor produces on a node at the given
 /// clock. Geysers produce nothing — they're for power.
@@ -59,13 +82,14 @@ pub fn miner_node_ipm(
     miner_base_ipm * purity.multiplier() * (clock_pct / 100.0)
 }
 
-/// Aggregate ipm per item across *all* claimed nodes, regardless of
-/// factory binding. The planner uses this as its raw "what could in
-/// principle be supplied" pool; the bound vs. unbound split is the
-/// caller's responsibility.
+/// Aggregate ipm per item across *all* claimed nodes plus water
+/// extractor groups, regardless of factory binding. The planner uses
+/// this as its raw "what could in principle be supplied" pool; the
+/// bound vs. unbound split is the caller's responsibility.
 #[allow(dead_code)]
 pub fn available_supply(
     claims: &HashMap<String, ClaimRow>,
+    water_groups: &[WaterGroupRow],
     game_data: &GameData,
 ) -> HashMap<String, f32> {
     let mut out: HashMap<String, f32> = HashMap::new();
@@ -79,13 +103,22 @@ pub fn available_supply(
         }
         *out.entry(node.resource_item_id.clone()).or_insert(0.0) += ipm;
     }
+    for group in water_groups {
+        let ipm = water_group_output_ipm(group);
+        if ipm <= 0.0 {
+            continue;
+        }
+        *out.entry("Desc_Water_C".to_string()).or_insert(0.0) += ipm;
+    }
     out
 }
 
-/// Supply pool fed into one factory by its bound claims. Used by the
-/// factory ledger's "From nodes: X ipm" chip.
+/// Supply pool fed into one factory by its bound claims and bound
+/// water extractor groups. Used by the factory ledger's "From nodes:
+/// X ipm" chip.
 pub fn supply_for_factory(
     claims: &HashMap<String, ClaimRow>,
+    water_groups: &[WaterGroupRow],
     factory_id: &str,
     game_data: &GameData,
 ) -> HashMap<String, f32> {
@@ -103,7 +136,182 @@ pub fn supply_for_factory(
         }
         *out.entry(node.resource_item_id.clone()).or_insert(0.0) += ipm;
     }
+    for group in water_groups {
+        if group.factory_id.as_deref() != Some(factory_id) {
+            continue;
+        }
+        let ipm = water_group_output_ipm(group);
+        if ipm <= 0.0 {
+            continue;
+        }
+        *out.entry("Desc_Water_C".to_string()).or_insert(0.0) += ipm;
+    }
     out
+}
+
+// ---- Resource budget ("how much of the map is left?") ----
+
+/// The miner/clock assumption a "max extractable" number is stated at.
+/// The map's resources are finite but the ceiling depends on hardware:
+/// 600 iron at Mk1s is 2400 at Mk3 250%. Every surfaced number carries
+/// its assumption label so "remaining" can't read as an absolute.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BudgetAssumption {
+    /// Best miner unlocked at the playthrough's current tier, 100%.
+    CurrentTierBest,
+    /// Endgame baseline: Mk3 miners at 100% clock.
+    Mk3At100,
+    /// Absolute ceiling: Mk3 miners at 250% (belt caps out of scope).
+    Mk3At250,
+}
+
+/// Highest-throughput miner unlocked at `tier`. Falls back to the
+/// lowest-tier miner when nothing is unlocked yet (tier 0 play still
+/// wants a non-zero budget — Mk1 is the first thing anyone builds).
+pub fn best_miner_for_tier(tier: u8, game_data: &GameData) -> Option<&Miner> {
+    let unlocked = game_data
+        .miners()
+        .iter()
+        .filter(|m| m.unlock_tier <= tier)
+        .max_by(|a, b| {
+            a.base_items_per_minute
+                .partial_cmp(&b.base_items_per_minute)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+    unlocked.or_else(|| {
+        game_data
+            .miners()
+            .iter()
+            .min_by_key(|m| m.unlock_tier)
+    })
+}
+
+/// Human label for the assumption ("Mk2 @ 100%"), shown next to every
+/// max/remaining number so the basis is always visible.
+pub fn assumption_label(
+    assumption: BudgetAssumption,
+    tier: u8,
+    game_data: &GameData,
+) -> String {
+    match assumption {
+        BudgetAssumption::CurrentTierBest => best_miner_for_tier(tier, game_data)
+            .map(|m| format!("Mk{} @ 100%", m.mark))
+            .unwrap_or_else(|| "no miner".to_string()),
+        BudgetAssumption::Mk3At100 => "Mk3 @ 100%".to_string(),
+        BudgetAssumption::Mk3At250 => "Mk3 @ 250%".to_string(),
+    }
+}
+
+/// Max ipm one node could yield at the stated assumption.
+pub fn node_max_ipm(
+    node: &MapNode,
+    assumption: BudgetAssumption,
+    tier: u8,
+    game_data: &GameData,
+) -> f32 {
+    let (miner_base, clock) = match assumption {
+        BudgetAssumption::CurrentTierBest => (
+            best_miner_for_tier(tier, game_data).map(|m| m.base_items_per_minute),
+            1.0,
+        ),
+        BudgetAssumption::Mk3At100 => (
+            game_data
+                .miners()
+                .iter()
+                .find(|m| m.mark == 3)
+                .map(|m| m.base_items_per_minute),
+            1.0,
+        ),
+        BudgetAssumption::Mk3At250 => (
+            game_data
+                .miners()
+                .iter()
+                .find(|m| m.mark == 3)
+                .map(|m| m.base_items_per_minute),
+            2.5,
+        ),
+    };
+    let purity_mult = node.purity.multiplier();
+    match node.kind {
+        NodeKind::MinerNode => miner_base.unwrap_or(0.0) * purity_mult * clock,
+        // One extractor per well satellite, mark-independent — clock is
+        // the only knob the assumption moves.
+        NodeKind::FrackingWell => 60.0 * purity_mult * clock,
+        NodeKind::Geyser => 0.0,
+    }
+}
+
+/// Whole-map budget per resource: what the world can still yield at the
+/// stated assumption vs what's already claimed. "Remaining" is the
+/// unclaimed nodes' max — actual claim clocks don't pollute it; upgrade
+/// headroom on claimed nodes shows separately via `claimed_max_ipm`.
+pub fn resource_budget(
+    claims: &HashMap<String, ClaimRow>,
+    game_data: &GameData,
+    tier: u8,
+    assumption: BudgetAssumption,
+) -> ResourceBudget {
+    let mut rows: HashMap<String, ResourceBudgetRow> = HashMap::new();
+
+    for node in game_data.nodes() {
+        let row = rows
+            .entry(node.resource_item_id.clone())
+            .or_insert_with(|| ResourceBudgetRow {
+                resource_item_id: node.resource_item_id.clone(),
+                resource_item_name: game_data
+                    .item(&node.resource_item_id)
+                    .map(|i| i.name.clone())
+                    .unwrap_or_else(|| node.resource_item_id.clone()),
+                kind: node.kind,
+                world_max_ipm: 0.0,
+                claimed_ipm: 0.0,
+                bound_ipm: 0.0,
+                claimed_max_ipm: 0.0,
+                remaining_ipm: 0.0,
+                pure: PurityCount::default(),
+                normal: PurityCount::default(),
+                impure: PurityCount::default(),
+                overcommitted: false,
+            });
+
+        let max = node_max_ipm(node, assumption, tier, game_data);
+        row.world_max_ipm += max;
+
+        let claim = claims.get(&node.id);
+        let counts = match node.purity {
+            NodePurity::Pure => &mut row.pure,
+            NodePurity::Normal => &mut row.normal,
+            NodePurity::Impure => &mut row.impure,
+        };
+        counts.total += 1;
+        if let Some(claim) = claim {
+            counts.claimed += 1;
+            row.claimed_max_ipm += max;
+            let actual =
+                extractor_output_ipm(node, claim.miner_id.as_deref(), claim.clock_pct, game_data);
+            row.claimed_ipm += actual;
+            if claim.factory_id.is_some() {
+                row.bound_ipm += actual;
+            }
+        } else {
+            row.remaining_ipm += max;
+        }
+    }
+
+    for row in rows.values_mut() {
+        // Possible when real claims run hotter than the assumption
+        // (Mk3 250% claims against a Mk1 100% budget) — flagged, never
+        // an error (warn, don't block).
+        row.overcommitted = row.claimed_ipm > row.world_max_ipm + 1e-3;
+    }
+
+    let mut out: Vec<ResourceBudgetRow> = rows.into_values().collect();
+    out.sort_by(|a, b| a.resource_item_id.cmp(&b.resource_item_id));
+    ResourceBudget {
+        assumption_label: assumption_label(assumption, tier, game_data),
+        rows: out,
+    }
 }
 
 #[cfg(test)]
@@ -216,7 +424,7 @@ mod tests {
                 },
             );
         }
-        let supply = available_supply(&claims, &gd);
+        let supply = available_supply(&claims, &[], &gd);
         // Mk1 = 60 ipm Normal; three claims of mixed purity should yield
         // a positive total. We don't pin the exact value (varies with
         // which three nodes the catalog enumerates first) but the
@@ -264,9 +472,190 @@ mod tests {
                 updated_at: "n".into(),
             },
         );
-        let f1_supply = supply_for_factory(&claims, "F1", &gd);
+        let f1_supply = supply_for_factory(&claims, &[], "F1", &gd);
         assert!(f1_supply.contains_key("Desc_OreIron_C"));
         assert!(!f1_supply.contains_key("Desc_OreCopper_C"));
+    }
+
+    // ---------- water extractor group tests ----------
+
+    fn water_group(count: i64, clock: f32, bank2: Option<(i64, f32)>, factory: Option<&str>) -> WaterGroupRow {
+        WaterGroupRow {
+            id: "wg".into(),
+            world_x: 0.0,
+            world_y: 0.0,
+            count,
+            clock_pct: clock,
+            count2: bank2.map(|b| b.0),
+            clock2_pct: bank2.map(|b| b.1),
+            factory_id: factory.map(str::to_string),
+            notes: None,
+            locked: false,
+            created_at: "n".into(),
+            updated_at: "n".into(),
+        }
+    }
+
+    #[test]
+    fn water_group_output_sums_both_banks() {
+        // 40 @ 100% = 4800, plus 2 @ 45% = 108 → 4908 m³/min.
+        let g = water_group(40, 100.0, Some((2, 45.0)), None);
+        assert!((water_group_output_ipm(&g) - 4908.0).abs() < 0.01);
+        // Single bank with a decimal clock: 4 × 120 × 1.505 = 722.4.
+        let g = water_group(4, 150.5, None, None);
+        assert!((water_group_output_ipm(&g) - 722.4).abs() < 0.01);
+    }
+
+    #[test]
+    fn available_supply_folds_water_groups_into_water() {
+        let gd = GameData::from_bundled().unwrap();
+        let groups = vec![water_group(4, 100.0, None, None)];
+        let supply = available_supply(&HashMap::new(), &groups, &gd);
+        assert!((supply["Desc_Water_C"] - 480.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn supply_for_factory_only_counts_bound_water_groups() {
+        let gd = GameData::from_bundled().unwrap();
+        let groups = vec![
+            water_group(4, 100.0, None, Some("F1")),
+            water_group(10, 100.0, None, None), // unbound
+        ];
+        let f1 = supply_for_factory(&HashMap::new(), &groups, "F1", &gd);
+        assert!((f1["Desc_Water_C"] - 480.0).abs() < 0.01, "only the bound group counts");
+        let f2 = supply_for_factory(&HashMap::new(), &groups, "F2", &gd);
+        assert!(!f2.contains_key("Desc_Water_C"));
+    }
+
+    // ---------- resource budget tests ----------
+
+    fn claim(node_id: &str, miner: &str, clock: f32, factory: Option<&str>) -> ClaimRow {
+        ClaimRow {
+            node_id: node_id.to_string(),
+            miner_id: Some(miner.to_string()),
+            clock_pct: clock,
+            factory_id: factory.map(str::to_string),
+            notes: None,
+            created_at: "n".into(),
+            updated_at: "n".into(),
+        }
+    }
+
+    #[test]
+    fn best_miner_tracks_unlock_tier() {
+        let gd = GameData::from_bundled().unwrap();
+        let early = best_miner_for_tier(0, &gd).expect("a starter miner exists");
+        assert_eq!(early.mark, 1, "tier 0 should resolve to Mk1");
+        let late = best_miner_for_tier(9, &gd).expect("endgame miner exists");
+        assert_eq!(late.mark, 3, "high tier should resolve to Mk3");
+    }
+
+    #[test]
+    fn world_max_matches_hand_computed_purity_sum_for_iron_at_mk3() {
+        let gd = GameData::from_bundled().unwrap();
+        let budget = resource_budget(&HashMap::new(), &gd, 9, BudgetAssumption::Mk3At100);
+        let iron = budget
+            .rows
+            .iter()
+            .find(|r| r.resource_item_id == "Desc_OreIron_C")
+            .expect("iron row");
+        // Mk3 base 240: Pure 480, Normal 240, Impure 120 per node.
+        let expected = iron.pure.total as f32 * 480.0
+            + iron.normal.total as f32 * 240.0
+            + iron.impure.total as f32 * 120.0;
+        assert!(
+            (iron.world_max_ipm - expected).abs() < 0.5,
+            "got {} want {expected}",
+            iron.world_max_ipm
+        );
+        // Nothing claimed → remaining is the whole world.
+        assert!((iron.remaining_ipm - iron.world_max_ipm).abs() < 0.5);
+        assert_eq!(iron.claimed_ipm, 0.0);
+    }
+
+    #[test]
+    fn remaining_equals_world_minus_claimed_max_invariant() {
+        let gd = GameData::from_bundled().unwrap();
+        let iron_nodes: Vec<&MapNode> = gd
+            .nodes()
+            .iter()
+            .filter(|n| n.resource_item_id == "Desc_OreIron_C")
+            .take(4)
+            .collect();
+        let mut claims = HashMap::new();
+        claims.insert(iron_nodes[0].id.clone(), claim(&iron_nodes[0].id, "Build_MinerMk1_C", 50.0, Some("F1")));
+        claims.insert(iron_nodes[1].id.clone(), claim(&iron_nodes[1].id, "Build_MinerMk2_C", 100.0, None));
+
+        let budget = resource_budget(&claims, &gd, 9, BudgetAssumption::Mk3At100);
+        let iron = budget
+            .rows
+            .iter()
+            .find(|r| r.resource_item_id == "Desc_OreIron_C")
+            .unwrap();
+        assert!(
+            (iron.remaining_ipm - (iron.world_max_ipm - iron.claimed_max_ipm)).abs() < 0.5,
+            "remaining must be world max minus claimed nodes' max"
+        );
+        let claimed_count = iron.pure.claimed + iron.normal.claimed + iron.impure.claimed;
+        assert_eq!(claimed_count, 2);
+        assert!(iron.claimed_ipm > 0.0);
+        assert!(iron.bound_ipm > 0.0 && iron.bound_ipm < iron.claimed_ipm);
+        // Mk1 @ 50% + Mk2 @ 100% can't out-produce the Mk3 ceiling.
+        assert!(!iron.overcommitted);
+    }
+
+    #[test]
+    fn fracking_wells_budget_independent_of_miner_assumption() {
+        let gd = GameData::from_bundled().unwrap();
+        let at_tier0 = resource_budget(&HashMap::new(), &gd, 0, BudgetAssumption::CurrentTierBest);
+        let at_mk3 = resource_budget(&HashMap::new(), &gd, 9, BudgetAssumption::Mk3At100);
+        let nitrogen = |b: &ResourceBudget| {
+            b.rows
+                .iter()
+                .find(|r| r.resource_item_id == "Desc_NitrogenGas_C")
+                .map(|r| r.world_max_ipm)
+                .expect("nitrogen row")
+        };
+        assert!(
+            (nitrogen(&at_tier0) - nitrogen(&at_mk3)).abs() < 0.5,
+            "well extraction has one extractor type — miner mark must not move it"
+        );
+        // 250% clock DOES move it.
+        let at_250 = resource_budget(&HashMap::new(), &gd, 9, BudgetAssumption::Mk3At250);
+        assert!(nitrogen(&at_250) > nitrogen(&at_mk3) * 2.0);
+    }
+
+    #[test]
+    fn geysers_count_in_totals_but_contribute_zero_ipm() {
+        let gd = GameData::from_bundled().unwrap();
+        let budget = resource_budget(&HashMap::new(), &gd, 9, BudgetAssumption::Mk3At100);
+        let geysers = budget
+            .rows
+            .iter()
+            .find(|r| r.kind == NodeKind::Geyser)
+            .expect("geyser row");
+        assert_eq!(geysers.world_max_ipm, 0.0);
+        assert!(geysers.pure.total + geysers.normal.total + geysers.impure.total > 0);
+    }
+
+    #[test]
+    fn overcommit_flags_hot_claims_against_a_cold_assumption() {
+        let gd = GameData::from_bundled().unwrap();
+        // Claim every iron node with Mk3 @ 250%, then state the budget
+        // at tier-0 best (Mk1 @ 100%) — claims exceed the ceiling.
+        let mut claims = HashMap::new();
+        for n in gd.nodes().iter().filter(|n| n.resource_item_id == "Desc_OreIron_C") {
+            claims.insert(n.id.clone(), claim(&n.id, "Build_MinerMk3_C", 250.0, None));
+        }
+        let budget = resource_budget(&claims, &gd, 0, BudgetAssumption::CurrentTierBest);
+        assert_eq!(budget.assumption_label, "Mk1 @ 100%");
+        let iron = budget
+            .rows
+            .iter()
+            .find(|r| r.resource_item_id == "Desc_OreIron_C")
+            .unwrap();
+        assert!(iron.overcommitted, "hot claims under a cold assumption must flag");
+        assert_eq!(iron.remaining_ipm, 0.0, "everything claimed → nothing remaining");
     }
 
     #[test]

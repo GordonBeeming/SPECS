@@ -28,6 +28,9 @@ export const queryKeys = {
     list: ["factory", "list"] as const,
     detail: (id: string) => ["factory", "detail", id] as const,
     ledger: (id: string) => ["factory", "ledger", id] as const,
+    plan: (id: string) => ["factory", "plan", id] as const,
+    unsourcedInputs: ["factory", "unsourced-inputs"] as const,
+    exportOffers: ["factory", "export-offers"] as const,
   },
   logistics: {
     list: ["logistics", "list"] as const,
@@ -44,5 +47,7 @@ export const queryKeys = {
   },
   resources: {
     list: ["resources", "list"] as const,
+    budget: (assumption: string) => ["resources", "budget", assumption] as const,
+    waterGroups: ["resources", "water-groups"] as const,
   },
 };

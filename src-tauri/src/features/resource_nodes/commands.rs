@@ -6,8 +6,13 @@ use crate::features::playthrough::state::ActivePlaythrough;
 use crate::shared::error::{AppError, AppResult};
 use crate::shared::gamedata::GameData;
 
-use super::domain::extractor_output_ipm;
-use super::dto::{ResourceNodeClaim, ResourceNodeRow, SetNodeClaimInput};
+use super::domain::{
+    BudgetAssumption, extractor_output_ipm, resource_budget, water_group_output_ipm,
+};
+use super::dto::{
+    ResourceBudget, ResourceNodeClaim, ResourceNodeRow, SetNodeClaimInput,
+    SetWaterExtractorGroupInput, WaterExtractorGroup,
+};
 use super::repo;
 
 fn now_iso() -> String {
@@ -142,12 +147,143 @@ pub fn set_node_claim(
     })
 }
 
+/// Whole-map resource budget: per resource, what the world could still
+/// yield at the stated assumption vs what's claimed/bound already.
+/// Defaults to "best miner at the current tier @ 100%".
+#[tauri::command]
+pub fn get_resource_budget(
+    active: State<ActivePlaythrough>,
+    game_data: State<GameData>,
+    assumption: Option<BudgetAssumption>,
+) -> AppResult<ResourceBudget> {
+    let db = require_active(&active)?;
+    let claims = db.with(|c| repo::claims_all(c).map_err(AppError::from))?;
+    let (current_tier, _progress) = db.with(|c| {
+        crate::features::playthrough::repo::progress_get(c).map_err(AppError::from)
+    })?;
+    let tier: u8 = current_tier.clamp(0, u8::MAX as i64) as u8;
+    Ok(resource_budget(
+        &claims,
+        &game_data,
+        tier,
+        assumption.unwrap_or(BudgetAssumption::CurrentTierBest),
+    ))
+}
+
 #[tauri::command]
 pub fn clear_node_claim(active: State<ActivePlaythrough>, node_id: String) -> AppResult<()> {
     let db = require_active(&active)?;
     let affected = db.with(|c| repo::claim_clear(c, &node_id).map_err(AppError::from))?;
     if affected == 0 {
         return Err(AppError::NotFound(format!("no claim on node {node_id}")));
+    }
+    Ok(())
+}
+
+// ---- Water extractor groups ----
+
+fn group_to_dto(row: repo::WaterGroupRow) -> WaterExtractorGroup {
+    let output_ipm = water_group_output_ipm(&row);
+    WaterExtractorGroup {
+        id: row.id,
+        world_x: row.world_x,
+        world_y: row.world_y,
+        count: row.count,
+        clock_pct: row.clock_pct,
+        count2: row.count2,
+        clock2_pct: row.clock2_pct,
+        factory_id: row.factory_id,
+        notes: row.notes,
+        locked: row.locked,
+        output_ipm,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    }
+}
+
+#[tauri::command]
+pub fn list_water_extractor_groups(
+    active: State<ActivePlaythrough>,
+) -> AppResult<Vec<WaterExtractorGroup>> {
+    let db = require_active(&active)?;
+    let rows = db.with(|c| repo::water_groups_all(c).map_err(AppError::from))?;
+    Ok(rows.into_iter().map(group_to_dto).collect())
+}
+
+/// Create (no id) or update (with id) a water extractor group. Returns
+/// the stored row with its computed output so the UI never re-derives
+/// the math.
+#[tauri::command]
+pub fn set_water_extractor_group(
+    active: State<ActivePlaythrough>,
+    input: SetWaterExtractorGroupInput,
+) -> AppResult<WaterExtractorGroup> {
+    validate_clock(input.clock_pct)?;
+    if input.count < 1 {
+        return Err(AppError::Invalid(format!(
+            "extractor count must be at least 1 (got {})",
+            input.count
+        )));
+    }
+    // Bank 2 travels as a pair — mirror the DB CHECK with a friendly
+    // message instead of a constraint error.
+    match (input.count2, input.clock2_pct) {
+        (None, None) => {}
+        (Some(c), Some(p)) => {
+            validate_clock(p)?;
+            if c < 1 {
+                return Err(AppError::Invalid(format!(
+                    "second bank count must be at least 1 (got {c})"
+                )));
+            }
+        }
+        _ => {
+            return Err(AppError::Invalid(
+                "second bank needs both a count and a clock".into(),
+            ));
+        }
+    }
+    let db = require_active(&active)?;
+    let id = input
+        .id
+        .clone()
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let now = now_iso();
+    let trimmed_factory = input.factory_id.as_deref().map(str::trim).map(str::to_string);
+    let trimmed_notes = input.notes.as_deref().map(str::trim).map(str::to_string);
+    db.with(|c| {
+        repo::water_group_upsert(
+            c,
+            &id,
+            input.world_x,
+            input.world_y,
+            input.count,
+            input.clock_pct,
+            input.count2,
+            input.clock2_pct,
+            trimmed_factory.as_deref(),
+            trimmed_notes.as_deref(),
+            input.locked,
+            &now,
+        )
+        .map_err(AppError::from)
+    })?;
+    let rows = db.with(|c| repo::water_groups_all(c).map_err(AppError::from))?;
+    rows.into_iter()
+        .find(|r| r.id == id)
+        .map(group_to_dto)
+        .ok_or_else(|| AppError::Internal("water group disappeared after upsert".into()))
+}
+
+#[tauri::command]
+pub fn delete_water_extractor_group(
+    active: State<ActivePlaythrough>,
+    id: String,
+) -> AppResult<()> {
+    let db = require_active(&active)?;
+    let affected = db.with(|c| repo::water_group_delete(c, &id).map_err(AppError::from))?;
+    if affected == 0 {
+        return Err(AppError::NotFound(format!("no water group {id}")));
     }
     Ok(())
 }

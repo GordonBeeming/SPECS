@@ -57,6 +57,7 @@ pub fn link_insert(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn link_update(
     conn: &Connection,
     id: &str,

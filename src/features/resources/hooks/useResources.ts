@@ -3,7 +3,12 @@ import { queryKeys } from "@/shared/query/keys";
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { useUndoStore } from "@/shared/undo/store";
 import { resourcesApi } from "../api";
-import type { ResourceNodeRow, SetNodeClaimInput } from "../types";
+import type {
+  BudgetAssumption,
+  ResourceNodeRow,
+  SetNodeClaimInput,
+  SetWaterExtractorGroupInput,
+} from "../types";
 
 // Node claims live in the active playthrough's `.specsdb`; the bundled
 // catalog (608 nodes) is identical across playthroughs but the
@@ -20,8 +25,48 @@ export function useResourceNodes() {
   });
 }
 
+export function useWaterExtractorGroups() {
+  const playthrough = useCurrentPlaythrough();
+  const ptId = playthrough.data?.id ?? null;
+  return useQuery({
+    queryKey: [...queryKeys.resources.waterGroups, ptId] as const,
+    queryFn: () => resourcesApi.listWaterGroups(),
+    enabled: !!playthrough.data,
+  });
+}
+
+export function useSetWaterGroup() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SetWaterExtractorGroupInput) => resourcesApi.setWaterGroup(input),
+    // Bound groups feed factory supply, so the same broad invalidation
+    // claims use keeps ledgers + planner warnings current.
+    onSuccess: () => invalidate(client),
+  });
+}
+
+export function useDeleteWaterGroup() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => resourcesApi.deleteWaterGroup(id),
+    onSuccess: () => invalidate(client),
+  });
+}
+
+export function useResourceBudget(assumption: BudgetAssumption) {
+  const playthrough = useCurrentPlaythrough();
+  const ptId = playthrough.data?.id ?? null;
+  return useQuery({
+    queryKey: [...queryKeys.resources.budget(assumption), ptId] as const,
+    queryFn: () => resourcesApi.budget(assumption),
+    enabled: !!playthrough.data,
+  });
+}
+
 function invalidate(client: ReturnType<typeof useQueryClient>) {
-  client.invalidateQueries({ queryKey: queryKeys.resources.list });
+  // Prefix match wipes the node list AND the budget (every assumption
+  // variant) — a claim change moves both.
+  client.invalidateQueries({ queryKey: ["resources"] });
   // Available-supply readers (planner, factory ledger, factory detail
   // popover on the map) need to see the claim change immediately.
   // Invalidating the `factory` prefix covers list + detail(id) +

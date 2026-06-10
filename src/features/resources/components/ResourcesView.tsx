@@ -9,6 +9,7 @@ import { Icon } from "@/shared/ui/Icon";
 import { useResourceNodes } from "../hooks/useResources";
 import type { Purity, ResourceNodeRow } from "../types";
 import { NodeRow } from "./NodeRow";
+import { ResourceBudgetPanel } from "./ResourceBudgetPanel";
 
 // Display order — broadly: solids first (alphabetical-ish by tier), then
 // fluids, then geysers last. Matches how the game introduces them in
@@ -142,6 +143,8 @@ export function ResourcesView() {
           )}
         </div>
       </Card>
+
+      <ResourceBudgetPanel variant="full" />
 
       {nodes.isPending && (
         <Card>

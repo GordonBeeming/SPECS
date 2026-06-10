@@ -2,12 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/shared/query/keys";
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { useUndoStore } from "@/shared/undo/store";
-import { logisticsApi } from "@/features/logistics/api";
 import { plannerApi } from "@/features/planner/api";
-import type {
-  ApplyChainToFactoryInput,
-  ApplyChainToFactoryResult,
-} from "@/features/planner/types";
 import { factoryApi } from "../api";
 import type {
   AddMachineInput,
@@ -42,6 +37,19 @@ export function useMachineLayouts(factoryId: string | null | undefined) {
     queryKey: ["factory", "machine-layouts", factoryId ?? "", playthrough.data?.id ?? null] as const,
     queryFn: () => factoryApi.listMachineLayouts(factoryId!),
     enabled: !!factoryId && !!playthrough.data,
+  });
+}
+
+/**
+ * Playthrough-wide list of inputs still waiting on a source factory.
+ * Drives map pin badges and the drag-to-source gesture.
+ */
+export function useUnsourcedInputs() {
+  const playthrough = useCurrentPlaythrough();
+  return useQuery({
+    queryKey: [...queryKeys.factory.unsourcedInputs, playthrough.data?.id ?? null] as const,
+    queryFn: plannerApi.listUnsourcedInputs,
+    enabled: !!playthrough.data,
   });
 }
 
@@ -178,48 +186,3 @@ export function useRemoveMachine(factoryId: string) {
   });
 }
 
-/**
- * Apply a planner-derived chain into the named factory. Push the entire
- * apply as one grouped undoable action — a single ⌘Z reverses every
- * machine + logistics link that landed.
- */
-export function useApplyChainToFactory(factoryId: string) {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: ApplyChainToFactoryInput) => {
-      let result: ApplyChainToFactoryResult | null = null;
-      await useUndoStore.getState().push({
-        apply: async () => {
-          result = await plannerApi.applyToFactory(input);
-          invalidateAll(client, factoryId);
-        },
-        reverse: async () => {
-          if (!result) return;
-          // Delete links first so any FK that joins via factory_id is
-          // released before the machines vanish; the schema only
-          // strictly requires the from/to factory FK but ordering this
-          // way also matches the cross-factory undo pattern.
-          for (const id of result.linkIds) {
-            try {
-              await logisticsApi.delete(id);
-            } catch {
-              // Best-effort: a stale link from concurrent edits isn't a
-              // reason to halt the undo; the user's intent is "put me
-              // back" and partial success beats none.
-            }
-          }
-          for (const id of result.machineIds) {
-            try {
-              await factoryApi.removeMachine(id);
-            } catch {
-              // same: tolerate already-removed rows
-            }
-          }
-          invalidateAll(client, factoryId);
-        },
-        label: "Apply chain plan",
-      });
-      return result as ApplyChainToFactoryResult | null;
-    },
-  });
-}

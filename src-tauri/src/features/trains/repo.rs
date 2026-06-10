@@ -5,6 +5,7 @@ use rusqlite::{Connection, params};
 
 use super::dto::{TrainRoute, TrainRouteStop};
 
+#[allow(clippy::too_many_arguments)]
 pub fn route_insert(
     conn: &Connection,
     id: &str,
@@ -27,6 +28,7 @@ pub fn route_insert(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn route_update(
     conn: &Connection,
     id: &str,

@@ -105,7 +105,7 @@ fn validate_clock_against_shards(clock_pct: f32, power_shard_count: i64) -> AppR
 }
 
 fn validate_clock(clock_pct: f32) -> AppResult<()> {
-    if clock_pct < 1.0 || clock_pct > 250.0 {
+    if !(1.0..=250.0).contains(&clock_pct) {
         return Err(AppError::Invalid(format!(
             "clock must be between 1% and 250% (got {clock_pct})"
         )));
@@ -313,6 +313,7 @@ pub fn add_factory_machine(
             input.use_somersloop,
             input.somersloop_slots_filled,
             input.power_shard_count,
+            None,
             &now,
         )
         .map_err(AppError::from)
@@ -385,6 +386,20 @@ pub fn remove_factory_machine(active: State<ActivePlaythrough>, id: String) -> A
     db.with(|c| repo::machine_delete(c, &id).map_err(AppError::from))
 }
 
+/// ipm per item arriving via logistics links INTO `factory_id`.
+fn incoming_link_supply(
+    conn: &rusqlite::Connection,
+    factory_id: &str,
+) -> anyhow::Result<std::collections::HashMap<String, f32>> {
+    let mut out: std::collections::HashMap<String, f32> = std::collections::HashMap::new();
+    for link in crate::features::logistics::repo::link_list(conn)? {
+        if link.to_factory_id == factory_id {
+            *out.entry(link.item_id).or_insert(0.0) += link.items_per_minute;
+        }
+    }
+    Ok(out)
+}
+
 #[tauri::command]
 pub fn factory_ledger(
     active: State<ActivePlaythrough>,
@@ -396,9 +411,15 @@ pub fn factory_ledger(
     let claims = db.with(|c| {
         crate::features::resource_nodes::repo::claims_all(c).map_err(AppError::from)
     })?;
-    let supply =
-        crate::features::resource_nodes::domain::supply_for_factory(&claims, &factory_id, &game_data);
-    Ok(compose_ledger_with_supply(&factory_id, &machines, &game_data, &supply))
+    let water_groups = db.with(|c| {
+        crate::features::resource_nodes::repo::water_groups_all(c).map_err(AppError::from)
+    })?;
+    let supply = crate::features::resource_nodes::domain::supply_for_factory(
+        &claims, &water_groups, &factory_id, &game_data,
+    );
+    let link_supply =
+        db.with(|c| incoming_link_supply(c, &factory_id).map_err(AppError::from))?;
+    Ok(compose_ledger_with_supply(&factory_id, &machines, &game_data, &supply, &link_supply))
 }
 
 #[tauri::command]
@@ -415,9 +436,14 @@ pub fn get_factory_detail(
     let claims = db.with(|c| {
         crate::features::resource_nodes::repo::claims_all(c).map_err(AppError::from)
     })?;
-    let supply =
-        crate::features::resource_nodes::domain::supply_for_factory(&claims, &id, &game_data);
-    let ledger = compose_ledger_with_supply(&id, &machines, &game_data, &supply);
+    let water_groups = db.with(|c| {
+        crate::features::resource_nodes::repo::water_groups_all(c).map_err(AppError::from)
+    })?;
+    let supply = crate::features::resource_nodes::domain::supply_for_factory(
+        &claims, &water_groups, &id, &game_data,
+    );
+    let link_supply = db.with(|c| incoming_link_supply(c, &id).map_err(AppError::from))?;
+    let ledger = compose_ledger_with_supply(&id, &machines, &game_data, &supply, &link_supply);
     Ok(FactoryDetail {
         factory,
         machines,
@@ -449,7 +475,13 @@ pub fn compose_ledger(
     machines: &[FactoryMachine],
     game_data: &GameData,
 ) -> FactoryLedger {
-    compose_ledger_with_supply(factory_id, machines, game_data, &std::collections::HashMap::new())
+    compose_ledger_with_supply(
+        factory_id,
+        machines,
+        game_data,
+        &std::collections::HashMap::new(),
+        &std::collections::HashMap::new(),
+    )
 }
 
 /// Same as `compose_ledger` but also annotates each `ItemFlow` with the
@@ -461,6 +493,7 @@ pub fn compose_ledger_with_supply(
     machines: &[FactoryMachine],
     game_data: &GameData,
     node_supply: &std::collections::HashMap<String, f32>,
+    link_supply: &std::collections::HashMap<String, f32>,
 ) -> FactoryLedger {
     let mut produced: BTreeMap<String, f32> = BTreeMap::new();
     let mut consumed: BTreeMap<String, f32> = BTreeMap::new();
@@ -508,6 +541,7 @@ pub fn compose_ledger_with_supply(
         .keys()
         .chain(consumed.keys())
         .chain(node_supply.keys())
+        .chain(link_supply.keys())
         .cloned()
         .collect();
     all_ids.sort();
@@ -523,6 +557,7 @@ pub fn compose_ledger_with_supply(
                 .map(|i| (i.name.clone(), i.is_fluid))
                 .unwrap_or_else(|| (item_id.clone(), false));
             let from_nodes = *node_supply.get(&item_id).unwrap_or(&0.0);
+            let from_links = *link_supply.get(&item_id).unwrap_or(&0.0);
             ItemFlow {
                 item_id,
                 item_name: name,
@@ -531,6 +566,7 @@ pub fn compose_ledger_with_supply(
                 consumed_per_minute: c,
                 net_per_minute: p - c,
                 from_nodes_per_minute: from_nodes,
+                from_links_per_minute: from_links,
             }
         })
         .collect();
@@ -676,6 +712,27 @@ mod tests {
         // 250% on a 30 ipm recipe → 75 ipm both ways.
         assert!((ore.consumed_per_minute - 75.0).abs() < 0.001);
         assert!((ingot.produced_per_minute - 75.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn ledger_counts_incoming_link_supply_per_item() {
+        // A Cable constructor consuming Wire, with 120 Wire/min arriving
+        // via a logistics link — the deficit is supplied, not missing.
+        let machines = vec![
+            machine("m1", "Build_ConstructorMk1_C", "Recipe_Cable_C", 2, 100.0),
+        ];
+        let mut link_supply = std::collections::HashMap::new();
+        link_supply.insert("Desc_Wire_C".to_string(), 120.0_f32);
+        let ledger = compose_ledger_with_supply(
+            "f1",
+            &machines,
+            &gd(),
+            &std::collections::HashMap::new(),
+            &link_supply,
+        );
+        let wire = ledger.flows.iter().find(|f| f.item_id == "Desc_Wire_C").unwrap();
+        assert!((wire.from_links_per_minute - 120.0).abs() < 0.001);
+        assert!(wire.net_per_minute < 0.0, "machines alone still show the deficit");
     }
 
     #[test]

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <!-- Hexgauge: efficiency dial in a hex nut. The plate sits inside a
+       ~9% transparent margin so the macOS dock icon matches Apple's
+       grid instead of looming over its neighbours. -->
+  <rect x="96" y="96" width="832" height="832" rx="187" fill="#1a1a1a"/>
+  <g transform="translate(96 96) scale(6.5)">
+    <path d="M64 14 106 38v48L64 110 22 86V38Z" stroke="#0063b2" stroke-width="8" stroke-linejoin="round"/>
+    <g stroke="#9ca3af" stroke-width="4" stroke-linecap="round">
+      <path d="M38 76l7-4"/>
+      <path d="M36 58l8 1.5"/>
+      <path d="M46 41l5.5 6"/>
+      <path d="M64 34v8"/>
+      <path d="M82 41l-5.5 6"/>
+      <path d="M92 58l-8 1.5"/>
+    </g>
+    <path d="M90 76 66 70" stroke="#46cbff" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="64" cy="72" r="9" fill="#46cbff"/>
+    <circle cx="64" cy="72" r="4" fill="#1a1a1a"/>
+  </g>
+</svg>

@@ -63,6 +63,11 @@ pub struct ItemFlow {
     /// supply covers what the recipe needs.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub from_nodes_per_minute: f32,
+    /// ipm arriving via incoming logistics links from other factories.
+    /// A deficit covered by links is supplied, not missing — the map
+    /// popover's raw-demand rollup subtracts this before tracing.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub from_links_per_minute: f32,
 }
 
 fn is_zero(v: &f32) -> bool {

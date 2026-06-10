@@ -26,7 +26,12 @@ pub fn run() {
     #[cfg_attr(not(feature = "dev-mcp"), allow(unused_mut))]
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_updater::Builder::new().build());
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        // Reopen where the app was last used: size, position,
+        // maximized/fullscreen. The plugin never records "minimized" as
+        // a state, so closing while minimized restores the last real
+        // geometry instead of an invisible window.
+        .plugin(tauri_plugin_window_state::Builder::default().build());
 
     #[cfg(feature = "dev-mcp")]
     {
@@ -125,9 +130,17 @@ pub fn run() {
             features::resource_nodes::commands::list_resource_nodes,
             features::resource_nodes::commands::set_node_claim,
             features::resource_nodes::commands::clear_node_claim,
-            features::planner::commands::planner_derive_chain,
-            features::planner::commands::apply_chain_plan,
-            features::planner::commands::apply_chain_to_factory,
+            features::resource_nodes::commands::get_resource_budget,
+            features::resource_nodes::commands::list_water_extractor_groups,
+            features::resource_nodes::commands::set_water_extractor_group,
+            features::resource_nodes::commands::delete_water_extractor_group,
+            features::planner::commands::factory_plan_get,
+            features::planner::commands::factory_plan_compute,
+            features::planner::commands::factory_plan_save,
+            features::planner::commands::factory_plan_layout_set,
+            features::planner::commands::list_unsourced_inputs,
+            features::planner::commands::list_export_offers,
+            features::planner::commands::factory_plan_assign_import_source,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

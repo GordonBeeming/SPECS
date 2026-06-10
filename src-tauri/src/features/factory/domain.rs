@@ -10,6 +10,9 @@
 
 use crate::shared::gamedata::types::Recipe;
 
+/// `(item_id, items-per-minute)` pairs for one side of a machine bank.
+pub type ItemFlows = Vec<(String, f32)>;
+
 /// Effective items-per-minute for a single machine running `recipe` at the
 /// given count + clock. `clock_pct` is in percent (e.g. `100.0` = 100%,
 /// `250.0` = max overclock); `recipe_per_minute` is the dataset's
@@ -110,7 +113,7 @@ pub fn recipe_io_flows(
     recipe: &Recipe,
     count: i64,
     clock_pct: f32,
-) -> (Vec<(String, f32)>, Vec<(String, f32)>) {
+) -> (ItemFlows, ItemFlows) {
     let mult = machine_multiplier(count, clock_pct);
     let inputs = recipe
         .inputs
@@ -136,7 +139,7 @@ pub fn recipe_io_flows_amp(
     clock_pct: f32,
     amp_filled: u8,
     amp_total_slots: u8,
-) -> (Vec<(String, f32)>, Vec<(String, f32)>) {
+) -> (ItemFlows, ItemFlows) {
     let mult = machine_multiplier(count, clock_pct)
         * somersloop_output_factor(amp_filled, amp_total_slots);
     let inputs = recipe

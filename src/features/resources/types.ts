@@ -44,3 +44,67 @@ export interface SetNodeClaimInput {
   factoryId?: string | null;
   notes?: string | null;
 }
+
+// ---- Resource budget ----
+
+export type BudgetAssumption = "current_tier_best" | "mk3_at_100" | "mk3_at_250";
+
+export interface PurityCount {
+  total: number;
+  claimed: number;
+}
+
+export interface ResourceBudgetRow {
+  resourceItemId: string;
+  resourceItemName: string;
+  kind: NodeKind;
+  worldMaxIpm: number;
+  claimedIpm: number;
+  boundIpm: number;
+  claimedMaxIpm: number;
+  remainingIpm: number;
+  pure: PurityCount;
+  normal: PurityCount;
+  impure: PurityCount;
+  overcommitted: boolean;
+}
+
+export interface ResourceBudget {
+  /** e.g. "Mk2 @ 100%" — the basis every max/remaining number is stated at. */
+  assumptionLabel: string;
+  rows: ResourceBudgetRow[];
+}
+
+// ---- Water extractor groups ----
+
+export interface WaterExtractorGroup {
+  id: string;
+  worldX: number;
+  worldY: number;
+  count: number;
+  clockPct: number;
+  count2?: number | null;
+  clock2Pct?: number | null;
+  factoryId?: string | null;
+  notes?: string | null;
+  /** Locked groups bind-on-drag instead of moving (node-like). */
+  locked: boolean;
+  /** Computed server-side: Σ banks of count × 120 × clock m³/min. */
+  outputIpm: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SetWaterExtractorGroupInput {
+  /** Omit to create; provide to update. */
+  id?: string;
+  worldX: number;
+  worldY: number;
+  count: number;
+  clockPct: number;
+  count2?: number | null;
+  clock2Pct?: number | null;
+  factoryId?: string | null;
+  notes?: string | null;
+  locked?: boolean;
+}

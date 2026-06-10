@@ -36,6 +36,9 @@ interface BaseProps {
   ariaLabel?: string;
   /** Render compact (h-9) instead of standard (h-10). Defaults to standard. */
   compact?: boolean;
+  /** Focus the input on mount — with `immediate`, that opens the list
+      straight away (used by "Add product"-style reveals). */
+  autoFocus?: boolean;
 }
 
 interface SingleProps extends BaseProps {
@@ -151,6 +154,7 @@ export function FilterSelect(props: FilterSelectProps) {
       <div className="relative">
         <ComboboxInput
           aria-label={props.ariaLabel}
+          autoFocus={props.autoFocus}
           displayValue={() => selectedLabel}
           placeholder={props.placeholder ?? "Type to filter…"}
           onChange={(e) => setQuery(e.target.value)}
@@ -192,14 +196,14 @@ interface DropdownPanelProps {
 function DropdownPanel({ filtered, value, multiple }: DropdownPanelProps) {
   return (
     <ComboboxOptions
-      // `min-w-full max-w-[28rem]` lets the panel grow wider than the
-      // input when the longest option needs the room (recipe names like
-      // "Reinforced Iron Plate" or generator hints like
-      // "0.20 /min + 240 Water" don't truncate). Capped at 28rem so a
-      // wild filter result can't push it across the whole pane.
-      // `whitespace-nowrap` on the option content (set in the option
-      // markup below) keeps each row on a single line.
-      className="absolute z-50 mt-1 max-h-60 min-w-full max-w-[28rem] overflow-auto rounded-md border border-border bg-bg-raised py-1 shadow-lg empty:hidden"
+      // `anchor` portals the panel to the body so it floats above
+      // whatever stacking context the input lives in — inside a
+      // ReactFlow node the old in-place panel painted UNDER sibling
+      // nodes. min/max width mirror the old in-place sizing: at least
+      // the input's width, capped at 28rem so long recipe names fit
+      // without spanning the pane.
+      anchor={{ to: "bottom start", gap: 4 }}
+      className="z-50 max-h-60 min-w-[var(--input-width)] max-w-[28rem] overflow-auto rounded-md border border-border bg-bg-raised py-1 shadow-lg empty:hidden"
       modal={false}
     >
       {filtered.length === 0 ? (

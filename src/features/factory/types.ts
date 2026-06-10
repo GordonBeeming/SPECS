@@ -45,6 +45,8 @@ export interface ItemFlow {
   netPerMinute: number;
   /** ipm available from resource nodes bound to this factory. */
   fromNodesPerMinute?: number;
+  /** ipm arriving via incoming logistics links from other factories. */
+  fromLinksPerMinute?: number;
 }
 
 export interface FactoryLedger {

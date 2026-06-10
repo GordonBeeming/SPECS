@@ -117,16 +117,21 @@ jobs:
 
       # Import the Apple Developer ID into a fresh keychain (vista
       # pattern). Gated on the secret being non-empty so the workflow
-      # still produces an unsigned mac bundle for forks. Checks
-      # `secrets.*` directly rather than via an `env` mapping so the
-      # condition reads against the secret reference, not a value
-      # introduced by this same step.
+      # still produces an unsigned mac bundle for forks. The presence
+      # check lives inside the script: the `secrets` context isn't
+      # valid in a step `if:`, and GitHub refuses to parse the whole
+      # file — which showed up as a phantom 0-second "failure" run on
+      # every branch push.
       - name: Import Apple signing certificate
-        if: startsWith(matrix.platform.os, 'macos') && secrets.APPLE_CERTIFICATE != ''
+        if: startsWith(matrix.platform.os, 'macos')
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
+          if [ -z "${APPLE_CERTIFICATE}" ]; then
+            echo "APPLE_CERTIFICATE not configured — producing an unsigned bundle"
+            exit 0
+          fi
           # macOS ships BSD `base64` (`-D` to decode); GNU's `--decode`
           # isn't recognised. Both BSDs and GNU accept `-d`, which
           # keeps the script portable if this ever runs on Linux.

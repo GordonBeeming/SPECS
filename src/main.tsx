@@ -18,3 +18,13 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     </ErrorBoundary>
   </React.StrictMode>,
 );
+
+// React owns the screen now — fade the index.html splash out and drop
+// it from the DOM once the transition lands.
+const splash = document.getElementById("splash");
+if (splash) {
+  requestAnimationFrame(() => {
+    splash.classList.add("splash-done");
+    window.setTimeout(() => splash.remove(), 300);
+  });
+}
