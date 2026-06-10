@@ -190,6 +190,21 @@ node markers + draggable factory pins.
   "Create & plan" drops a pin at the cursor (and optionally opens
   the plan designer). Sketch the whole playthrough's factories
   first, plan each one later.
+- **Placement loadout:** a pill at the top-right of the canvas shows
+  the miner mark + clock new claims use and the defaults for water
+  extractor groups ("Mk2 @ 150.5% · 4× @ 100%"); clicking expands
+  the editor card. Persisted globally, like the filters.
+- **Water extractor groups:** extractors are free-placed in game, so
+  they get their own marker instead of a node claim — the droplet
+  button in the zoom column arms placement (the cursor becomes a
+  droplet), one click drops a group with the loadout defaults. A
+  group holds up to two banks ("40 @ 100% and 2 @ 45%"), shows its
+  total m³/min, binds to a factory like a node claim, and feeds the
+  same supply pool the planner and ledgers read.
+- **Clock inputs:** every clock control pairs the slider (whole
+  steps, coarse scrubbing) with a typed input where decimals are
+  first-class — 100.01–250.00, matching the x100 storage precision.
+  Sliders alone are banned; precision lives in the text field.
 
 ## Factory graph view
 

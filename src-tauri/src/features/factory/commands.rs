@@ -397,8 +397,12 @@ pub fn factory_ledger(
     let claims = db.with(|c| {
         crate::features::resource_nodes::repo::claims_all(c).map_err(AppError::from)
     })?;
-    let supply =
-        crate::features::resource_nodes::domain::supply_for_factory(&claims, &factory_id, &game_data);
+    let water_groups = db.with(|c| {
+        crate::features::resource_nodes::repo::water_groups_all(c).map_err(AppError::from)
+    })?;
+    let supply = crate::features::resource_nodes::domain::supply_for_factory(
+        &claims, &water_groups, &factory_id, &game_data,
+    );
     Ok(compose_ledger_with_supply(&factory_id, &machines, &game_data, &supply))
 }
 
@@ -416,8 +420,12 @@ pub fn get_factory_detail(
     let claims = db.with(|c| {
         crate::features::resource_nodes::repo::claims_all(c).map_err(AppError::from)
     })?;
-    let supply =
-        crate::features::resource_nodes::domain::supply_for_factory(&claims, &id, &game_data);
+    let water_groups = db.with(|c| {
+        crate::features::resource_nodes::repo::water_groups_all(c).map_err(AppError::from)
+    })?;
+    let supply = crate::features::resource_nodes::domain::supply_for_factory(
+        &claims, &water_groups, &id, &game_data,
+    );
     let ledger = compose_ledger_with_supply(&id, &machines, &game_data, &supply);
     Ok(FactoryDetail {
         factory,

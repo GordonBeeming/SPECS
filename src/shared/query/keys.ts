@@ -47,5 +47,6 @@ export const queryKeys = {
   resources: {
     list: ["resources", "list"] as const,
     budget: (assumption: string) => ["resources", "budget", assumption] as const,
+    waterGroups: ["resources", "water-groups"] as const,
   },
 };

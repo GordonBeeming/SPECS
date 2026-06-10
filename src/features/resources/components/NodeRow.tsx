@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, Pencil, Plus, X } from "lucide-react";
 
 import { Button } from "@/shared/ui/Button";
+import { ClockInput } from "@/shared/ui/ClockInput";
 
 import { nodeDisplayLabel } from "../display";
 import { useClearNodeClaim, useSetNodeClaim } from "../hooks/useResources";
@@ -207,16 +208,8 @@ function ClaimEditor({
         </label>
       )}
       <label className="flex flex-col gap-1 text-xs">
-        <span className="text-fg-muted">Clock {clockPct}%</span>
-        <input
-          type="range"
-          min={1}
-          max={250}
-          step={1}
-          value={clockPct}
-          onChange={(e) => setClockPct(Number(e.target.value))}
-          className="h-8 accent-primary"
-        />
+        <span className="text-fg-muted">Clock</span>
+        <ClockInput value={clockPct} onChange={setClockPct} ariaLabel="Claim clock percent" />
       </label>
       <label className="flex flex-col gap-1 text-xs">
         <span className="text-fg-muted">Factory</span>

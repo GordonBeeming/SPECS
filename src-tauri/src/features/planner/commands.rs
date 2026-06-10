@@ -52,7 +52,8 @@ fn gather_plan_context(
             .map_err(AppError::from)
     })?;
     let claims = db.with(|c| nodes_repo::claims_all(c).map_err(AppError::from))?;
-    let supply = nodes_domain::available_supply(&claims, game_data);
+    let water_groups = db.with(|c| nodes_repo::water_groups_all(c).map_err(AppError::from))?;
+    let supply = nodes_domain::available_supply(&claims, &water_groups, game_data);
     Ok((unlocked, supply))
 }
 

@@ -4,6 +4,8 @@ import type {
   ResourceBudget,
   ResourceNodeRow,
   SetNodeClaimInput,
+  SetWaterExtractorGroupInput,
+  WaterExtractorGroup,
 } from "./types";
 
 export const resourcesApi = {
@@ -14,4 +16,10 @@ export const resourcesApi = {
     invoke<void>("set_node_claim", { input }),
   clearClaim: (nodeId: string) =>
     invoke<void>("clear_node_claim", { nodeId }),
+  listWaterGroups: () =>
+    invoke<WaterExtractorGroup[]>("list_water_extractor_groups"),
+  setWaterGroup: (input: SetWaterExtractorGroupInput) =>
+    invoke<WaterExtractorGroup>("set_water_extractor_group", { input }),
+  deleteWaterGroup: (id: string) =>
+    invoke<void>("delete_water_extractor_group", { id }),
 };

@@ -9,7 +9,27 @@ use crate::shared::gamedata::GameData;
 use crate::shared::gamedata::types::{MapNode, Miner, NodeKind, NodePurity};
 
 use super::dto::{PurityCount, ResourceBudget, ResourceBudgetRow};
-use super::repo::ClaimRow;
+use super::repo::{ClaimRow, WaterGroupRow};
+
+/// Water Extractor output at 100% clock (m³/min) — game constant, the
+/// open-water counterpart of the fracking 60 base below.
+pub const WATER_PUMP_IPM: f32 = 120.0;
+
+/// Total m³/min a group of free-placed water extractors produces —
+/// both banks summed, each `count × 120 × clock`.
+pub fn water_group_output_ipm(group: &WaterGroupRow) -> f32 {
+    let bank = |count: i64, clock_pct: f32| -> f32 {
+        if clock_pct <= 0.0 || !clock_pct.is_finite() || count < 1 {
+            return 0.0;
+        }
+        count as f32 * WATER_PUMP_IPM * (clock_pct / 100.0)
+    };
+    bank(group.count, group.clock_pct)
+        + match (group.count2, group.clock2_pct) {
+            (Some(c), Some(p)) => bank(c, p),
+            _ => 0.0,
+        }
+}
 
 /// Items-per-minute a single extractor produces on a node at the given
 /// clock. Geysers produce nothing — they're for power.
@@ -62,13 +82,14 @@ pub fn miner_node_ipm(
     miner_base_ipm * purity.multiplier() * (clock_pct / 100.0)
 }
 
-/// Aggregate ipm per item across *all* claimed nodes, regardless of
-/// factory binding. The planner uses this as its raw "what could in
-/// principle be supplied" pool; the bound vs. unbound split is the
-/// caller's responsibility.
+/// Aggregate ipm per item across *all* claimed nodes plus water
+/// extractor groups, regardless of factory binding. The planner uses
+/// this as its raw "what could in principle be supplied" pool; the
+/// bound vs. unbound split is the caller's responsibility.
 #[allow(dead_code)]
 pub fn available_supply(
     claims: &HashMap<String, ClaimRow>,
+    water_groups: &[WaterGroupRow],
     game_data: &GameData,
 ) -> HashMap<String, f32> {
     let mut out: HashMap<String, f32> = HashMap::new();
@@ -82,13 +103,22 @@ pub fn available_supply(
         }
         *out.entry(node.resource_item_id.clone()).or_insert(0.0) += ipm;
     }
+    for group in water_groups {
+        let ipm = water_group_output_ipm(group);
+        if ipm <= 0.0 {
+            continue;
+        }
+        *out.entry("Desc_Water_C".to_string()).or_insert(0.0) += ipm;
+    }
     out
 }
 
-/// Supply pool fed into one factory by its bound claims. Used by the
-/// factory ledger's "From nodes: X ipm" chip.
+/// Supply pool fed into one factory by its bound claims and bound
+/// water extractor groups. Used by the factory ledger's "From nodes:
+/// X ipm" chip.
 pub fn supply_for_factory(
     claims: &HashMap<String, ClaimRow>,
+    water_groups: &[WaterGroupRow],
     factory_id: &str,
     game_data: &GameData,
 ) -> HashMap<String, f32> {
@@ -105,6 +135,16 @@ pub fn supply_for_factory(
             continue;
         }
         *out.entry(node.resource_item_id.clone()).or_insert(0.0) += ipm;
+    }
+    for group in water_groups {
+        if group.factory_id.as_deref() != Some(factory_id) {
+            continue;
+        }
+        let ipm = water_group_output_ipm(group);
+        if ipm <= 0.0 {
+            continue;
+        }
+        *out.entry("Desc_Water_C".to_string()).or_insert(0.0) += ipm;
     }
     out
 }
@@ -384,7 +424,7 @@ mod tests {
                 },
             );
         }
-        let supply = available_supply(&claims, &gd);
+        let supply = available_supply(&claims, &[], &gd);
         // Mk1 = 60 ipm Normal; three claims of mixed purity should yield
         // a positive total. We don't pin the exact value (varies with
         // which three nodes the catalog enumerates first) but the
@@ -432,9 +472,58 @@ mod tests {
                 updated_at: "n".into(),
             },
         );
-        let f1_supply = supply_for_factory(&claims, "F1", &gd);
+        let f1_supply = supply_for_factory(&claims, &[], "F1", &gd);
         assert!(f1_supply.contains_key("Desc_OreIron_C"));
         assert!(!f1_supply.contains_key("Desc_OreCopper_C"));
+    }
+
+    // ---------- water extractor group tests ----------
+
+    fn water_group(count: i64, clock: f32, bank2: Option<(i64, f32)>, factory: Option<&str>) -> WaterGroupRow {
+        WaterGroupRow {
+            id: "wg".into(),
+            world_x: 0.0,
+            world_y: 0.0,
+            count,
+            clock_pct: clock,
+            count2: bank2.map(|b| b.0),
+            clock2_pct: bank2.map(|b| b.1),
+            factory_id: factory.map(str::to_string),
+            notes: None,
+            created_at: "n".into(),
+            updated_at: "n".into(),
+        }
+    }
+
+    #[test]
+    fn water_group_output_sums_both_banks() {
+        // 40 @ 100% = 4800, plus 2 @ 45% = 108 → 4908 m³/min.
+        let g = water_group(40, 100.0, Some((2, 45.0)), None);
+        assert!((water_group_output_ipm(&g) - 4908.0).abs() < 0.01);
+        // Single bank with a decimal clock: 4 × 120 × 1.505 = 722.4.
+        let g = water_group(4, 150.5, None, None);
+        assert!((water_group_output_ipm(&g) - 722.4).abs() < 0.01);
+    }
+
+    #[test]
+    fn available_supply_folds_water_groups_into_water() {
+        let gd = GameData::from_bundled().unwrap();
+        let groups = vec![water_group(4, 100.0, None, None)];
+        let supply = available_supply(&HashMap::new(), &groups, &gd);
+        assert!((supply["Desc_Water_C"] - 480.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn supply_for_factory_only_counts_bound_water_groups() {
+        let gd = GameData::from_bundled().unwrap();
+        let groups = vec![
+            water_group(4, 100.0, None, Some("F1")),
+            water_group(10, 100.0, None, None), // unbound
+        ];
+        let f1 = supply_for_factory(&HashMap::new(), &groups, "F1", &gd);
+        assert!((f1["Desc_Water_C"] - 480.0).abs() < 0.01, "only the bound group counts");
+        let f2 = supply_for_factory(&HashMap::new(), &groups, "F2", &gd);
+        assert!(!f2.contains_key("Desc_Water_C"));
     }
 
     // ---------- resource budget tests ----------

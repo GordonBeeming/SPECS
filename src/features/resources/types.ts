@@ -74,3 +74,34 @@ export interface ResourceBudget {
   assumptionLabel: string;
   rows: ResourceBudgetRow[];
 }
+
+// ---- Water extractor groups ----
+
+export interface WaterExtractorGroup {
+  id: string;
+  worldX: number;
+  worldY: number;
+  count: number;
+  clockPct: number;
+  count2?: number | null;
+  clock2Pct?: number | null;
+  factoryId?: string | null;
+  notes?: string | null;
+  /** Computed server-side: Σ banks of count × 120 × clock m³/min. */
+  outputIpm: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SetWaterExtractorGroupInput {
+  /** Omit to create; provide to update. */
+  id?: string;
+  worldX: number;
+  worldY: number;
+  count: number;
+  clockPct: number;
+  count2?: number | null;
+  clock2Pct?: number | null;
+  factoryId?: string | null;
+  notes?: string | null;
+}

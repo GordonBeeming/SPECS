@@ -19,8 +19,11 @@ import { useLogisticsLinks } from "@/features/logistics/hooks/useLogistics";
 import { useAllPowerGens } from "@/features/power/hooks/usePower";
 import {
   useClearNodeClaim,
+  useDeleteWaterGroup,
   useResourceNodes,
   useSetNodeClaim,
+  useSetWaterGroup,
+  useWaterExtractorGroups,
 } from "@/features/resources/hooks/useResources";
 import { factoryApi } from "@/features/factory/api";
 import { plannerApi } from "@/features/planner/api";
@@ -33,6 +36,7 @@ import { Icon } from "@/shared/ui/Icon";
 import { openPlanDesigner, useNavStore } from "@/shared/nav-store";
 import {
   CircleAlert,
+  Droplets,
   Factory as FactoryGlyph,
   GripVertical,
   Pencil,
@@ -43,12 +47,20 @@ import {
 } from "lucide-react";
 
 import { MapLinksLayer } from "./MapLinksLayer";
+import {
+  PlacementLoadout,
+  readLoadout,
+  writeLoadout,
+  type MapLoadout,
+} from "./PlacementLoadout";
+import { WaterExtractorPin, WaterExtractorPopover } from "./WaterExtractors";
 import { ResourceBudgetPanel } from "@/features/resources/components/ResourceBudgetPanel";
+import { ClockInput } from "@/shared/ui/ClockInput";
 
 import mapAsset from "@/assets/map/satisfactory-map.webp";
 
 import { pctToWorld, worldToPct } from "../transform";
-import type { ResourceNodeRow } from "@/features/resources/types";
+import type { ResourceNodeRow, WaterExtractorGroup } from "@/features/resources/types";
 
 const PURITY_GLOW = {
   Pure: "0 0 0 2px rgba(250, 204, 21, 0.95), 0 0 12px 3px rgba(250, 204, 21, 0.55)",
@@ -79,6 +91,12 @@ const MAP_H = 2048;
 
 // localStorage keys for the map filter state — bumped suffix on shape
 // changes if we ever extend what's persisted.
+// Droplet-shaped cursor while water placement is armed — the mode is
+// visible at the pointer itself, not just on the armed button.
+const WATER_CURSOR = `url("data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="%2338bdf8" stroke="white" stroke-width="1.5"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></svg>'.replace('%2338bdf8', '#38bdf8'),
+)}") 12 22, crosshair`;
+
 const STORAGE = {
   showClaimed: "specs:map:showClaimedToo",
   hiddenResources: "specs:map:hiddenResources",
@@ -151,8 +169,11 @@ export function MapView() {
   const items = useItems();
   const powerGens = useAllPowerGens();
   const unsourcedInputs = useUnsourcedInputs();
+  const waterGroups = useWaterExtractorGroups();
   const setClaim = useSetNodeClaim();
   const clearClaim = useClearNodeClaim();
+  const setWaterGroup = useSetWaterGroup();
+  const deleteWaterGroup = useDeleteWaterGroup();
   const createFactory = useCreateFactory();
   const queryClient = useQueryClient();
   const wrapRef = useRef<ReactZoomPanPinchRef | null>(null);
@@ -210,6 +231,25 @@ export function MapView() {
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedFactoryId, setSelectedFactoryId] = useState<string | null>(null);
+  const [selectedWaterGroupId, setSelectedWaterGroupId] = useState<string | null>(null);
+  // "What I'm currently placing": miner mark + clock for claims, count
+  // + clock defaults for water groups. Survives reloads.
+  const [loadout, setLoadoutState] = useState<MapLoadout>(readLoadout);
+  const setLoadout = (next: MapLoadout) => {
+    setLoadoutState(next);
+    writeLoadout(next);
+  };
+  // Armed water placement: the next map click drops a group there.
+  // The cursor itself becomes a droplet so the mode is unmissable.
+  const [placingWater, setPlacingWater] = useState(false);
+  useEffect(() => {
+    if (!placingWater) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPlacingWater(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [placingWater]);
   const [showAllLinks, setShowAllLinks] = useState(() =>
     readBool(STORAGE.showAllLinks, true),
   );
@@ -275,6 +315,15 @@ export function MapView() {
   }, [nodes.data, selectedFactoryId]);
 
   const boundNodeIds = useMemo(() => new Set(boundNodes.map((n) => n.id)), [boundNodes]);
+
+  const selectedWaterGroup = useMemo(
+    () => (waterGroups.data ?? []).find((g) => g.id === selectedWaterGroupId) ?? null,
+    [waterGroups.data, selectedWaterGroupId],
+  );
+  const boundWaterGroups = useMemo(() => {
+    if (!selectedFactoryId) return [];
+    return (waterGroups.data ?? []).filter((g) => g.factoryId === selectedFactoryId);
+  }, [waterGroups.data, selectedFactoryId]);
 
   // Unsourced inputs per factory → pin badge counts + popover rows.
   const unsourcedByFactory = useMemo(() => {
@@ -484,6 +533,10 @@ export function MapView() {
               regardless of pan state. react-zoom-pan-pinch's built-in
               controls are minimal, so we render our own to keep the
               brand styling consistent. */}
+          <div className="absolute right-14 top-3 z-20">
+            <PlacementLoadout loadout={loadout} onChange={setLoadout} />
+          </div>
+
           <div className="absolute right-3 top-3 z-20 flex flex-col gap-1">
             <button
               type="button"
@@ -508,6 +561,25 @@ export function MapView() {
               className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-bg-raised/90 text-fg hover:bg-bg-raised"
             >
               <RotateCcw className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              aria-label={placingWater ? "Cancel water placement" : "Place water extractors"}
+              aria-pressed={placingWater}
+              title={
+                placingWater
+                  ? "Click the map to place · Esc to cancel"
+                  : `Place water extractors (${loadout.waterCount}× @ ${loadout.waterClockPct}%)`
+              }
+              onClick={() => setPlacingWater((v) => !v)}
+              className={`relative inline-flex h-8 w-8 items-center justify-center rounded-md border ${
+                placingWater
+                  ? "border-accent bg-accent/25 text-fg"
+                  : "border-border bg-bg-raised/90 text-fg hover:bg-bg-raised"
+              }`}
+            >
+              <Droplets className="h-4 w-4 text-accent" />
+              <Plus className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-bg-raised text-fg" />
             </button>
           </div>
 
@@ -537,8 +609,27 @@ export function MapView() {
               >
                 <div
                   className="relative"
-                  style={{ width: MAP_W, height: MAP_H }}
-                  onClick={() => setSelectedNodeId(null)}
+                  style={{ width: MAP_W, height: MAP_H, cursor: placingWater ? WATER_CURSOR : undefined }}
+                  onClick={(e) => {
+                    if (placingWater) {
+                      const map = clientToMap(e.clientX, e.clientY);
+                      if (!map) return;
+                      const { worldX, worldY } = pctToWorld(map.x / MAP_W, map.y / MAP_H);
+                      setPlacingWater(false);
+                      setWaterGroup.mutate(
+                        {
+                          worldX,
+                          worldY,
+                          count: loadout.waterCount,
+                          clockPct: loadout.waterClockPct,
+                        },
+                        { onSuccess: (g) => setSelectedWaterGroupId(g.id) },
+                      );
+                      return;
+                    }
+                    setSelectedNodeId(null);
+                    setSelectedWaterGroupId(null);
+                  }}
                   onContextMenu={(e) => {
                     // Right-click drops a factory right where the
                     // cursor is — the fast path for sketching a whole
@@ -661,10 +752,10 @@ export function MapView() {
                             setLinkCursor(null);
                             setLinkHoverFactoryId(null);
                             if (targetFactoryId) {
-                              // Bind the node to that factory (default
-                              // miner + 100% clock if unclaimed). Keeps
-                              // the existing claim's miner/clock if the
-                              // node was already claimed.
+                              // Bind the node to that factory. Unclaimed
+                              // miner nodes take the placement loadout
+                              // (current mark + clock); existing claims
+                              // keep their own miner/clock.
                               const existing = node.claim;
                               void setClaim.mutateAsync({
                                 nodeId: node.id,
@@ -674,8 +765,8 @@ export function MapView() {
                                     ? "Build_FrackingSmasher_C"
                                     : node.kind === "geyser"
                                       ? null
-                                      : "Build_MinerMk1_C"),
-                                clockPct: existing?.clockPct ?? 100,
+                                      : loadout.minerId),
+                                clockPct: existing?.clockPct ?? loadout.minerClockPct,
                                 factoryId: targetFactoryId,
                                 notes: existing?.notes ?? null,
                               });
@@ -703,6 +794,7 @@ export function MapView() {
                     <InputLinesLayer
                       selectedFactoryId={selectedFactoryId}
                       boundNodes={boundNodes}
+                      boundWaterGroups={boundWaterGroups}
                       allFactories={factories.data ?? []}
                       onDetachNode={(nodeId) => {
                         // Full release: the node goes back to
@@ -751,6 +843,39 @@ export function MapView() {
                         onLinkHoverLeave={() => {
                           if (linkHoverFactoryId === f.id)
                             setLinkHoverFactoryId(null);
+                        }}
+                        currentScale={() => wrapRef.current?.state.scale ?? 1}
+                      />
+                    );
+                  })}
+
+                  {(waterGroups.data ?? []).map((g) => {
+                    const { xPct, yPct } = worldToPct(g.worldX, g.worldY);
+                    return (
+                      <WaterExtractorPin
+                        key={g.id}
+                        group={g}
+                        x={xPct * MAP_W}
+                        y={yPct * MAP_H}
+                        selected={selectedWaterGroupId === g.id}
+                        onClick={() => {
+                          setSelectedNodeId(null);
+                          setSelectedFactoryId(null);
+                          setSelectedWaterGroupId(g.id === selectedWaterGroupId ? null : g.id);
+                        }}
+                        onDragEnd={(pt) => {
+                          const { worldX, worldY } = pctToWorld(pt.x / MAP_W, pt.y / MAP_H);
+                          setWaterGroup.mutate({
+                            id: g.id,
+                            worldX,
+                            worldY,
+                            count: g.count,
+                            clockPct: g.clockPct,
+                            count2: g.count2 ?? null,
+                            clock2Pct: g.clock2Pct ?? null,
+                            factoryId: g.factoryId ?? null,
+                            notes: g.notes ?? null,
+                          });
                         }}
                         currentScale={() => wrapRef.current?.state.scale ?? 1}
                       />
@@ -833,9 +958,40 @@ export function MapView() {
           {/* Whole-map resource budget dock. Shares the bottom-left
               corner with the node popover — the popover wins while a
               node is selected so claiming never fights the budget. */}
-          {!selectedNode && (
+          {!selectedNode && !selectedWaterGroup && (
             <div className="absolute bottom-3 left-3 z-20">
               <ResourceBudgetPanel variant="compact" />
+            </div>
+          )}
+
+          {/* Water extractor group editor — same dock as the node
+              popover; key forces a remount per group so form state
+              never bleeds between markers. */}
+          {selectedWaterGroup && !selectedNode && (
+            <div className="absolute bottom-3 left-3 z-20">
+              <WaterExtractorPopover
+                key={selectedWaterGroup.id}
+                group={selectedWaterGroup}
+                factories={factories.data ?? []}
+                pending={setWaterGroup.isPending || deleteWaterGroup.isPending}
+                onSave={(patch) => {
+                  setWaterGroup.mutate(
+                    {
+                      id: selectedWaterGroup.id,
+                      worldX: selectedWaterGroup.worldX,
+                      worldY: selectedWaterGroup.worldY,
+                      ...patch,
+                    },
+                    { onSuccess: () => setSelectedWaterGroupId(null) },
+                  );
+                }}
+                onDelete={() => {
+                  deleteWaterGroup.mutate(selectedWaterGroup.id, {
+                    onSuccess: () => setSelectedWaterGroupId(null),
+                  });
+                }}
+                onClose={() => setSelectedWaterGroupId(null)}
+              />
             </div>
           )}
 
@@ -850,6 +1006,7 @@ export function MapView() {
                 // and would be saved onto the freshly-picked node.
                 key={selectedNode.id}
                 node={selectedNode}
+                loadout={loadout}
                 factories={factories.data ?? []}
                 onClaim={(input) => {
                   void setClaim
@@ -965,6 +1122,7 @@ const CLICK_THRESHOLD_PX = 4;
 interface InputLinesLayerProps {
   selectedFactoryId: string;
   boundNodes: ResourceNodeRow[];
+  boundWaterGroups: WaterExtractorGroup[];
   allFactories: Array<{ id: string; name: string; worldX: number; worldY: number }>;
   onDetachNode: (nodeId: string, prev: ResourceNodeRow) => void;
 }
@@ -979,6 +1137,7 @@ interface InputLinesLayerProps {
 function InputLinesLayer({
   selectedFactoryId,
   boundNodes,
+  boundWaterGroups,
   allFactories,
   onDetachNode,
 }: InputLinesLayerProps) {
@@ -1010,6 +1169,24 @@ function InputLinesLayer({
             <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
           </marker>
         </defs>
+        {boundWaterGroups.map((g) => {
+          const p = worldToPct(g.worldX, g.worldY);
+          return (
+            <line
+              key={`w-${g.id}`}
+              x1={p.xPct * MAP_W}
+              y1={p.yPct * MAP_H}
+              x2={tx}
+              y2={ty}
+              stroke="var(--color-accent, var(--color-primary))"
+              strokeWidth={3}
+              strokeOpacity={0.6}
+              strokeDasharray="6 6"
+              markerEnd="url(#specs-arrow)"
+              style={{ color: "var(--color-accent, var(--color-primary))" }}
+            />
+          );
+        })}
         {boundNodes.map((n) => {
           const p = worldToPct(n.x, n.y);
           return (
@@ -1509,6 +1686,8 @@ function FactoryPopover({
 
 interface NodePopoverProps {
   node: ResourceNodeRow;
+  /** Placement loadout — initial miner/clock for unclaimed miner nodes. */
+  loadout: MapLoadout;
   factories: { id: string; name: string }[];
   onClaim: (input: {
     minerId: string | null;
@@ -1520,14 +1699,16 @@ interface NodePopoverProps {
   onClose: () => void;
 }
 
-function NodePopover({ node, factories, onClaim, onRelease, onClose }: NodePopoverProps) {
+function NodePopover({ node, loadout, factories, onClaim, onRelease, onClose }: NodePopoverProps) {
   const [minerId, setMinerId] = useState<string>(
     node.claim?.minerId ??
       (node.kind === "fracking_well"
         ? "Build_FrackingSmasher_C"
-        : "Build_MinerMk1_C"),
+        : loadout.minerId),
   );
-  const [clockPct, setClockPct] = useState(node.claim?.clockPct ?? 100);
+  const [clockPct, setClockPct] = useState(
+    node.claim?.clockPct ?? (node.kind === "miner_node" ? loadout.minerClockPct : 100),
+  );
   const [factoryId, setFactoryId] = useState(node.claim?.factoryId ?? "");
 
   return (
@@ -1574,16 +1755,10 @@ function NodePopover({ node, factories, onClaim, onRelease, onClose }: NodePopov
             </select>
           </label>
           <label className="block">
-            <span className="text-fg-muted">Clock {clockPct}%</span>
-            <input
-              type="range"
-              min={1}
-              max={250}
-              step={1}
-              value={clockPct}
-              onChange={(e) => setClockPct(Number(e.target.value))}
-              className="mt-2 h-2 w-full accent-primary"
-            />
+            <span className="text-fg-muted">Clock</span>
+            <div className="mt-1.5">
+              <ClockInput value={clockPct} onChange={setClockPct} ariaLabel="Node clock percent" />
+            </div>
           </label>
         </div>
       )}
