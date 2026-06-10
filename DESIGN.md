@@ -157,9 +157,12 @@ node markers + draggable factory pins.
   Impure `#b45309` (copper). Tooltip carries resource name + purity +
   current ipm when claimed.
 - **Factory pins** are rounded chips with the factory's icon + name.
-  Drag-to-move writes straight to `factory.world_x/world_y` via the
-  `set_factory_position` Tauri command — no intermediate buffer; the
-  database is the source of truth.
+  The icon sits on a light `fg/20` disc — dark item renders (Modular
+  Engine, coal) disappear straight onto the dark chip without it; the
+  popover header uses the same disc. Drag-to-move writes straight to
+  `factory.world_x/world_y` via the `set_factory_position` Tauri
+  command — no intermediate buffer; the database is the source of
+  truth.
 - **Node data source:** the `nodes.json` catalog is derived from
   satisfactory-calculator.com's interactive-map JSON
   (`mapData/en-Stable.json`); per-purity counts + 3D coordinates for
@@ -186,10 +189,12 @@ node markers + draggable factory pins.
   with grab handles. Dragging one onto another pin assigns that
   factory as the source — same ghost-line gesture as node binding,
   green over a valid drop target. Self-drops are rejected.
-- **Quick-create:** right-click anywhere → name → "Create" or
-  "Create & plan" drops a pin at the cursor (and optionally opens
-  the plan designer). Sketch the whole playthrough's factories
-  first, plan each one later.
+- **Quick-create:** right-click anywhere (or arm the factory button
+  in the zoom column) → click the spot → name → "Create" or "Create
+  & plan" drops a pin at the cursor (and optionally opens the plan
+  designer). Sketch the whole playthrough's factories first, plan
+  each one later. Placement lives on the canvas only — the old
+  header-level "New factory" button is gone.
 - **Placement loadout:** a pill at the top-right of the canvas shows
   the miner mark + clock new claims use and the defaults for water
   extractor groups ("Mk2 @ 150.5% · 4× @ 100%"); clicking expands
@@ -286,12 +291,18 @@ Node cards (all 250 px wide, `tabular-nums` for rates):
   local source makes it a full import; "Build it here too" brings
   it back.
 - **Sources panel** — docked right of the canvas per item: the
-  local line (with its current remainder), external rows
-  (cap-editable), and an add-list that leads with factories
-  EXPORTING the item (name + remaining capacity = export − what
-  others already draw; 0 remaining stays selectable — bump
-  production there later). Non-exporters sit behind a divider for
-  plan-backwards work, plus "a future factory" for fully unsourced.
+  local line ("Build it here", with a rate field that pins how much
+  to build locally; empty = elastic remainder), external rows
+  (cap-editable, each with the source factory's icon), and a
+  searchable add-list in three named groups: factories whose
+  remaining export covers the whole need, factories exporting the
+  item but short, and everyone else ("plan it there later").
+  Remaining capacity = export − what others already draw; 0 stays
+  selectable. An uncapped source only delivers what its plan
+  actually offers — picking a factory that exports nothing leaves
+  production local instead of tearing the local line to zero. An
+  explicit cap is the user's override and wins regardless.
+  "A future factory" stays available for fully unsourced inputs.
 - **Exports** — a target's `export_ipm` is the slice offered to
   other factories ("produce 500, export 300, keep 200"). The Export
   button on any step adds the item as a product at its current
@@ -308,7 +319,10 @@ proportional edge from each producer (local line + import). Node
 drags persist to `factory_plan_layout` (sparse; missing row = dagre
 position). **The camera never moves on its own** — no fit/zoom/pan
 on click or recompute; `Auto-arrange` is the explicit button that
-re-runs the layout (and refits, since the user asked). Plans
+re-runs the layout (and refits, since the user asked). Selection
+survives recompute too: when an edit swaps an item's node kind
+(recipe ↔ import), the selection follows the item instead of
+silently clearing. Plans
 **auto-save** once edits settle, and Back flushes any remainder —
 leaving the designer can't lose work. Saving runs in one
 transaction: plan inputs persist, the graph recomputes server-side,
@@ -319,15 +333,47 @@ plan-managed machines regenerate (manual machines survive via
 The header edits the factory in place: click the name to rename,
 the icon to open the icon picker, the trash to delete (the
 confirmation lists factories that currently draw inputs from this
-one). New factories place-first on the map (arm button or
-right-click → click the spot → name → straight into the designer
-with the product picker open and a "Cancel & delete" escape hatch);
-the first product stamps the factory icon when none is set.
+one). New factories place-first on the map (canvas arm button or
+right-click → click the spot → name → straight into the designer).
+An empty plan — first run, or after clearing every product — shows
+a centered modal: large title, icon preview that fills in as you
+pick, the tier-grouped product `FilterSelect`, a big rate field,
+primary **OK**, and a red **Cancel & delete this factory** (worded
+"Delete this factory" once the factory has history). The first
+product stamps the factory icon when none is set. Destructive
+buttons use the Button `danger`/`danger-solid` variants — never
+`text-danger` layered onto ghost, which loses the stylesheet-order
+coin-toss against the variant's own text colour.
 
 The legacy "Build to target" panel, the stage-list preview, and the
 cross-factory Planner wizard are retired; manual "Add machine"
 remains available behind a disclosure on factory detail for legacy
 factories.
+
+## Launch, app icon & window
+
+- **App icon** is the Hexgauge mark — a gauge needle buried near the
+  redline inside a hex-nut outline, signal cyan on `#1a1a1a`, with a
+  ~9% transparent margin so the macOS dock size matches its
+  neighbours. `app-icon.svg` at the repo root is the source of
+  truth; rasterise to `app-icon.png` (1024², transparent corners)
+  and run `bun run tauri icon app-icon.png` to regenerate
+  `src-tauri/icons` (the ios/android outputs are deleted — no
+  mobile targets).
+- **Splash:** `index.html` ships a static splash (the Hexgauge mark
+  + "Loading" with cycling dots) so launch never flashes white in
+  dark mode. Theme comes from the stored `specs.theme-mode`,
+  mirrored onto `<html>` by `public/splash.js` before first paint,
+  with `prefers-color-scheme` as the fallback. The script is a
+  separate file because the production CSP is `script-src 'self'`
+  — inline scripts never run there. The window itself paints
+  `#1a1a1a` (`backgroundColor` in `tauri.conf.json`) before the
+  webview loads, and `main.tsx` fades the splash out once React
+  mounts.
+- **Window state:** `tauri-plugin-window-state` restores size,
+  position and maximized/fullscreen across launches. Minimized is
+  never recorded as a state, so closing a minimized window restores
+  the last real geometry.
 
 ## Accessibility
 

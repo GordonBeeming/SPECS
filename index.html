@@ -4,8 +4,118 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>S.P.E.C.S</title>
+    <script src="/splash.js"></script>
+    <style>
+      /* Splash: shown until React mounts, then faded out by main.tsx.
+         Colours mirror brand.css; an explicit .dark/.light class (set
+         by splash.js from the stored theme) wins over the OS hint so
+         a dark-mode user never gets the white flashbang. */
+      :root {
+        --splash-bg: #f8f9fa;
+        --splash-fg: #6b7280;
+        --splash-mark: #0063b2;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --splash-bg: #1a1a1a;
+          --splash-fg: #9ca3af;
+          --splash-mark: #46cbff;
+        }
+      }
+      html.light {
+        --splash-bg: #f8f9fa;
+        --splash-fg: #6b7280;
+        --splash-mark: #0063b2;
+      }
+      html.dark {
+        --splash-bg: #1a1a1a;
+        --splash-fg: #9ca3af;
+        --splash-mark: #46cbff;
+      }
+      html,
+      body {
+        background: var(--splash-bg);
+      }
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        background: var(--splash-bg);
+        transition: opacity 0.25s ease;
+      }
+      #splash.splash-done {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash svg {
+        animation: splash-pulse 2s ease-in-out infinite;
+      }
+      .splash-loading {
+        font: 500 15px/1 -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+        letter-spacing: 0.08em;
+        color: var(--splash-fg);
+      }
+      .splash-loading span {
+        opacity: 0;
+        animation: splash-dot 1.2s infinite;
+      }
+      .splash-loading span:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      .splash-loading span:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+      @keyframes splash-dot {
+        0%,
+        20% {
+          opacity: 0;
+        }
+        40%,
+        100% {
+          opacity: 1;
+        }
+      }
+      @keyframes splash-pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.6;
+        }
+      }
+    </style>
   </head>
   <body>
+    <div id="splash" aria-hidden="true">
+      <!-- Hexgauge mark: efficiency dial in a hex nut. -->
+      <svg width="96" height="96" viewBox="0 0 128 128" fill="none">
+        <path
+          d="M64 14 106 38v48L64 110 22 86V38Z"
+          stroke="var(--splash-mark)"
+          stroke-width="8"
+          stroke-linejoin="round"
+          opacity="0.55"
+        />
+        <g stroke="var(--splash-fg)" stroke-width="4" stroke-linecap="round">
+          <path d="M38 76l7-4" />
+          <path d="M36 58l8 1.5" />
+          <path d="M46 41l5.5 6" />
+          <path d="M64 34v8" />
+          <path d="M82 41l-5.5 6" />
+          <path d="M92 58l-8 1.5" />
+        </g>
+        <path d="M90 76 66 70" stroke="var(--splash-mark)" stroke-width="7" stroke-linecap="round" />
+        <circle cx="64" cy="72" r="9" fill="var(--splash-mark)" />
+        <circle cx="64" cy="72" r="4" fill="var(--splash-bg)" />
+      </svg>
+      <div class="splash-loading">Loading<span>.</span><span>.</span><span>.</span></div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

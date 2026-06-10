@@ -26,7 +26,12 @@ pub fn run() {
     #[cfg_attr(not(feature = "dev-mcp"), allow(unused_mut))]
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_updater::Builder::new().build());
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        // Reopen where the app was last used: size, position,
+        // maximized/fullscreen. The plugin never records "minimized" as
+        // a state, so closing while minimized restores the last real
+        // geometry instead of an invisible window.
+        .plugin(tauri_plugin_window_state::Builder::default().build());
 
     #[cfg(feature = "dev-mcp")]
     {

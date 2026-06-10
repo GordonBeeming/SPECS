@@ -42,7 +42,6 @@ import {
   Maximize2,
   Minimize2,
   Pencil,
-  Sparkles,
   Unlink,
   Workflow,
   Zap,
@@ -491,20 +490,6 @@ export function MapView() {
               />
               Show water extractors
             </label>
-            <Button
-              onClick={() => setPlacingFactory((v) => !v)}
-              aria-label={placingFactory ? "Cancel factory placement" : "Place a new factory"}
-              aria-pressed={placingFactory}
-              title={
-                placingFactory
-                  ? "Click the map to place · Esc to cancel"
-                  : "Click, then click the map where the factory goes (right-click works too)"
-              }
-              variant={placingFactory ? "ghost" : "primary"}
-            >
-              <Sparkles className="h-4 w-4" />
-              {placingFactory ? "Click the map…" : "New factory"}
-            </Button>
           </div>
         </div>
 
@@ -1527,7 +1512,11 @@ function FactoryPin({
     >
       {factory.iconId ? (
         <span className="inline-flex items-center gap-1">
-          <Icon itemId={factory.iconId} alt={factory.name} className="h-4 w-4" />
+          {/* Light halo behind the icon — dark item renders (Modular
+              Engine, coal…) vanish straight onto the dark pin card. */}
+          <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-fg/20 ring-1 ring-fg/10">
+            <Icon itemId={factory.iconId} alt={factory.name} className="h-4 w-4" />
+          </span>
           {factory.name}
         </span>
       ) : (
@@ -1717,7 +1706,9 @@ function FactoryPopover({
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           {f?.iconId ? (
-            <Icon itemId={f.iconId} alt="" className="h-6 w-6" />
+            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-fg/20 ring-1 ring-fg/10">
+              <Icon itemId={f.iconId} alt="" className="h-6 w-6" />
+            </span>
           ) : (
             <FactoryGlyph className="h-5 w-5 text-fg-muted" />
           )}
