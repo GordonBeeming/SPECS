@@ -23,8 +23,10 @@ export function ClockInput({
   ariaLabel = "Clock percent",
   disabled,
 }: ClockInputProps) {
-  // The text field needs its own state while the user is mid-edit
-  // ("10" on the way to "101.5" is out of range but must not snap).
+  // The text field needs its own state while the user is mid-edit —
+  // committing every keystroke would rewrite the field under them
+  // ("" after clearing it is invalid, and "10" on the way to "101.5"
+  // would commit a clock the user never meant).
   const [draft, setDraft] = useState<string>(String(value));
   useEffect(() => {
     setDraft(String(value));

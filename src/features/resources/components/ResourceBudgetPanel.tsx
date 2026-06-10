@@ -50,11 +50,26 @@ function fmtIpm(n: number): string {
   return n % 1 === 0 ? n.toFixed(0) : n.toFixed(1);
 }
 
+// localStorage can throw in hardened webviews / privacy modes — the
+// budget panel degrades to defaults instead of crashing the page.
 function loadAssumption(): BudgetAssumption {
-  const v = localStorage.getItem(ASSUMPTION_STORAGE);
-  return v === "mk3_at_100" || v === "mk3_at_250" || v === "current_tier_best"
-    ? v
-    : "current_tier_best";
+  try {
+    const v = localStorage.getItem(ASSUMPTION_STORAGE);
+    return v === "mk3_at_100" || v === "mk3_at_250" || v === "current_tier_best"
+      ? v
+      : "current_tier_best";
+  } catch (err) {
+    console.warn("resource budget: localStorage unavailable", err);
+    return "current_tier_best";
+  }
+}
+
+function persist(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (err) {
+    console.warn("resource budget: couldn't persist", key, err);
+  }
 }
 
 export interface ResourceBudgetPanelProps {
@@ -64,9 +79,15 @@ export interface ResourceBudgetPanelProps {
 
 export function ResourceBudgetPanel({ variant }: ResourceBudgetPanelProps) {
   const [assumption, setAssumption] = useState<BudgetAssumption>(loadAssumption);
-  const [collapsed, setCollapsed] = useState(
-    () => variant === "compact" && localStorage.getItem(COLLAPSE_STORAGE) !== "open",
-  );
+  const [collapsed, setCollapsed] = useState(() => {
+    if (variant !== "compact") return false;
+    try {
+      return localStorage.getItem(COLLAPSE_STORAGE) !== "open";
+    } catch (err) {
+      console.warn("resource budget: localStorage unavailable", err);
+      return true;
+    }
+  });
   const budget = useResourceBudget(assumption);
 
   const rows = useMemo(
@@ -76,11 +97,11 @@ export function ResourceBudgetPanel({ variant }: ResourceBudgetPanelProps) {
 
   const pickAssumption = (next: BudgetAssumption) => {
     setAssumption(next);
-    localStorage.setItem(ASSUMPTION_STORAGE, next);
+    persist(ASSUMPTION_STORAGE, next);
   };
   const toggleCollapsed = () => {
     setCollapsed((c) => {
-      localStorage.setItem(COLLAPSE_STORAGE, c ? "open" : "closed");
+      persist(COLLAPSE_STORAGE, c ? "open" : "closed");
       return !c;
     });
   };

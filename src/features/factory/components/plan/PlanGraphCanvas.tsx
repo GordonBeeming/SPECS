@@ -312,7 +312,14 @@ function CanvasInner(props: PlanGraphCanvasProps) {
       onNodeClick={(_, node) => setSelectedKey(node.id)}
       onPaneClick={() => setSelectedKey(null)}
       onNodeDragStop={(_, node) => {
-        void plannerApi.setPlanLayout(factoryId, node.id, node.position.x, node.position.y);
+        // Refresh the cached plan after persisting, like auto-arrange
+        // does — otherwise the next recompute rebuilds nodes from the
+        // stale layout prop and the dragged card snaps back.
+        void plannerApi
+          .setPlanLayout(factoryId, node.id, node.position.x, node.position.y)
+          .then(() =>
+            queryClient.invalidateQueries({ queryKey: ["factory", "plan", factoryId] }),
+          );
       }}
     >
       <Background />

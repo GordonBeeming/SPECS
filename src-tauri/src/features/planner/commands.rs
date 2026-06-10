@@ -84,6 +84,10 @@ fn gather_export_capacity(
         if export <= 0.0 {
             continue;
         }
+        // An export slice larger than the production rate is a wish,
+        // not capacity — the plan only materializes machines for
+        // `ipm`, so offers clamp to what actually gets made.
+        let export = export.min(t.ipm);
         let d = *drawn.get(&(fid.clone(), t.item_id.clone())).unwrap_or(&0.0);
         out.insert((fid, t.item_id), (export - d).max(0.0));
     }
@@ -411,6 +415,9 @@ fn export_offers_impl(
         if export <= 0.0 {
             continue;
         }
+        // Same clamp as gather_export_capacity: the offer can't exceed
+        // what the plan actually produces.
+        let export = export.min(t.ipm);
         let drawn_ipm = *drawn
             .get(&(fid.clone(), t.item_id.clone()))
             .unwrap_or(&0.0);
@@ -693,6 +700,46 @@ mod tests {
         let plan = plan_get_impl(&db, "fac-cables").unwrap();
         assert_eq!(plan.imports.len(), 1);
         assert_eq!(plan.imports[0].source_factory_id, None);
+    }
+
+    #[test]
+    fn export_offers_clamp_to_actual_production() {
+        // export_ipm > ipm is saveable (warn, don't block) but the
+        // offer must not promise more than the plan produces.
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "fac-wire", "Wire farm");
+        plan_save_impl(
+            &db,
+            &gd,
+            save_input(
+                "fac-wire",
+                vec![PlanTargetSpec {
+                    item_id: "Desc_Wire_C".into(),
+                    ipm: 100.0,
+                    export_ipm: Some(500.0),
+                }],
+                vec![],
+            ),
+            NOW,
+        )
+        .unwrap();
+
+        let offers = export_offers_impl(&db, &gd).unwrap();
+        let wire = offers
+            .iter()
+            .find(|o| o.factory_id == "fac-wire")
+            .and_then(|o| o.products.iter().find(|p| p.item_id == "Desc_Wire_C"))
+            .expect("wire offer");
+        assert!((wire.export_ipm - 100.0).abs() < 1e-3, "offer clamps to production");
+        assert!((wire.remaining_ipm - 100.0).abs() < 1e-3);
+
+        let capacity = gather_export_capacity(&db, "fac-consumer").unwrap();
+        let cap = capacity
+            .get(&("fac-wire".to_string(), "Desc_Wire_C".to_string()))
+            .copied()
+            .unwrap_or(0.0);
+        assert!((cap - 100.0).abs() < 1e-3, "capacity clamps to production, got {cap}");
     }
 
     #[test]

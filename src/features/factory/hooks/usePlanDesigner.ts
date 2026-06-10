@@ -97,6 +97,10 @@ export function usePlanDesigner(factoryId: string) {
       return;
     }
     setComputing(true);
+    // The cleanup cancels both the pending timeout AND any in-flight
+    // response — switching factories mid-compute must not paint the
+    // previous factory's graph over the new one.
+    let cancelled = false;
     const handle = window.setTimeout(() => {
       plannerApi
         .computePlan({
@@ -105,8 +109,11 @@ export function usePlanDesigner(factoryId: string) {
           imports: working.imports,
           recipeOverrides: working.recipeOverrides,
         })
-        .then((r) => setCompute(r))
+        .then((r) => {
+          if (!cancelled) setCompute(r);
+        })
         .catch((err: unknown) => {
+          if (cancelled) return;
           // Transport-level failure (not a PlannerError) — surface it
           // like a structural error so the banner shows something.
           console.error("plan compute failed:", err);
@@ -115,10 +122,15 @@ export function usePlanDesigner(factoryId: string) {
             error: { kind: "unknownTarget", itemId: String(err) } as PlannerError,
           });
         })
-        .finally(() => setComputing(false));
+        .finally(() => {
+          if (!cancelled) setComputing(false);
+        });
     }, COMPUTE_DEBOUNCE_MS);
-    return () => window.clearTimeout(handle);
-  }, [working]);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [working, factoryId]);
 
   const persisted = planQuery.data;
   const dirty = useMemo(() => {
