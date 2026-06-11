@@ -435,13 +435,10 @@ mod tests {
     }
 
     #[test]
-    fn sam_reachability_gates_targets() {
-        // The bundled v1.1 dump ships the SAM item but no converter
-        // recipes yet, so nothing reachable actually consumes SAM —
-        // the toggle is wired for the dataset update that brings the
-        // Ficsite chain. What we CAN pin today: ordinary items never
-        // read as SAM-locked, and a SAM-locked (here: nonexistent)
-        // product is Unreachable rather than silently mis-planned.
+    fn sam_recipes_are_excluded_until_toggled_on() {
+        // The 1.2 dataset carries the full SAM/converter chain, so the
+        // gate is live: Ficsite is SAM-locked, ordinary items aren't,
+        // and flipping the toggle actually plans down to SAM ore.
         let gd = gd();
         let alts = HashSet::new();
         let producible = producible_items(&gd, &alts, false);
@@ -456,6 +453,20 @@ mod tests {
         let input = base_input(&demands, &external, &cuts, &overrides, &alts);
         let err = solve(&gd, &input, &rarity_weights(&gd), 2000).unwrap_err();
         assert!(matches!(err, SolveError::Unreachable { .. }));
+
+        let mut with_sam = base_input(&demands, &external, &cuts, &overrides, &alts);
+        with_sam.include_sam = true;
+        let sol = solve(&gd, &with_sam, &rarity_weights(&gd), 2000).unwrap();
+        assert!(
+            sol.raw_extraction.contains_key(SAM_ITEM_ID),
+            "Ficsite must chain down to SAM ore: {:?}",
+            sol.raw_extraction
+        );
+        assert!(
+            sol.recipes.iter().any(|(id, _)| id == "Recipe_IngotSAM_C"),
+            "Reanimated SAM step expected: {:?}",
+            sol.recipes
+        );
     }
 
     #[test]

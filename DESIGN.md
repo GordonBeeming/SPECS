@@ -340,9 +340,8 @@ banner line saying so.
 Each plan has a **SAM** toggle in the header
 (persisted in `factory_plan_option`): off by default, it removes
 recipes whose chain needs SAM; a product that can only be made with
-SAM forces it on and disables the switch. The bundled v1.1 dataset
-doesn't ship the converter recipes yet, so the toggle is inert until
-the next dataset refresh.
+SAM forces it on and disables the switch (the 1.2 dataset carries
+the full SAM/converter chain, so the gate is live).
 
 Edges carry the item name + ipm as their label; items with several
 producers emit a proportional edge from each (local lines, imports,

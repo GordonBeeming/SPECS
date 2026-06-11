@@ -1,6 +1,6 @@
 //! Bundled, read-only Satisfactory game data.
 //!
-//! The dataset (`game-data/v0.1.json`) is loaded once at startup, validated,
+//! The dataset (`game-data/v1.2.json`) is loaded once at startup, validated,
 //! and parked in a [`GameData`] struct that slices borrow through the Tauri
 //! state. This is read-only data — playthrough-specific decisions (current
 //! tier, alt recipes unlocked, etc.) live in the playthrough DB, not here.
