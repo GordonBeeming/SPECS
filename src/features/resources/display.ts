@@ -1,6 +1,22 @@
 import type { ResourceNodeRow } from "./types";
 
 /**
+ * The extractor a fresh claim should default to: the caller's preferred
+ * building when the node accepts it (the map placement loadout), else
+ * the node's first allowed extractor (Mk1 for ore, the only choice for
+ * oil/wells), else `null` for geysers.
+ */
+export function claimDefaultExtractor(
+  node: Pick<ResourceNodeRow, "allowedExtractors">,
+  preferredId?: string | null,
+): string | null {
+  const allowed = node.allowedExtractors;
+  if (allowed.length === 0) return null;
+  if (preferredId && allowed.some((e) => e.id === preferredId)) return preferredId;
+  return allowed[0].id;
+}
+
+/**
  * Human-friendly label for a resource node. The bundled catalog ids
  * (e.g. `BP_ResourceNode114`) are unique-stable but mean nothing to a
  * player; show a sequential index within the node's (resource, purity)

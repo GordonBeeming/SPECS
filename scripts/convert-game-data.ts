@@ -516,11 +516,12 @@ const generators = [
 
 // Miners: base items-per-minute at 100% clock on normal-purity nodes.
 // Impure = base/2, Pure = base*2. Matches the wiki Mk1=60 / Mk2=120 /
-// Mk3=240 baseline.
+// Mk3=240 baseline. Unlock tiers mirror BUILDING_UNLOCK_TIER above
+// (pinned from the dump's milestone schematics).
 const miners = [
-  { id: "Build_MinerMk1_C", mark: 1, baseItemsPerMinute: 60, unlockTier: 0 },
-  { id: "Build_MinerMk2_C", mark: 2, baseItemsPerMinute: 120, unlockTier: 3 },
-  { id: "Build_MinerMk3_C", mark: 3, baseItemsPerMinute: 240, unlockTier: 7 },
+  { id: "Build_MinerMk1_C", mark: 1, baseItemsPerMinute: 60, unlockTier: BUILDING_UNLOCK_TIER.Build_MinerMk1_C },
+  { id: "Build_MinerMk2_C", mark: 2, baseItemsPerMinute: 120, unlockTier: BUILDING_UNLOCK_TIER.Build_MinerMk2_C },
+  { id: "Build_MinerMk3_C", mark: 3, baseItemsPerMinute: 240, unlockTier: BUILDING_UNLOCK_TIER.Build_MinerMk3_C },
 ];
 
 // Transport vehicles: stack-based throughput baseline per the plan. Cycle

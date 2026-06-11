@@ -7,7 +7,8 @@ use crate::shared::error::{AppError, AppResult};
 use crate::shared::gamedata::GameData;
 
 use super::domain::{
-    BudgetAssumption, extractor_output_ipm, resource_budget, water_group_output_ipm,
+    BudgetAssumption, allowed_extractors, extractor_output_ipm, resource_budget,
+    water_group_output_ipm,
 };
 use super::dto::{
     ResourceBudget, ResourceNodeClaim, ResourceNodeRow, SetNodeClaimInput,
@@ -64,6 +65,10 @@ pub fn list_resource_nodes(
         let ipm = claim_row
             .map(|c| extractor_output_ipm(node, c.miner_id.as_deref(), c.clock_pct, &game_data))
             .unwrap_or(0.0);
+        let allowed = allowed_extractors(node, &game_data);
+        let claim_invalid_extractor = claim_row
+            .and_then(|c| c.miner_id.as_deref())
+            .is_some_and(|id| !allowed.iter().any(|e| e.id == id));
         out.push(ResourceNodeRow {
             id: node.id.clone(),
             resource_item_id: node.resource_item_id.clone(),
@@ -83,6 +88,8 @@ pub fn list_resource_nodes(
                 updated_at: r.updated_at.clone(),
             }),
             items_per_minute: ipm,
+            allowed_extractors: allowed,
+            claim_invalid_extractor,
         });
     }
     Ok(out)
@@ -104,29 +111,21 @@ pub fn set_node_claim(
         )));
     };
     if let Some(miner_id) = input.miner_id.as_deref() {
-        match node.kind {
-            crate::shared::gamedata::types::NodeKind::MinerNode => {
-                if !game_data.miners().iter().any(|m| m.id == miner_id) {
-                    return Err(AppError::Invalid(format!(
-                        "unknown miner building: {miner_id}"
-                    )));
-                }
-            }
-            crate::shared::gamedata::types::NodeKind::FrackingWell => {
-                // Resource Well Extractor — single accepted id. Reject
-                // miners on wells so the UI's wrong-picker bugs surface
-                // as errors instead of producing zero ipm later.
-                if miner_id != "Build_FrackingSmasher_C" {
-                    return Err(AppError::Invalid(format!(
-                        "fracking wells only accept Build_FrackingSmasher_C (got {miner_id})"
-                    )));
-                }
-            }
-            crate::shared::gamedata::types::NodeKind::Geyser => {
-                return Err(AppError::Invalid(
-                    "geysers feed geothermal generators — track them in the power slice".into(),
-                ));
-            }
+        // The picker options and this check come from the same function,
+        // so a wrong-picker bug surfaces as an error here instead of
+        // producing a silently wrong rate later.
+        let allowed = allowed_extractors(node, &game_data);
+        if allowed.is_empty() {
+            return Err(AppError::Invalid(
+                "geysers feed geothermal generators — track them in the power slice".into(),
+            ));
+        }
+        if !allowed.iter().any(|e| e.id == miner_id) {
+            let names: Vec<&str> = allowed.iter().map(|e| e.id.as_str()).collect();
+            return Err(AppError::Invalid(format!(
+                "this node only accepts {} (got {miner_id})",
+                names.join(", ")
+            )));
         }
     }
     let db = require_active(&active)?;

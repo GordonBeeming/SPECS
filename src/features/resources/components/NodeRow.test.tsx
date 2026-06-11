@@ -8,6 +8,12 @@ import { resourcesApi } from "../api";
 import { playthroughApi } from "@/features/playthrough/api";
 import type { ResourceNodeRow } from "../types";
 
+const MINER_EXTRACTORS = [
+  { id: "Build_MinerMk1_C", name: "Miner Mk.1", baseIpm: 60, unlockTier: 0 },
+  { id: "Build_MinerMk2_C", name: "Miner Mk.2", baseIpm: 120, unlockTier: 4 },
+  { id: "Build_MinerMk3_C", name: "Miner Mk.3", baseIpm: 240, unlockTier: 8 },
+];
+
 const unclaimed: ResourceNodeRow = {
   id: "BP_Iron1",
   resourceItemId: "Desc_OreIron_C",
@@ -19,6 +25,8 @@ const unclaimed: ResourceNodeRow = {
   z: 0,
   claim: null,
   itemsPerMinute: 0,
+  allowedExtractors: MINER_EXTRACTORS,
+  claimInvalidExtractor: false,
 };
 
 const claimedMk2: ResourceNodeRow = {
@@ -110,6 +118,9 @@ describe("<NodeRow />", () => {
       resourceItemId: "Desc_Water_C",
       resourceItemName: "Water",
       kind: "fracking_well",
+      allowedExtractors: [
+        { id: "Build_FrackingSmasher_C", name: "Resource Well Pressuriser", baseIpm: 60, unlockTier: 8 },
+      ],
     };
     renderWithProviders(<NodeRow row={well} factories={[]} index={0} />);
     fireEvent.click(screen.getByLabelText("Claim node"));
@@ -118,5 +129,79 @@ describe("<NodeRow />", () => {
         expect.objectContaining({ minerId: "Build_FrackingSmasher_C" }),
       ),
     );
+  });
+
+  const oilNode: ResourceNodeRow = {
+    ...unclaimed,
+    id: "BP_Oil1",
+    resourceItemId: "Desc_LiquidOil_C",
+    resourceItemName: "Crude Oil",
+    purity: "Normal",
+    allowedExtractors: [
+      { id: "Build_OilPump_C", name: "Oil Extractor", baseIpm: 120, unlockTier: 5 },
+    ],
+  };
+
+  it("oil nodes one-click claim with the Oil Extractor, not a miner", async () => {
+    renderWithProviders(<NodeRow row={oilNode} factories={[]} index={0} />);
+    fireEvent.click(screen.getByLabelText("Claim node"));
+    await waitFor(() =>
+      expect(resourcesApi.setClaim).toHaveBeenCalledWith(
+        expect.objectContaining({ minerId: "Build_OilPump_C" }),
+      ),
+    );
+  });
+
+  it("oil node editor offers only the Oil Extractor", () => {
+    renderWithProviders(
+      <NodeRow
+        row={{
+          ...oilNode,
+          claim: {
+            minerId: "Build_OilPump_C",
+            clockPct: 100,
+            factoryId: null,
+            notes: null,
+            createdAt: "2026-06-11T00:00:00Z",
+            updatedAt: "2026-06-11T00:00:00Z",
+          },
+          itemsPerMinute: 120,
+        }}
+        factories={[]}
+        index={0}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Edit"));
+    expect(screen.getByRole("option", { name: "Oil Extractor" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Miner Mk/ })).toBeNull();
+  });
+
+  it("flags a stale miner claim on an oil node and preselects the fix", () => {
+    renderWithProviders(
+      <NodeRow
+        row={{
+          ...oilNode,
+          claim: {
+            minerId: "Build_MinerMk2_C",
+            clockPct: 100,
+            factoryId: null,
+            notes: null,
+            createdAt: "2026-06-11T00:00:00Z",
+            updatedAt: "2026-06-11T00:00:00Z",
+          },
+          // The backend already computes the rate with the correct
+          // extractor (120 base on Normal), not the stored Mk2.
+          itemsPerMinute: 120,
+          claimInvalidExtractor: true,
+        }}
+        factories={[]}
+        index={0}
+      />,
+    );
+    expect(screen.getByText("wrong extractor")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Edit"));
+    // Editor coerces the selection to the valid building so a plain
+    // Save repairs the claim.
+    expect(screen.getByRole("combobox", { name: /extractor/i })).toHaveValue("Build_OilPump_C");
   });
 });
