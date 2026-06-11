@@ -82,12 +82,23 @@ pub fn allowed_extractors(node: &MapNode, game_data: &GameData) -> Vec<Extractor
                 unlock_tier: m.unlock_tier,
             })
             .collect(),
-        NodeKind::FrackingWell => single(
-            "Build_FrackingSmasher_C",
-            "Resource Well Pressuriser",
-            WELL_EXTRACTOR_IPM,
-            8,
-        ),
+        NodeKind::FrackingWell => {
+            // The stored id stays Build_FrackingSmasher_C — it's the
+            // clocked building and what every existing claim row holds —
+            // but players place a Resource Well Extractor on each
+            // satellite, so the label comes from that building. Changing
+            // the stored id would invalidate every saved well claim for
+            // zero rate difference.
+            let extractor = game_data.building("Build_FrackingExtractor_C");
+            vec![ExtractorOption {
+                id: "Build_FrackingSmasher_C".to_string(),
+                name: extractor
+                    .map(|b| b.name.clone())
+                    .unwrap_or_else(|| "Resource Well Extractor".to_string()),
+                base_ipm: WELL_EXTRACTOR_IPM,
+                unlock_tier: extractor.map(|b| b.unlock_tier).unwrap_or(8),
+            }]
+        }
         NodeKind::Geyser => Vec::new(),
     }
 }

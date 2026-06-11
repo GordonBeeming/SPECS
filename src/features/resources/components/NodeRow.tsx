@@ -71,7 +71,7 @@ function ClaimChip({
       <span className="rounded-full border border-border bg-bg px-2 py-0.5 text-fg-muted">
         {row.claim?.minerId
           ? extractorChipLabel(row.claim.minerId, row)
-          : "no miner"}
+          : "no extractor"}
       </span>
       {row.claimInvalidExtractor && (
         <span

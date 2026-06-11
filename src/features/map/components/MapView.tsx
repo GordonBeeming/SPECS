@@ -812,13 +812,18 @@ export function MapView() {
                               // Bind the node to that factory. Unclaimed
                               // miner nodes take the placement loadout
                               // (current mark + clock); existing claims
-                              // keep their own miner/clock.
+                              // keep their own miner/clock — coerced
+                              // through the node's allowed list, so a
+                              // stale extractor (Mk2 on an oil node)
+                              // repairs on bind instead of failing the
+                              // server's validation.
                               const existing = node.claim;
                               void setClaim.mutateAsync({
                                 nodeId: node.id,
-                                minerId:
-                                  existing?.minerId ??
-                                  claimDefaultExtractor(node, loadout.minerId),
+                                minerId: claimDefaultExtractor(
+                                  node,
+                                  existing?.minerId ?? loadout.minerId,
+                                ),
                                 clockPct: existing?.clockPct ?? loadout.minerClockPct,
                                 factoryId: targetFactoryId,
                                 notes: existing?.notes ?? null,
