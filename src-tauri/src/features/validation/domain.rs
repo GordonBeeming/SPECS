@@ -70,10 +70,12 @@ pub fn check_machines_tier(
 }
 
 /// Locked-alt usage in machine banks. Returns the alt ids found so the
-/// caller can fold them into the shopping list.
+/// caller can fold them into the shopping list. Only tier-reachable
+/// alts count — an alt above the current tier is already a TierGating
+/// error, and listing it as collectable would mislead.
 pub fn check_machines_locked_alts(
-    factory: &FactoryRef,
     machines: &[FactoryMachine],
+    tier: u8,
     unlocked: &HashSet<String>,
     gd: &GameData,
 ) -> Vec<String> {
@@ -81,11 +83,14 @@ pub fn check_machines_locked_alts(
     let mut seen = HashSet::new();
     for m in machines {
         let Some(r) = gd.recipe(&m.recipe_id) else { continue };
-        if r.is_alt && !unlocked.contains(&r.id) && seen.insert(r.id.clone()) {
+        if r.is_alt
+            && r.unlock_tier <= tier
+            && !unlocked.contains(&r.id)
+            && seen.insert(r.id.clone())
+        {
             found.push(r.id.clone());
         }
     }
-    let _ = factory;
     found
 }
 
@@ -226,10 +231,18 @@ pub fn check_links_tier(
 
 /// Flow consistency: per (source factory, item), links must not draw
 /// more than the production-clamped export slice; links for items the
-/// source doesn't plan at all are flagged per link.
+/// source neither plans nor makes in manual machine banks are flagged
+/// per link.
+///
+/// `manual_produced` is (factory, item) pairs coming out of manual
+/// machines — legacy factories without a saved plan still legitimately
+/// feed links. They satisfy the missing-product check but skip the
+/// overdraw math: with no export slice declared there's no stated
+/// capacity to enforce against.
 pub fn check_flows(
     targets: &[(String, PlanTargetRow)],
     links: &[LogisticsLink],
+    manual_produced: &HashSet<(String, String)>,
     factory_names: &HashMap<String, String>,
     gd: &GameData,
     out: &mut Vec<Finding>,
@@ -242,32 +255,33 @@ pub fn check_flows(
     // Same clamp as the planner's export offers: an export slice larger
     // than the production rate is a wish, not capacity.
     let mut available: HashMap<(String, String), f32> = HashMap::new();
-    let mut produced: HashSet<(String, String)> = HashSet::new();
+    let mut planned: HashSet<(String, String)> = HashSet::new();
     for (fid, t) in targets {
-        produced.insert((fid.clone(), t.item_id.clone()));
+        planned.insert((fid.clone(), t.item_id.clone()));
         let export = t.export_ipm.unwrap_or(0.0).min(t.ipm).max(0.0);
         *available.entry((fid.clone(), t.item_id.clone())).or_insert(0.0) += export;
     }
 
     let mut drawn: BTreeMap<(String, String), f32> = BTreeMap::new();
     for l in links {
-        if !produced.contains(&(l.from_factory_id.clone(), l.item_id.clone())) {
-            out.push(err(
-                Category::Flow,
-                FindingKind::LinkSourceMissingProduct {
-                    link_id: l.id.clone(),
-                    from_factory_id: l.from_factory_id.clone(),
-                    from_factory_name: name(&l.from_factory_id),
-                    to_factory_name: name(&l.to_factory_id),
-                    item_id: l.item_id.clone(),
-                    item_name: item_name(&l.item_id),
-                },
-            ));
+        let key = (l.from_factory_id.clone(), l.item_id.clone());
+        if !planned.contains(&key) {
+            if !manual_produced.contains(&key) {
+                out.push(err(
+                    Category::Flow,
+                    FindingKind::LinkSourceMissingProduct {
+                        link_id: l.id.clone(),
+                        from_factory_id: l.from_factory_id.clone(),
+                        from_factory_name: name(&l.from_factory_id),
+                        to_factory_name: name(&l.to_factory_id),
+                        item_id: l.item_id.clone(),
+                        item_name: item_name(&l.item_id),
+                    },
+                ));
+            }
             continue;
         }
-        *drawn
-            .entry((l.from_factory_id.clone(), l.item_id.clone()))
-            .or_insert(0.0) += l.items_per_minute;
+        *drawn.entry(key).or_insert(0.0) += l.items_per_minute;
     }
 
     for ((fid, item), total_drawn) in drawn {

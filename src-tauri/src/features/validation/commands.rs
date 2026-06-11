@@ -63,6 +63,9 @@ pub(crate) fn validate_impl(db: &PlaythroughDb, gd: &GameData) -> AppResult<Vali
 
     let mut grid_generated = 0.0_f32;
     let mut grid_consumed = 0.0_f32;
+    // (factory, item) pairs produced by manual machine banks — legacy
+    // factories without saved plans still legitimately feed links.
+    let mut manual_produced: HashSet<(String, String)> = HashSet::new();
 
     for f in &factories {
         let fref = FactoryRef { factory_id: f.id.clone(), factory_name: f.name.clone() };
@@ -72,13 +75,31 @@ pub(crate) fn validate_impl(db: &PlaythroughDb, gd: &GameData) -> AppResult<Vali
             factory_repo::machines_for_factory(c, &f.id).map_err(AppError::from)
         })?;
         domain::check_machines_tier(&fref, &machines, tier, gd, &mut findings);
-        let machine_alts = domain::check_machines_locked_alts(&fref, &machines, &unlocked, gd);
+        let machine_alts = domain::check_machines_locked_alts(&machines, tier, &unlocked, gd);
+        for m in &machines {
+            if let Some(r) = gd.recipe(&m.recipe_id) {
+                for o in &r.outputs {
+                    manual_produced.insert((f.id.clone(), o.item_id.clone()));
+                }
+            }
+        }
 
-        // Saved plan: recompute and inspect.
+        // Saved plan: recompute and inspect. A failure to even load one
+        // factory's plan must not kill the sweep — report it and move on
+        // (validation reports, never blocks).
         let mut plan_alts: Vec<String> = Vec::new();
-        match saved_plan_graph(db, gd, &f.id)? {
-            None => {}
-            Some(Err(reason)) => findings.push(Finding {
+        match saved_plan_graph(db, gd, &f.id) {
+            Err(e) => findings.push(Finding {
+                severity: Severity::Warning,
+                category: Category::SupplyPower,
+                kind: FindingKind::CheckFailed {
+                    area: "plan".to_string(),
+                    factory_name: Some(f.name.clone()),
+                    reason: e.to_string(),
+                },
+            }),
+            Ok(None) => {}
+            Ok(Some(Err(reason))) => findings.push(Finding {
                 severity: Severity::Error,
                 category: Category::SupplyPower,
                 kind: FindingKind::PlanDoesNotCompute {
@@ -87,7 +108,7 @@ pub(crate) fn validate_impl(db: &PlaythroughDb, gd: &GameData) -> AppResult<Vali
                     reason,
                 },
             }),
-            Some(Ok(graph)) => {
+            Ok(Some(Ok(graph))) => {
                 plan_alts =
                     domain::check_plan_graph(&fref, &graph, tier, &unlocked, gd, &mut findings);
             }
@@ -139,7 +160,7 @@ pub(crate) fn validate_impl(db: &PlaythroughDb, gd: &GameData) -> AppResult<Vali
 
     domain::check_claims(&claims, tier, gd, &mut findings);
     domain::check_links_tier(&links, &factory_names, tier, gd, &mut findings);
-    domain::check_flows(&targets, &links, &factory_names, gd, &mut findings);
+    domain::check_flows(&targets, &links, &manual_produced, &factory_names, gd, &mut findings);
     let alt_shopping_list = domain::build_alt_shopping_list(&alt_hits, gd, &mut findings);
 
     if grid_consumed > grid_generated + 0.001 {
@@ -313,6 +334,50 @@ mod tests {
                     if item_id == "Desc_IronRod_C")),
             "missing missing-product: {ks:?}"
         );
+    }
+
+    #[test]
+    fn above_tier_alt_machine_is_tier_gating_not_shopping_list() {
+        // After a downgrade to T0, a machine on a higher-tier alt is a
+        // TierGating error — listing it as collectable would mislead.
+        let db = open_test_db(0);
+        let gd = GameData::from_bundled().unwrap();
+        let late_alt = gd
+            .recipes()
+            .iter()
+            .find(|r| r.is_alt && r.unlock_tier > 0)
+            .expect("an alt above tier 0 exists");
+        insert_factory(&db, "f1", "Downgraded");
+        insert_machine(&db, "f1", &late_alt.building_id, &late_alt.id);
+        let report = validate_impl(&db, &gd).unwrap();
+        assert!(report.alt_shopping_list.is_empty(), "{:?}", report.alt_shopping_list);
+        assert!(kinds(&report).iter().any(|k| matches!(k,
+            FindingKind::MachineRecipeAboveTier { recipe_id, .. } if *recipe_id == late_alt.id)));
+    }
+
+    #[test]
+    fn manual_machine_production_satisfies_link_source_check() {
+        // A legacy factory with manual machines and no saved plan can
+        // still feed links — no missing-product error, and no overdraw
+        // either (no export slice declared, so no capacity to enforce).
+        let db = open_test_db(9);
+        let gd = GameData::from_bundled().unwrap();
+        insert_factory(&db, "legacy", "Manual Iron");
+        insert_factory(&db, "dst", "Consumer");
+        insert_machine(&db, "legacy", "Build_SmelterMk1_C", "Recipe_IngotIron_C");
+        db.with(|c| {
+            logistics_repo::link_insert(
+                c, "l1", "legacy", "dst", "Desc_IronIngot_C", 30.0, "belt", "{}", None, None, NOW,
+            )
+        })
+        .unwrap();
+        let report = validate_impl(&db, &gd).unwrap();
+        let ks = kinds(&report);
+        assert!(
+            !ks.iter().any(|k| matches!(k, FindingKind::LinkSourceMissingProduct { .. })),
+            "manual production must satisfy the source check: {ks:?}"
+        );
+        assert!(!ks.iter().any(|k| matches!(k, FindingKind::LinkOverdraw { .. })));
     }
 
     #[test]

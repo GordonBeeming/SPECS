@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { CircleAlert, FlaskConical, RefreshCw, ShieldCheck, TriangleAlert, X } from "lucide-react";
 
 import { Button } from "@/shared/ui/Button";
@@ -22,26 +21,23 @@ const CATEGORY_LABELS: Record<Category, string> = {
 const CATEGORY_ORDER: Category[] = ["tierGating", "flow", "supplyPower", "lockedAlts"];
 
 /**
- * Right-hand slide-over behind the header's Validate button. Runs the
- * sweep on mount; everything it shows is the server's call — the panel
- * never re-derives a number.
+ * Right-hand slide-over behind the header's Validate button. The sweep
+ * runs as a query on mount (Strict Mode dedupes); everything it shows
+ * is the server's call — the panel never re-derives a number.
  */
 export function ValidationPanel({ onClose }: ValidationPanelProps) {
-  const validation = useValidation();
-  const { mutate } = validation;
-
-  useEffect(() => {
-    mutate();
-  }, [mutate]);
+  const { data, isPending, isError, error, refetch, isFetching } = useValidation();
 
   return (
-    <div className="fixed inset-0 z-40" role="dialog" aria-label="Validate playthrough">
-      <button
-        type="button"
-        aria-label="Close validation"
-        onClick={onClose}
-        className="absolute inset-0 bg-black/40"
-      />
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Validate playthrough"
+      className="fixed inset-0 z-40 bg-black/40"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="absolute inset-y-0 right-0 flex w-full max-w-xl flex-col border-l border-border bg-bg shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
           <div className="flex items-center gap-2 text-sm font-semibold text-fg">
@@ -51,12 +47,12 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
-              onClick={() => mutate()}
+              onClick={() => void refetch()}
               aria-label="Re-run validation"
               className="px-2 py-1"
-              disabled={validation.isPending}
+              disabled={isFetching}
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${validation.isPending ? "animate-spin" : ""}`} />
+              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
             </Button>
             <Button variant="ghost" onClick={onClose} aria-label="Close" className="px-2 py-1">
               <X className="h-4 w-4" />
@@ -65,15 +61,15 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          {validation.isPending && (
+          {isPending && (
             <p className="text-sm text-fg-muted">Sweeping every factory, plan, claim and link…</p>
           )}
-          {validation.isError && (
+          {isError && (
             <p role="alert" className="text-sm text-danger">
-              Validation failed: {String(validation.error)}
+              Validation failed: {error instanceof Error ? error.message : String(error)}
             </p>
           )}
-          {validation.data && <Report report={validation.data} onClose={onClose} />}
+          {data && <Report report={data} onClose={onClose} />}
         </div>
       </div>
     </div>

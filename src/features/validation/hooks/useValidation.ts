@@ -1,12 +1,22 @@
-import { useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 import { validationApi } from "../api";
 
 /**
- * On-demand sweep — a mutation, not a query: the report is a snapshot
- * the user explicitly asks for, never background-refreshed (it walks
- * every factory's plan, so polling it would be rude).
+ * On-demand sweep. A query (not a mutation fired from an effect) so
+ * Strict Mode's double-mount dedupes into one backend sweep; `gcTime: 0`
+ * drops the cached report when the panel closes, so every open is a
+ * fresh sweep — the report is a snapshot, never background-refreshed
+ * (it walks every factory's plan, so polling it would be rude).
  */
 export function useValidation() {
-  return useMutation({ mutationFn: validationApi.validate });
+  return useQuery({
+    queryKey: ["validation-sweep"],
+    queryFn: validationApi.validate,
+    gcTime: 0,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
 }
