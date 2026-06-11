@@ -39,7 +39,10 @@ Mk2 belts, and the first space elevator part.
 
 - [ ] Phase 1 deliverable planned: Smart Plating at the stated rate
 - [ ] The Iron Works → Elevator Yard link exists with a belt transport plan
-- [ ] All ledgers clean, no belt segment over 120/min, power ≥ 0
+- [ ] Validate playthrough → no findings (anything you cannot clear gets a
+      bug report and an artifact note)
+- [ ] No belt segment over 120/min in the layouts
 - [ ] Layout artifacts: Elevator Yard (new), Iron Works + Copper Works
       (deltas only)
-- [ ] Screenshots: alts screen post-unlock, elevator yard plan graph
+- [ ] Screenshots: alts screen post-unlock, elevator yard plan graph,
+      validation panel

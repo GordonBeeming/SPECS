@@ -37,9 +37,10 @@ choice.
 
 ## Checkpoint
 
-- [ ] Both factories' ledgers show no missing inputs
+- [ ] Validate playthrough → no findings (anything you cannot clear gets a
+      bug report and an artifact note)
 - [ ] No belt segment over 60/min in the layouts
-- [ ] Power balance ≥ 0 in both factories
 - [ ] Layout artifacts written for both factories; screenshots of each
-      factory's plan graph and the map with claims
+      factory's plan graph, the map with claims, and the validation
+      panel
 - [ ] Bugs filed for anything that fought back

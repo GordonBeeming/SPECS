@@ -59,8 +59,9 @@ byproduct netting harder than anything before it.
 - [ ] Phase 4 parts planned at stated rates
 - [ ] Aluminum water loop closed (reuse edges, no fluid surplus warnings
       left unexplained)
-- [ ] Nuclear online with waste path stated; grid restated
-- [ ] Well satellites claimed with the app's well-extractor option (one
-      claim per satellite, purity rates apply per satellite)
+- [ ] Validate playthrough → no findings (covers the per-satellite well
+      claims, supply, the grid with nuclear online, and any tier
+      slippage); waste path stated in the artifact
 - [ ] Belt ≤ 780/min, pipes ≤ 600 m³/min
-- [ ] Layouts + screenshots (aluminum plan with reuse edges, power view)
+- [ ] Layouts + screenshots (aluminum plan with reuse edges, power view,
+      validation panel)
