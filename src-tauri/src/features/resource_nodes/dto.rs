@@ -2,6 +2,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::shared::gamedata::types::{NodeKind, NodePurity};
 
+/// One extractor building a node can legally take, with the data the
+/// pickers need to render and gate it. Produced by
+/// `domain::allowed_extractors` — the same function `set_node_claim`
+/// validates against, so UI options and server rules can't drift.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractorOption {
+    pub id: String,
+    pub name: String,
+    /// Output at 100% clock on a Normal-purity node.
+    pub base_ipm: f32,
+    pub unlock_tier: u8,
+}
+
 /// One row in the Resources view. Combines the static catalog entry with
 /// the per-playthrough claim state so the React side renders without
 /// having to cross-reference two lists.
@@ -25,6 +39,14 @@ pub struct ResourceNodeRow {
     /// `0.0` when unclaimed, when extractor is unset, or for geysers
     /// (which feed the power slice, not item flow).
     pub items_per_minute: f32,
+    /// The extractor buildings this node accepts — drives every picker.
+    /// Empty for geysers.
+    pub allowed_extractors: Vec<ExtractorOption>,
+    /// The claim's stored extractor isn't in `allowed_extractors` (e.g.
+    /// a Miner Mk2 saved on an oil node before oil got its own extractor
+    /// family). The rate above is already computed with the correct
+    /// extractor; this flag lets the UI warn so the user resaves.
+    pub claim_invalid_extractor: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

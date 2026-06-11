@@ -8828,13 +8828,13 @@
       "id": "Build_MinerMk2_C",
       "mark": 2,
       "baseItemsPerMinute": 120,
-      "unlockTier": 3
+      "unlockTier": 4
     },
     {
       "id": "Build_MinerMk3_C",
       "mark": 3,
       "baseItemsPerMinute": 240,
-      "unlockTier": 7
+      "unlockTier": 8
     }
   ],
   "transportVehicles": [

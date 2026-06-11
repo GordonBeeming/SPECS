@@ -23,6 +23,15 @@ export interface ResourceNodeClaimWire {
   updatedAt: string;
 }
 
+/** One extractor building a node accepts — drives every picker. */
+export interface ExtractorOption {
+  id: string;
+  name: string;
+  /** Output at 100% clock on a Normal-purity node. */
+  baseIpm: number;
+  unlockTier: number;
+}
+
 export interface ResourceNodeRow {
   id: string;
   resourceItemId: string;
@@ -35,6 +44,15 @@ export interface ResourceNodeRow {
   coreId?: string | null;
   claim?: ResourceNodeClaimWire | null;
   itemsPerMinute: number;
+  /** Empty for geysers. */
+  allowedExtractors: ExtractorOption[];
+  /**
+   * The stored claim's extractor isn't valid for this node (e.g. a
+   * Miner Mk2 saved on an oil node before oil got its own extractor
+   * family). `itemsPerMinute` is already computed with the correct
+   * extractor; this just flags the row so the user resaves.
+   */
+  claimInvalidExtractor: boolean;
 }
 
 export interface SetNodeClaimInput {

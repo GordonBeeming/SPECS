@@ -61,6 +61,7 @@ import { ClockInput } from "@/shared/ui/ClockInput";
 import mapAsset from "@/assets/map/satisfactory-map.webp";
 
 import { pctToWorld, worldToPct } from "../transform";
+import { claimDefaultExtractor } from "@/features/resources/display";
 import type { ResourceNodeRow, WaterExtractorGroup } from "@/features/resources/types";
 
 const PURITY_GLOW = {
@@ -811,17 +812,18 @@ export function MapView() {
                               // Bind the node to that factory. Unclaimed
                               // miner nodes take the placement loadout
                               // (current mark + clock); existing claims
-                              // keep their own miner/clock.
+                              // keep their own miner/clock — coerced
+                              // through the node's allowed list, so a
+                              // stale extractor (Mk2 on an oil node)
+                              // repairs on bind instead of failing the
+                              // server's validation.
                               const existing = node.claim;
                               void setClaim.mutateAsync({
                                 nodeId: node.id,
-                                minerId:
-                                  existing?.minerId ??
-                                  (node.kind === "fracking_well"
-                                    ? "Build_FrackingSmasher_C"
-                                    : node.kind === "geyser"
-                                      ? null
-                                      : loadout.minerId),
+                                minerId: claimDefaultExtractor(
+                                  node,
+                                  existing?.minerId ?? loadout.minerId,
+                                ),
                                 clockPct: existing?.clockPct ?? loadout.minerClockPct,
                                 factoryId: targetFactoryId,
                                 notes: existing?.notes ?? null,
@@ -1920,11 +1922,10 @@ interface NodePopoverProps {
 }
 
 function NodePopover({ node, loadout, factories, onClaim, onRelease, onClose }: NodePopoverProps) {
+  // claimDefaultExtractor coerces stale claims (e.g. a Mk2 saved on an
+  // oil node) to the node's valid building, so Update repairs them.
   const [minerId, setMinerId] = useState<string>(
-    node.claim?.minerId ??
-      (node.kind === "fracking_well"
-        ? "Build_FrackingSmasher_C"
-        : loadout.minerId),
+    claimDefaultExtractor(node, node.claim?.minerId ?? loadout.minerId) ?? "",
   );
   const [clockPct, setClockPct] = useState(
     node.claim?.clockPct ?? (node.kind === "miner_node" ? loadout.minerClockPct : 100),
@@ -1963,15 +1964,11 @@ function NodePopover({ node, loadout, factories, onClaim, onRelease, onClose }: 
               onChange={(e) => setMinerId(e.target.value)}
               className="mt-1 h-7 w-full rounded-md border border-border bg-bg px-1.5 text-[12px] text-fg outline-none focus:border-primary"
             >
-              {node.kind === "fracking_well" ? (
-                <option value="Build_FrackingSmasher_C">Well Extractor</option>
-              ) : (
-                <>
-                  <option value="Build_MinerMk1_C">Miner Mk1</option>
-                  <option value="Build_MinerMk2_C">Miner Mk2</option>
-                  <option value="Build_MinerMk3_C">Miner Mk3</option>
-                </>
-              )}
+              {node.allowedExtractors.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}
+                </option>
+              ))}
             </select>
           </label>
           <label className="block">
@@ -2015,7 +2012,7 @@ function NodePopover({ node, loadout, factories, onClaim, onRelease, onClose }: 
         <Button
           onClick={() =>
             onClaim({
-              minerId: node.kind === "geyser" ? null : minerId,
+              minerId: minerId === "" ? null : minerId,
               clockPct,
               factoryId: factoryId.trim() === "" ? null : factoryId,
               notes: null,

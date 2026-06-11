@@ -8,12 +8,29 @@ use serde::Deserialize;
 use crate::shared::gamedata::GameData;
 use crate::shared::gamedata::types::{MapNode, Miner, NodeKind, NodePurity};
 
-use super::dto::{PurityCount, ResourceBudget, ResourceBudgetRow};
+use super::dto::{ExtractorOption, PurityCount, ResourceBudget, ResourceBudgetRow};
 use super::repo::{ClaimRow, WaterGroupRow};
 
 /// Water Extractor output at 100% clock (m³/min) — game constant, the
 /// open-water counterpart of the fracking 60 base below.
 pub const WATER_PUMP_IPM: f32 = 120.0;
+
+/// Oil Extractor output at 100% clock on a Normal node (m³/min).
+/// Standard crude-oil seeps take exactly one of these — no miner marks;
+/// purity and clock are the only knobs (60/120/240 by purity).
+pub const OIL_EXTRACTOR_IPM: f32 = 120.0;
+
+/// Resource Well Extractor output per satellite at 100% clock on a
+/// Normal satellite (30/60/120 by purity).
+pub const WELL_EXTRACTOR_IPM: f32 = 60.0;
+
+/// Standard oil seeps live in the catalog as `miner_node` (that's their
+/// map shape), but their extractor family is the Oil Extractor, not the
+/// miner marks. This is the one resource where node kind alone doesn't
+/// pick the extractor.
+pub fn is_oil_node(node: &MapNode) -> bool {
+    node.kind == NodeKind::MinerNode && node.resource_item_id == "Desc_LiquidOil_C"
+}
 
 /// Total m³/min a group of free-placed water extractors produces —
 /// both banks summed, each `count × 120 × clock`.
@@ -31,14 +48,75 @@ pub fn water_group_output_ipm(group: &WaterGroupRow) -> f32 {
         }
 }
 
+/// The extractor buildings a node can legally take. Single source of
+/// truth for the pickers (NodeRow, map popover, placement loadout) and
+/// for `set_node_claim` validation — they must never disagree again.
+pub fn allowed_extractors(node: &MapNode, game_data: &GameData) -> Vec<ExtractorOption> {
+    // One lookup per building; the fallbacks (catalog names) only fire
+    // if the dataset somehow drops the building.
+    let single = |id: &str, fallback_name: &str, base_ipm: f32, fallback_tier: u8| {
+        let building = game_data.building(id);
+        vec![ExtractorOption {
+            id: id.to_string(),
+            name: building
+                .map(|b| b.name.clone())
+                .unwrap_or_else(|| fallback_name.to_string()),
+            base_ipm,
+            unlock_tier: building.map(|b| b.unlock_tier).unwrap_or(fallback_tier),
+        }]
+    };
+    if is_oil_node(node) {
+        return single("Build_OilPump_C", "Oil Extractor", OIL_EXTRACTOR_IPM, 5);
+    }
+    match node.kind {
+        NodeKind::MinerNode => game_data
+            .miners()
+            .iter()
+            .map(|m| ExtractorOption {
+                id: m.id.clone(),
+                name: game_data
+                    .building(&m.id)
+                    .map(|b| b.name.clone())
+                    .unwrap_or_else(|| format!("Miner Mk{}", m.mark)),
+                base_ipm: m.base_items_per_minute,
+                unlock_tier: m.unlock_tier,
+            })
+            .collect(),
+        NodeKind::FrackingWell => {
+            // The stored id stays Build_FrackingSmasher_C — it's the
+            // clocked building and what every existing claim row holds —
+            // but players place a Resource Well Extractor on each
+            // satellite, so the label comes from that building. Changing
+            // the stored id would invalidate every saved well claim for
+            // zero rate difference.
+            let extractor = game_data.building("Build_FrackingExtractor_C");
+            vec![ExtractorOption {
+                id: "Build_FrackingSmasher_C".to_string(),
+                name: extractor
+                    .map(|b| b.name.clone())
+                    .unwrap_or_else(|| "Resource Well Extractor".to_string()),
+                base_ipm: WELL_EXTRACTOR_IPM,
+                unlock_tier: extractor.map(|b| b.unlock_tier).unwrap_or(8),
+            }]
+        }
+        NodeKind::Geyser => Vec::new(),
+    }
+}
+
 /// Items-per-minute a single extractor produces on a node at the given
 /// clock. Geysers produce nothing — they're for power.
 ///
-/// Miner_node: looks up the miner row by id, scales by purity + clock.
+/// Miner_node (solid ore): looks up the miner row by id, scales by
+/// purity + clock.
 ///
-/// Fracking_well: uses the per-resource extractor rates pinned below
-/// (Resource Well Extractor outputs 60/120/240 m³ or items per minute
-/// for Impure/Normal/Pure satellites at 100% clock, source: wiki).
+/// Oil nodes: Oil Extractor math (120 base × purity × clock) for ANY
+/// set extractor id — claims saved before oil nodes got their own
+/// extractor family may still carry a Mk* id, and lying about the rate
+/// would be worse than coercing it (warn, don't block; the row flags
+/// the stale id separately).
+///
+/// Fracking_well: Resource Well Extractor, 60 base × purity × clock,
+/// mark-independent — there's only one extractor building per well.
 pub fn extractor_output_ipm(
     node: &MapNode,
     miner_building_id: Option<&str>,
@@ -50,6 +128,13 @@ pub fn extractor_output_ipm(
     }
     let clock = clock_pct / 100.0;
     let purity_mult = node.purity.multiplier();
+    if is_oil_node(node) {
+        // `None` still means "claimed but no extractor built yet".
+        if miner_building_id.is_none() {
+            return 0.0;
+        }
+        return OIL_EXTRACTOR_IPM * purity_mult * clock;
+    }
     match node.kind {
         NodeKind::MinerNode => {
             let Some(id) = miner_building_id else { return 0.0 };
@@ -58,14 +143,7 @@ pub fn extractor_output_ipm(
             };
             miner.base_items_per_minute * purity_mult * clock
         }
-        NodeKind::FrackingWell => {
-            // Resource Well Extractor rates are independent of miner mark —
-            // there's only one extractor building per well. Base 60 items
-            // (or m³) per minute at Normal purity, scaled by purity + clock.
-            // Skipping mark lookup keeps the code simple and matches the
-            // wiki's "purity is the only knob" wording.
-            60.0 * purity_mult * clock
-        }
+        NodeKind::FrackingWell => WELL_EXTRACTOR_IPM * purity_mult * clock,
         NodeKind::Geyser => 0.0,
     }
 }
@@ -233,11 +311,16 @@ pub fn node_max_ipm(
         ),
     };
     let purity_mult = node.purity.multiplier();
+    if is_oil_node(node) {
+        // One Oil Extractor per seep, mark-independent — like wells,
+        // clock is the only knob the assumption moves.
+        return OIL_EXTRACTOR_IPM * purity_mult * clock;
+    }
     match node.kind {
         NodeKind::MinerNode => miner_base.unwrap_or(0.0) * purity_mult * clock,
         // One extractor per well satellite, mark-independent — clock is
         // the only knob the assumption moves.
-        NodeKind::FrackingWell => 60.0 * purity_mult * clock,
+        NodeKind::FrackingWell => WELL_EXTRACTOR_IPM * purity_mult * clock,
         NodeKind::Geyser => 0.0,
     }
 }
@@ -375,6 +458,117 @@ mod tests {
                 &gd,
             ),
             0.0
+        );
+    }
+
+    fn oil_node(p: NodePurity) -> MapNode {
+        MapNode {
+            id: format!("oil-{:?}", p),
+            resource_item_id: "Desc_LiquidOil_C".into(),
+            purity: p,
+            kind: NodeKind::MinerNode,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            core_id: None,
+        }
+    }
+
+    #[test]
+    fn oil_nodes_use_oil_extractor_rates_not_miner_curves() {
+        let gd = GameData::from_bundled().unwrap();
+        // 120 base: Impure 60, Normal 120, Pure 240 at 100% clock.
+        for (purity, want) in [
+            (NodePurity::Impure, 60.0),
+            (NodePurity::Normal, 120.0),
+            (NodePurity::Pure, 240.0),
+        ] {
+            let ipm = extractor_output_ipm(
+                &oil_node(purity),
+                Some("Build_OilPump_C"),
+                100.0,
+                &gd,
+            );
+            assert!((ipm - want).abs() < 0.01, "{purity:?}: got {ipm}, want {want}");
+        }
+    }
+
+    #[test]
+    fn stale_miner_claim_on_oil_node_coerces_to_oil_extractor_math() {
+        let gd = GameData::from_bundled().unwrap();
+        // A claim saved before oil nodes got their own extractor family
+        // may carry a Mk* id — the rate must not lie. Mk1 on Normal would
+        // read 60; the Oil Extractor's correct 120 proves the coercion.
+        let ipm = extractor_output_ipm(
+            &oil_node(NodePurity::Normal),
+            Some("Build_MinerMk1_C"),
+            100.0,
+            &gd,
+        );
+        assert!((ipm - 120.0).abs() < 0.01, "got {ipm}, want oil-extractor 120");
+        // Unset extractor still reads as "claimed but not built" → 0.
+        assert_eq!(extractor_output_ipm(&oil_node(NodePurity::Normal), None, 100.0, &gd), 0.0);
+    }
+
+    #[test]
+    fn allowed_extractors_match_node_family() {
+        let gd = GameData::from_bundled().unwrap();
+        let iron = allowed_extractors(&iron_node(NodePurity::Normal), &gd);
+        assert_eq!(
+            iron.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(),
+            ["Build_MinerMk1_C", "Build_MinerMk2_C", "Build_MinerMk3_C"]
+        );
+        let oil = allowed_extractors(&oil_node(NodePurity::Normal), &gd);
+        assert_eq!(
+            oil.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(),
+            ["Build_OilPump_C"]
+        );
+        assert!((oil[0].base_ipm - 120.0).abs() < 0.01);
+        let well = MapNode {
+            id: "w".into(),
+            resource_item_id: "Desc_NitrogenGas_C".into(),
+            purity: NodePurity::Normal,
+            kind: NodeKind::FrackingWell,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            core_id: None,
+        };
+        assert_eq!(
+            allowed_extractors(&well, &gd)
+                .iter()
+                .map(|e| e.id.as_str())
+                .collect::<Vec<_>>(),
+            ["Build_FrackingSmasher_C"]
+        );
+        let geyser = MapNode {
+            id: "g".into(),
+            resource_item_id: "Desc_Geyser_C".into(),
+            purity: NodePurity::Normal,
+            kind: NodeKind::Geyser,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            core_id: None,
+        };
+        assert!(allowed_extractors(&geyser, &gd).is_empty());
+    }
+
+    #[test]
+    fn oil_budget_independent_of_miner_assumption() {
+        let gd = GameData::from_bundled().unwrap();
+        let at_tier0 = resource_budget(&HashMap::new(), &gd, 0, BudgetAssumption::CurrentTierBest);
+        let at_mk3 = resource_budget(&HashMap::new(), &gd, 9, BudgetAssumption::Mk3At100);
+        let oil = |b: &ResourceBudget| {
+            b.rows
+                .iter()
+                .find(|r| r.resource_item_id == "Desc_LiquidOil_C")
+                .map(|r| r.world_max_ipm)
+                .expect("oil row")
+        };
+        assert!(
+            (oil(&at_tier0) - oil(&at_mk3)).abs() < 0.5,
+            "oil seeps take one Oil Extractor — miner mark must not move the budget"
         );
     }
 

@@ -4,9 +4,9 @@ import { Check, Pencil, Plus, X } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import { ClockInput } from "@/shared/ui/ClockInput";
 
-import { nodeDisplayLabel } from "../display";
+import { claimDefaultExtractor, nodeDisplayLabel } from "../display";
 import { useClearNodeClaim, useSetNodeClaim } from "../hooks/useResources";
-import type { NodeKind, ResourceNodeRow } from "../types";
+import type { ResourceNodeRow } from "../types";
 
 interface NodeRowProps {
   row: ResourceNodeRow;
@@ -70,9 +70,17 @@ function ClaimChip({
     <div className="flex flex-wrap items-center gap-2 text-xs">
       <span className="rounded-full border border-border bg-bg px-2 py-0.5 text-fg-muted">
         {row.claim?.minerId
-          ? minerLabel(row.claim.minerId, row.kind)
-          : "no miner"}
+          ? extractorChipLabel(row.claim.minerId, row)
+          : "no extractor"}
       </span>
+      {row.claimInvalidExtractor && (
+        <span
+          className="rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-warning"
+          title={`This node uses ${row.allowedExtractors[0]?.name ?? "a different extractor"} — edit and save to fix the claim. Rates already use the correct extractor.`}
+        >
+          wrong extractor
+        </span>
+      )}
       <span className="rounded-full border border-border bg-bg px-2 py-0.5 text-fg-muted">
         {(row.claim?.clockPct ?? 100).toFixed(0)}%
       </span>
@@ -119,16 +127,13 @@ function ClaimButton({
       <Button
         variant="primary"
         onClick={() => {
-          // One-click claim with sensible defaults: Mk1 (or Smasher for
-          // wells), 100% clock, no factory. The user can refine via the
-          // editor afterwards.
-          const defaultMiner =
-            row.kind === "fracking_well"
-              ? "Build_FrackingSmasher_C"
-              : "Build_MinerMk1_C";
+          // One-click claim with sensible defaults: the node's first
+          // allowed extractor (Mk1 for ore, the only choice for
+          // oil/wells), 100% clock, no factory. The user can refine via
+          // the editor afterwards.
           void setClaim.mutate({
             nodeId: row.id,
-            minerId: defaultMiner,
+            minerId: claimDefaultExtractor(row),
             clockPct: 100,
             factoryId: null,
             notes: null,
@@ -173,21 +178,21 @@ function ClaimEditor({
   onDone: () => void;
 }) {
   const setClaim = useSetNodeClaim();
+  // A stale claim (e.g. Mk2 saved on an oil node before oil got its own
+  // extractor family) preselects the valid building so a plain Save
+  // repairs it.
   const [minerId, setMinerId] = useState<string>(
-    row.claim?.minerId ??
-      (row.kind === "fracking_well"
-        ? "Build_FrackingSmasher_C"
-        : "Build_MinerMk1_C"),
+    claimDefaultExtractor(row, row.claim?.minerId) ?? "",
   );
   const [clockPct, setClockPct] = useState<number>(row.claim?.clockPct ?? 100);
   const [factoryId, setFactoryId] = useState<string>(
     row.claim?.factoryId ?? "",
   );
 
-  // Resource Well Extractor is the only valid building for fracking
-  // wells; Mk1/Mk2/Mk3 only show for solid-ore nodes. Geysers feed the
-  // power slice so we don't surface miners there at all.
-  const minerOptions = makeMinerOptions(row.kind);
+  // The server says which buildings this node accepts — the same list
+  // `set_node_claim` validates against. Geysers come back empty (they
+  // feed the power slice).
+  const minerOptions = row.allowedExtractors;
 
   return (
     <div className="grid grid-cols-1 gap-2 rounded-md border border-border bg-bg/50 p-3 md:grid-cols-4">
@@ -201,7 +206,7 @@ function ClaimEditor({
           >
             {minerOptions.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.label}
+                {m.name}
               </option>
             ))}
           </select>
@@ -232,7 +237,7 @@ function ClaimEditor({
             void setClaim.mutate(
               {
                 nodeId: row.id,
-                minerId: row.kind === "geyser" ? null : minerId,
+                minerId: minerId === "" ? null : minerId,
                 clockPct,
                 factoryId: factoryId.trim() === "" ? null : factoryId,
                 notes: null,
@@ -252,27 +257,17 @@ function ClaimEditor({
   );
 }
 
-function minerLabel(buildingId: string, kind: NodeKind): string {
-  if (kind === "fracking_well") return "Well Extractor";
-  if (buildingId === "Build_MinerMk1_C") return "Mk1";
-  if (buildingId === "Build_MinerMk2_C") return "Mk2";
-  if (buildingId === "Build_MinerMk3_C") return "Mk3";
-  return buildingId;
-}
-
-// Miner building ids are bundled into game data and never change
-// shape between versions, so hardcoding the option list here saves an
-// extra IPC round-trip per claim editor (and dodges the chicken-and-egg
-// of needing a `library_miners` command this slice doesn't otherwise
-// require). Labels match the in-game spelling.
-function makeMinerOptions(kind: NodeKind): Array<{ id: string; label: string }> {
-  if (kind === "fracking_well") {
-    return [{ id: "Build_FrackingSmasher_C", label: "Resource Well Extractor" }];
-  }
-  if (kind === "geyser") return [];
-  return [
-    { id: "Build_MinerMk1_C", label: "Miner Mk1" },
-    { id: "Build_MinerMk2_C", label: "Miner Mk2" },
-    { id: "Build_MinerMk3_C", label: "Miner Mk3" },
-  ];
+/**
+ * Compact pill text for the claim chip. Miner marks shorten to "Mk2"
+ * (the rows are dense); everything else uses the catalog name from
+ * `allowedExtractors`, falling back to the raw id for stale claims
+ * whose building isn't valid for this node anymore.
+ */
+function extractorChipLabel(buildingId: string, row: ResourceNodeRow): string {
+  const mk = buildingId.match(/^Build_MinerMk(\d)_C$/);
+  if (mk) return `Mk${mk[1]}`;
+  if (buildingId === "Build_FrackingSmasher_C") return "Well Extractor";
+  return (
+    row.allowedExtractors.find((e) => e.id === buildingId)?.name ?? buildingId
+  );
 }
