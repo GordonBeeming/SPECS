@@ -5,7 +5,6 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
 
-use crate::features::alts::repo as alts_repo;
 use crate::features::factory::repo as factory_repo;
 use crate::features::logistics::repo as logistics_repo;
 use crate::features::playthrough::state::ActivePlaythrough;
@@ -40,21 +39,34 @@ fn require_active(
 
 // ---- Production plan (graph-first designer) ----
 
-/// Unlocked alts + claimed raw supply — the two playthrough-state
+/// Alt recipes the planner may use: everything at or below the
+/// playthrough's current tier, collected or not. Planning stays open —
+/// the unlocked-alts table records what's actually been collected, and
+/// the validation slice diffs plans against it to produce the
+/// "unlock these to build this" shopping list.
+pub(crate) fn tier_reachable_alts(tier: u8, game_data: &GameData) -> HashSet<String> {
+    game_data
+        .recipes()
+        .iter()
+        .filter(|r| r.is_alt && r.unlock_tier <= tier)
+        .map(|r| r.id.clone())
+        .collect()
+}
+
+/// Tier-reachable alts + claimed raw supply — the two playthrough-state
 /// inputs every plan computation needs.
 fn gather_plan_context(
     db: &PlaythroughDb,
     game_data: &GameData,
 ) -> AppResult<(HashSet<String>, std::collections::HashMap<String, f32>)> {
-    let unlocked: HashSet<String> = db.with(|c| {
-        alts_repo::alt_list(c)
-            .map(|v| v.into_iter().map(|u| u.recipe_id).collect())
-            .map_err(AppError::from)
-    })?;
+    let (current_tier, _) =
+        db.with(|c| crate::features::playthrough::repo::progress_get(c).map_err(AppError::from))?;
+    let tier: u8 = current_tier.clamp(0, u8::MAX as i64) as u8;
+    let alts = tier_reachable_alts(tier, game_data);
     let claims = db.with(|c| nodes_repo::claims_all(c).map_err(AppError::from))?;
     let water_groups = db.with(|c| nodes_repo::water_groups_all(c).map_err(AppError::from))?;
     let supply = nodes_domain::available_supply(&claims, &water_groups, game_data);
-    Ok((unlocked, supply))
+    Ok((alts, supply))
 }
 
 /// Remaining export capacity per (factory, item) from one consumer's
@@ -143,6 +155,48 @@ fn plan_get_impl(db: &PlaythroughDb, factory_id: &str) -> AppResult<FactoryPlan>
             .map(|(node_key, x, y)| PlanLayoutEntry { node_key, x, y })
             .collect(),
     })
+}
+
+/// Recompute a factory's saved plan graph the way `factory_plan_compute`
+/// does, for slices that need the materialized graph (the validation
+/// sweep). `Ok(None)` = no plan saved; `Ok(Some(Err(reason)))` = the plan
+/// no longer computes (itself a finding, not a hard error).
+pub(crate) fn saved_plan_graph(
+    db: &PlaythroughDb,
+    game_data: &GameData,
+    factory_id: &str,
+) -> AppResult<Option<Result<super::dto::PlanGraph, String>>> {
+    let plan = plan_get_impl(db, factory_id)?;
+    if plan.targets.is_empty() {
+        return Ok(None);
+    }
+    let (alts, supply) = gather_plan_context(db, game_data)?;
+    let export_capacity = gather_export_capacity(db, factory_id)?;
+    let imports: Vec<super::dto::PlanImportSpec> = plan
+        .imports
+        .iter()
+        .map(|i| super::dto::PlanImportSpec {
+            item_id: i.item_id.clone(),
+            source_factory_id: i.source_factory_id.clone(),
+            ipm_cap: i.ipm_cap,
+        })
+        .collect();
+    let options = super::dto::PlanComputeOptions {
+        include_sam: plan.include_sam,
+        ..Default::default()
+    };
+    let graph = compute_plan_graph(
+        factory_id,
+        &plan.targets,
+        &alts,
+        &supply,
+        &imports,
+        &plan.recipe_overrides,
+        &export_capacity,
+        &options,
+        game_data,
+    );
+    Ok(Some(graph.map_err(|e| format!("{e:?}"))))
 }
 
 fn plan_save_impl(
@@ -552,7 +606,12 @@ mod tests {
 
     fn open_test_db() -> PlaythroughDb {
         // Anonymous in-memory DB with refinery migrations applied.
-        PlaythroughDb::open_in_memory().expect("open in-memory playthrough db")
+        let db = PlaythroughDb::open_in_memory().expect("open in-memory playthrough db");
+        // Plan computation reads the progress row for tier-gated alts;
+        // tier 0 reaches no alts, matching the pre-tier-gating tests.
+        db.with(|c| crate::features::playthrough::repo::progress_init(c, 0))
+            .expect("seed progress row");
+        db
     }
 
     fn insert_test_factory(db: &PlaythroughDb, id: &str, name: &str) {
@@ -567,6 +626,19 @@ mod tests {
     use crate::features::planner::dto::{PlanImportSpec, PlanTargetSpec};
 
     const NOW: &str = "2026-06-10T00:00:00Z";
+
+    #[test]
+    fn tier_reachable_alts_gate_by_tier_not_unlock_state() {
+        let gd = GameData::from_bundled().unwrap();
+        let t0 = tier_reachable_alts(0, &gd);
+        let t9 = tier_reachable_alts(9, &gd);
+        // Every alt in the dataset is reachable at tier 9; lower tiers
+        // are strict subsets. No unlock rows involved anywhere.
+        let all_alts = gd.recipes().iter().filter(|r| r.is_alt).count();
+        assert_eq!(t9.len(), all_alts);
+        assert!(t0.len() < t9.len());
+        assert!(t0.iter().all(|id| gd.recipe(id).is_some_and(|r| r.unlock_tier == 0)));
+    }
 
     fn save_input(factory_id: &str, targets: Vec<PlanTargetSpec>, imports: Vec<PlanImportSpec>) -> SavePlanInput {
         SavePlanInput {

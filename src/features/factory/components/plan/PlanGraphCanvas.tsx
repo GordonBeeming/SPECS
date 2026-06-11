@@ -42,6 +42,8 @@ export interface PlanGraphCanvasProps {
   graph: PlanGraph;
   layout: PlanLayoutEntry[];
   recipesByOutput: Map<string, Recipe[]>;
+  /** Collected alt ids — the picker badges tier-reachable alts outside it. */
+  unlockedAlts: Set<string> | undefined;
   factoryNames: Map<string, string>;
   factoryIcons: Map<string, string | null>;
   /** itemId → its export slice (targets only). */
@@ -88,15 +90,22 @@ function renderPlanCard(data: PlanFlowData) {
   switch (planNode.kind) {
     case "recipe": {
       const recipes = canvas.recipesByOutput.get(planNode.itemId) ?? [];
-      const options: FilterOption[] = recipes.map((r) => ({
-        value: r.id,
-        label: r.name,
-        group: r.isAlt ? "Alternate" : "Standard",
-        iconId: r.outputs[0]?.itemId,
-        // Inputs → outputs strip in the dropdown, so alternates can be
-        // compared by ratio before committing to a swap.
-        io: { inputs: r.inputs, outputs: r.outputs },
-      }));
+      const options: FilterOption[] = recipes.map((r) => {
+        // Tier-reachable but uncollected alts stay selectable (planning
+        // is open by design); the suffix keeps the gap visible and the
+        // Validate sweep turns it into a hard-drive shopping list.
+        const uncollected =
+          r.isAlt && canvas.unlockedAlts !== undefined && !canvas.unlockedAlts.has(r.id);
+        return {
+          value: r.id,
+          label: uncollected ? `${r.name} · not collected` : r.name,
+          group: r.isAlt ? "Alternate" : "Standard",
+          iconId: r.outputs[0]?.itemId,
+          // Inputs → outputs strip in the dropdown, so alternates can be
+          // compared by ratio before committing to a swap.
+          io: { inputs: r.inputs, outputs: r.outputs },
+        };
+      });
       return (
         <RecipeStepNodeCard
           node={planNode}

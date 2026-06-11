@@ -10,6 +10,7 @@ import {
   Moon,
   Network,
   Share2,
+  ShieldCheck,
   Sun,
   TrainTrack,
   Zap,
@@ -35,6 +36,7 @@ import { PowerView } from "@/features/power/components/PowerView";
 import { ResourcesView } from "@/features/resources/components/ResourcesView";
 import { MapView } from "@/features/map/components/MapView";
 import { PlanDesignerView } from "@/features/factory/components/plan/PlanDesignerView";
+import { ValidationPanel } from "@/features/validation/components/ValidationPanel";
 import { takePlanFirstRunFlag, useNavStore } from "@/shared/nav-store";
 import { ErrorBoundary } from "@/shared/ui/ErrorBoundary";
 import { useUndoStore } from "@/shared/undo/store";
@@ -81,6 +83,7 @@ export function AppShell() {
   const { mode, toggle } = useThemeMode();
   const [route, setRoute] = useState<Route>("home");
   const [showAbout, setShowAbout] = useState(false);
+  const [showValidate, setShowValidate] = useState(false);
   const undo = useUndoStore((s) => s.undo);
   const redo = useUndoStore((s) => s.redo);
   const reset = useUndoStore((s) => s.reset);
@@ -196,6 +199,16 @@ export function AppShell() {
               you only notice when something's wrong. */}
           <HealthBadge />
           <PlaythroughSwitcher />
+          <Button
+            variant="ghost"
+            onClick={() => setShowValidate(true)}
+            aria-label="Validate playthrough"
+            disabled={!current.data}
+            title="Sweep every factory, plan, claim and link for inconsistencies"
+          >
+            <ShieldCheck className="h-4 w-4" />
+            <span className="text-xs">Validate</span>
+          </Button>
           <Button variant="ghost" onClick={() => setShowAbout(true)} aria-label="About">
             <Info className="h-4 w-4" />
           </Button>
@@ -205,6 +218,7 @@ export function AppShell() {
         </div>
       </header>
       {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
+      {showValidate && <ValidationPanel onClose={() => setShowValidate(false)} />}
       {toast && (
         <div
           role="status"

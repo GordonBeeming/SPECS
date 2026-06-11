@@ -7,6 +7,7 @@ import { IconPicker } from "@/shared/ui/IconPicker";
 import { useItems, useRecipes } from "@/features/library/hooks/useLibrary";
 import { useUnlockedAlts } from "@/features/alts/hooks/useAlts";
 import { useLogisticsLinks } from "@/features/logistics/hooks/useLogistics";
+import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { buildRecipesByOutput } from "@/features/planner/options";
 
 import {
@@ -77,9 +78,10 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
       })),
     [factories.data],
   );
+  const playthrough = useCurrentPlaythrough();
   const recipesByOutput = useMemo(
-    () => buildRecipesByOutput(recipes.data, unlockedAlts.data),
-    [recipes.data, unlockedAlts.data],
+    () => buildRecipesByOutput(recipes.data, playthrough.data?.currentTier),
+    [recipes.data, playthrough.data?.currentTier],
   );
 
   const working = designer.working;
@@ -335,6 +337,7 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
             graph={graph}
             layout={designer.layout}
             recipesByOutput={recipesByOutput}
+            unlockedAlts={unlockedAlts.data}
             factoryNames={factoryNames}
             factoryIcons={factoryIcons}
             exportByItem={exportByItem}

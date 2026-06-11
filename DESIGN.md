@@ -383,6 +383,29 @@ cross-factory Planner wizard are retired; manual "Add machine"
 remains available behind a disclosure on factory detail for legacy
 factories.
 
+## Validate playthrough
+
+The header's Validate button (ShieldCheck icon, next to the
+playthrough switcher, disabled with no playthrough open) opens a
+right-hand slide-over (`max-w-xl`, backdrop `bg-black/40`) that runs
+the whole-playthrough sweep on mount. Presentation rules:
+
+- Summary chips up top: error count in a `danger` pill, warning count
+  in a `warning` pill, current tier in a neutral pill, then the grid
+  one-liner (danger-toned when net is negative).
+- Findings group under four sentence-case headings: "Above your
+  tier", "Cross-factory flows", "Supply & power", "Alts you haven't
+  collected". Rows are `bg-bg-raised` cards with a severity icon
+  (CircleAlert danger / TriangleAlert warning); clickable rows
+  deep-link to the owning view and close the panel.
+- The hard-drive shopping list is its own warning-tinted card above
+  the categories — it's the actionable output, not just another
+  finding row.
+- Validation reports, never blocks: nothing in the panel disables
+  editing anywhere. Pairs with the planner rule that recipe pickers
+  offer every tier-reachable alt, suffixing uncollected ones with
+  "· not collected".
+
 ## Launch, app icon & window
 
 - **App icon** is the Hexgauge mark — a gauge needle buried near the
