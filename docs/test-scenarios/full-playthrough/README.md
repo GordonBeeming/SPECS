@@ -36,7 +36,12 @@ the checkpoint that must pass before moving on.
    3. Plan and build everything the tier page asks for: claim nodes, place
       water extractors, create/upgrade factories, set up plans, machines,
       power, and logistics links. Drive the UI for all of it.
-   4. Verify the checkpoint checklist at the bottom of the tier page.
+   4. Verify the checkpoint checklist at the bottom of the tier page. The
+      first line of every checkpoint is the header's **Validate** button:
+      run it and clear every error before moving on — it sweeps tier
+      gating, cross-factory flows, supply, power, and uncollected alts in
+      one click, which replaces most of the by-hand assertions. Warnings
+      can stay if the run artifact explains them.
    5. Write the tier's artifacts (below) before touching the next group.
 4. **Finish.** Fill in the run index verdict, final screenshots, commit the
    run folder.
