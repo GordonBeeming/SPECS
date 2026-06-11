@@ -42,7 +42,7 @@ real input, and Mk3 belts + Miner Mk.2 roughly double throughput ceilings.
 ## Checkpoint
 
 - [ ] Phase 2 parts all planned at stated rates with working imports
-- [ ] Validate playthrough → zero errors; grid line shows generation ≥
+- [ ] Validate playthrough → no findings; grid line shows generation ≥
       draw with coal power online (state both in the artifact)
 - [ ] Water groups sit on approved water bodies only
 - [ ] No belt segment > 270/min, no pipe segment > 300 m³/min

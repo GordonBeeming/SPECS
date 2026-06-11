@@ -38,10 +38,14 @@ the checkpoint that must pass before moving on.
       power, and logistics links. Drive the UI for all of it.
    4. Verify the checkpoint checklist at the bottom of the tier page. Each
       checkpoint contains a check for the header's **Validate** button:
-      run it and clear every error before moving on — it sweeps tier
-      gating, cross-factory flows, supply, power, and uncollected alts in
-      one click, which replaces most of the by-hand assertions. Warnings
-      can stay if the run artifact explains them.
+      run it and clear every finding — warnings included — before moving
+      on. It sweeps tier gating, cross-factory flows, supply, power, and
+      uncollected alts in one click, which replaces most of the by-hand
+      assertions. Warnings matter here because supply gaps and per-factory
+      power deficits report as warnings, and the alt-unlock step above
+      should have emptied the shopping list. A finding you genuinely can't
+      clear gets a bug report and an explanation in the run artifact, not
+      a shrug.
    5. Write the tier's artifacts (below) before touching the next group.
 4. **Finish.** Fill in the run index verdict, final screenshots, commit the
    run folder.

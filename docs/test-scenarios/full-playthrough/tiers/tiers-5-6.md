@@ -45,9 +45,9 @@ and the Manufacturer for the big four-input parts.
 
 - [ ] Phase 3 parts planned at stated rates, imports wired
 - [ ] No orphaned byproducts on any saved plan
-- [ ] Validate playthrough → zero errors (this covers the oil-extractor
-      claims and the grid with fuel power online; restate both in the
-      artifact)
+- [ ] Validate playthrough → no findings (this covers the oil-extractor
+      claims, supply, and the grid with fuel power online; restate the
+      grid in the artifact)
 - [ ] Belt ≤ 480/min, pipe ≤ 600 m³/min everywhere
 - [ ] Layouts + screenshots (refinery plan graph with byproduct edges,
       validation panel)
