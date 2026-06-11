@@ -36,8 +36,8 @@ the checkpoint that must pass before moving on.
    3. Plan and build everything the tier page asks for: claim nodes, place
       water extractors, create/upgrade factories, set up plans, machines,
       power, and logistics links. Drive the UI for all of it.
-   4. Verify the checkpoint checklist at the bottom of the tier page. The
-      first line of every checkpoint is the header's **Validate** button:
+   4. Verify the checkpoint checklist at the bottom of the tier page. Each
+      checkpoint contains a check for the header's **Validate** button:
       run it and clear every error before moving on — it sweeps tier
       gating, cross-factory flows, supply, power, and uncollected alts in
       one click, which replaces most of the by-hand assertions. Warnings
