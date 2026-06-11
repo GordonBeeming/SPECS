@@ -27,8 +27,9 @@ docs/test-scenarios/
    the real screens with `webview_interact`. Use `ipc_execute_command` /
    backend reads only to assert state, never to shortcut a flow the UI owns.
 4. Screenshot checkpoints as you go; the scenario says where.
-5. Write the run's artifacts into `runs/<YYYY-MM-DD>-<label>/` and commit them
-   with the run.
+5. Write the run's artifacts into the scenario's own runs folder —
+   `docs/test-scenarios/<scenario>/runs/<YYYY-MM-DD>-<label>/` — and commit
+   them with the run.
 
 ## Bug reports are a deliverable
 

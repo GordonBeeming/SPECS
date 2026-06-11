@@ -60,6 +60,7 @@ byproduct netting harder than anything before it.
 - [ ] Aluminum water loop closed (reuse edges, no fluid surplus warnings
       left unexplained)
 - [ ] Nuclear online with waste path stated; grid restated
-- [ ] Wells claimed with the pressuriser only; satellites at purity rates
+- [ ] Well satellites claimed with the app's well-extractor option (one
+      claim per satellite, purity rates apply per satellite)
 - [ ] Belt ≤ 780/min, pipes ≤ 600 m³/min
 - [ ] Layouts + screenshots (aluminum plan with reuse edges, power view)

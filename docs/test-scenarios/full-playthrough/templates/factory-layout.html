@@ -8,8 +8,8 @@
   fill in. Conventions:
   - The grid is 8×8 m foundations. One .cell = one foundation.
   - Machines span cells with grid-column/grid-row spans matching their real
-    footprint (Constructor ~1×1, Assembler ~2×1, Manufacturer ~2×3,
-    Refinery ~1×2, Smelter 1×1, Miner sits on its node off-grid edge).
+    footprint (Constructor ~1×2, Assembler ~2×2, Manufacturer ~3×3,
+    Refinery ~2×3, Smelter ~1×2, Miner sits on its node off-grid edge).
   - Every belt segment gets a .belt label: mark + actual items/min.
     Colour by mark via the mk1..mk6 classes (DESIGN.md belt palette).
   - Upgrade pages (<slug>-t<N>.html): keep only the changed area plus the
@@ -56,7 +56,9 @@
   .belt.mk4 { color: var(--mk4); border-color: var(--mk4); }
   .belt.mk5 { color: var(--mk5); border-color: var(--mk5); }
   .belt.mk6 { color: var(--mk6); border-color: var(--mk6); }
-  .pipe { color: var(--pipe2); border-color: var(--pipe2); font-style: italic; }
+  .pipe { font-style: italic; }
+  .pipe.mk1 { color: var(--pipe1); border-color: var(--pipe1); }
+  .pipe.mk2 { color: var(--pipe2); border-color: var(--pipe2); }
   .split { background: #3a2f1e; border-color: var(--warning); }
   .legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px;
             color: var(--fg-muted); margin: 6px 0 18px; }
@@ -80,16 +82,18 @@ to consuming factories' pages).</p>
 
 <h2>Foundation layout (8×8 m per cell)</h2>
 <div class="legend">
-  <span style="color:#46cbff">machine</span>
-  <span style="color:#d8b4fe">extractor</span>
-  <span style="color:#4ade80">generator</span>
-  <span style="color:#fbbf24">splitter/merger</span>
-  <span style="color:#9ca3af">belt Mk1 60</span>
-  <span style="color:#46cbff">Mk2 120</span>
-  <span style="color:#4ade80">Mk3 270</span>
-  <span style="color:#fcd34d">Mk4 480</span>
-  <span style="color:#fb923c">Mk5 780</span>
-  <span style="color:#d8b4fe">Mk6 1200</span>
+  <span style="color: var(--primary)">machine</span>
+  <span style="color: var(--mk6)">extractor</span>
+  <span style="color: var(--success)">generator</span>
+  <span style="color: var(--warning)">splitter/merger</span>
+  <span style="color: var(--mk1)">belt Mk1 60</span>
+  <span style="color: var(--mk2)">Mk2 120</span>
+  <span style="color: var(--mk3)">Mk3 270</span>
+  <span style="color: var(--mk4)">Mk4 480</span>
+  <span style="color: var(--mk5)">Mk5 780</span>
+  <span style="color: var(--mk6)">Mk6 1200</span>
+  <span style="color: var(--pipe1)">pipe Mk1 300</span>
+  <span style="color: var(--pipe2)">Mk2 600</span>
 </div>
 <div class="grid" style="--cols: 12">
   <!-- Example row — replace with the real layout. Span with inline

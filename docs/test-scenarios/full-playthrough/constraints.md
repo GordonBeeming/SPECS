@@ -46,6 +46,7 @@ report — the run exists to find exactly those gaps.
   - Dune Desert oasis (~1.9 E, 2.7 N) — the only water in the desert; small
   - Blue Crater lake (~0.4 W, 2.7 S)
   - Eastern ocean shoreline (~3.0 E, anywhere S) — unlimited
+  - Spire Coast shoreline (anywhere N) — northern ocean, unlimited
   - If a factory sits somewhere else, pipe water in from one of these and
     show the pipe run in the layout. **No extractors in the middle of the
     desert.**
