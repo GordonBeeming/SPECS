@@ -13,3 +13,4 @@ pub mod playthrough;
 pub mod power;
 pub mod resource_nodes;
 pub mod trains;
+pub mod validation;

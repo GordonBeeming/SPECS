@@ -46,17 +46,22 @@ export function buildTargetOptions(
 
 /**
  * Recipes a swap picker may offer per output item: standard recipes
- * plus unlocked alts, with inverse Unpackage_* recipes filtered the
- * same way the Rust planner filters them.
+ * plus every alt at or below the playthrough's current tier — collected
+ * or not, matching the Rust planner's tier gate. Inverse Unpackage_*
+ * recipes filtered the same way the planner filters them. The picker
+ * badges uncollected alts separately; availability here is about tier,
+ * not hard drives.
  */
 export function buildRecipesByOutput(
   recipes: Recipe[] | undefined,
-  unlockedAlts: Set<string> | undefined,
+  currentTier: number | undefined,
 ): Map<string, Recipe[]> {
   const byOutput = new Map<string, Recipe[]>();
   for (const r of recipes ?? []) {
     if (r.id.startsWith("Recipe_Unpackage")) continue;
-    if (r.isAlt && unlockedAlts && !unlockedAlts.has(r.id)) continue;
+    // Tier still loading → keep alts visible rather than flashing a
+    // standard-only list for a frame.
+    if (r.isAlt && currentTier !== undefined && r.unlockTier > currentTier) continue;
     for (const o of r.outputs) {
       const arr = byOutput.get(o.itemId) ?? [];
       arr.push(r);

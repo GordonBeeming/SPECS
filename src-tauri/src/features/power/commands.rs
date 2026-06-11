@@ -202,13 +202,22 @@ pub fn factory_power_balance(
     factory_id: String,
 ) -> AppResult<FactoryPowerBalance> {
     let db = require_active(&active)?;
+    power_balance_impl(&db, &game_data, &factory_id)
+}
 
+/// Command-free balance composition so other slices (the validation
+/// sweep) reuse the same math instead of reimplementing it.
+pub(crate) fn power_balance_impl(
+    db: &crate::shared::db::playthrough_db::PlaythroughDb,
+    game_data: &GameData,
+    factory_id: &str,
+) -> AppResult<FactoryPowerBalance> {
     let machines = db.with(|c| {
-        factory_repo::machines_for_factory(c, &factory_id).map_err(AppError::from)
+        factory_repo::machines_for_factory(c, factory_id).map_err(AppError::from)
     })?;
-    let consumed_mw = compose_ledger(&factory_id, &machines, &game_data).power_mw;
+    let consumed_mw = compose_ledger(factory_id, &machines, game_data).power_mw;
 
-    let gens = db.with(|c| repo::power_gens_for_factory(c, &factory_id).map_err(AppError::from))?;
+    let gens = db.with(|c| repo::power_gens_for_factory(c, factory_id).map_err(AppError::from))?;
     let mut generated_mw = 0.0_f32;
     let mut fuel_totals: BTreeMap<String, f32> = BTreeMap::new();
     for g in &gens {
@@ -218,7 +227,7 @@ pub fn factory_power_balance(
         // numbers. The lookup error surfaces as `AppError::Invalid`
         // and the caller sees which row is bad.
         let (gen, fuel) =
-            lookup_generator_and_fuel(&game_data, &g.generator_id, &g.fuel_item_id)?;
+            lookup_generator_and_fuel(game_data, &g.generator_id, &g.fuel_item_id)?;
         generated_mw += generator_power_mw(gen, fuel, g.count, g.clock_pct);
         let (main, supp) = generator_fuel_flows(fuel, g.count, g.clock_pct);
         *fuel_totals.entry(main.0).or_insert(0.0) += main.1;
@@ -240,7 +249,7 @@ pub fn factory_power_balance(
         .collect();
 
     Ok(FactoryPowerBalance {
-        factory_id,
+        factory_id: factory_id.to_string(),
         generated_mw,
         consumed_mw,
         net_mw: generated_mw - consumed_mw,
