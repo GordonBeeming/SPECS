@@ -106,3 +106,4 @@ release blocker while the app is unreleased.
 
 - Architecture rules: [`vsa/README.md`](./vsa/README.md)
 - Visual standards: [`../DESIGN.md`](../DESIGN.md)
+- Agent-run end-to-end tests: [`test-scenarios/README.md`](./test-scenarios/README.md)

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  Run index template — copy to runs/<run>/index.html and fill in. This is
+  the page a reviewer opens first: verdict up top, then tiers → factories,
+  then the bug ledger. Keep links relative (factories/, bugs/, screenshots/).
+-->
+<title>Full playthrough run — YYYY-MM-DD-label</title>
+<style>
+  :root {
+    --bg: #1a1a1a; --bg-raised: #232323; --fg: #e0e0e0; --fg-muted: #d1d5db;
+    --primary: #46cbff; --border: #2c2c2c;
+    --success: #4ade80; --warning: #fbbf24; --danger: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0 auto; max-width: 960px; padding: 28px 20px;
+         background: var(--bg); color: var(--fg);
+         font: 14px/1.55 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 26px 0 8px; color: var(--primary); }
+  a { color: var(--primary); }
+  .verdict { display: inline-block; margin: 10px 0 4px; padding: 4px 14px;
+             border-radius: 999px; font-weight: 600; border: 1px solid; }
+  .verdict.worked { color: var(--success); border-color: var(--success); }
+  .verdict.with-bugs { color: var(--warning); border-color: var(--warning); }
+  .verdict.blocked { color: var(--danger); border-color: var(--danger); }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid var(--border); padding: 6px 10px; text-align: left;
+           font-size: 13px; overflow-wrap: anywhere; }
+  th { background: var(--bg-raised); }
+  .sev-showstopper { color: var(--danger); font-weight: 600; }
+  .sev-blocking-flow { color: var(--warning); }
+  .muted { color: var(--fg-muted); font-size: 12px; }
+  footer { margin-top: 30px; font-size: 11px; color: var(--fg-muted); }
+</style>
+</head>
+<body>
+<h1>Full playthrough — YYYY-MM-DD-label</h1>
+<p class="muted">App build/commit: SHA · Dataset: game 1.2 · Started: date · Finished: date</p>
+<span class="verdict with-bugs">worked-with-bugs</span>
+<p>Two-or-three-sentence summary: how far the run got, the headline finding,
+what a maintainer should look at first.</p>
+
+<h2>Tiers</h2>
+<table>
+  <tr><th>Group</th><th>Factories touched</th><th>Checkpoint</th><th>Bugs</th></tr>
+  <tr>
+    <td>Tier 0</td>
+    <td><a href="factories/iron-works.html">Iron Works</a>, <a href="factories/copper-works.html">Copper Works</a></td>
+    <td>passed</td>
+    <td>—</td>
+  </tr>
+  <tr>
+    <td>Tiers 1–2</td>
+    <td><a href="factories/elevator-yard.html">Elevator Yard</a>, <a href="factories/iron-works-t2.html">Iron Works (upgrade)</a></td>
+    <td>passed</td>
+    <td><a href="bugs/001-example.md">001</a></td>
+  </tr>
+</table>
+
+<h2>Bug ledger</h2>
+<table>
+  <tr><th>#</th><th>Severity</th><th>Tier</th><th>Title</th></tr>
+  <tr>
+    <td><a href="bugs/001-example.md">001</a></td>
+    <td class="sev-blocking-flow">blocking-flow</td>
+    <td>1–2</td>
+    <td>One-line title</td>
+  </tr>
+</table>
+
+<h2>Grid statement</h2>
+<table>
+  <tr><th>After group</th><th>Generation</th><th>Draw</th><th>Headroom</th></tr>
+  <tr><td>Tier 0</td><td>30 MW</td><td>24 MW</td><td>+6 MW</td></tr>
+</table>
+
+<h2>Screenshots</h2>
+<p class="muted">Checkpoint captures live in <code>screenshots/</code>, named
+<code>&lt;tier&gt;-&lt;what&gt;.png</code>; each tier row above should link the
+interesting ones inline.</p>
+
+<footer>SPECS full-playthrough run artifact · template v1</footer>
+</body>
+</html>

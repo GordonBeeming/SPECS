@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  Factory layout template — copy into runs/<run>/factories/<slug>.html and
+  fill in. Conventions:
+  - The grid is 8×8 m foundations. One .cell = one foundation.
+  - Machines span cells with grid-column/grid-row spans matching their real
+    footprint (Constructor ~1×2, Assembler ~2×2, Manufacturer ~3×3,
+    Refinery ~2×3, Smelter ~1×2, Miner sits on its node off-grid edge).
+  - Every belt segment gets a .belt label: mark + actual items/min.
+    Colour by mark via the mk1..mk6 classes (DESIGN.md belt palette).
+  - Upgrade pages (<slug>-t<N>.html): keep only the changed area plus the
+    "Delta" list — don't re-describe the whole factory.
+-->
+<title>FACTORY NAME — Tier N layout</title>
+<style>
+  :root {
+    --bg: #1a1a1a; --bg-raised: #232323; --fg: #e0e0e0; --fg-muted: #d1d5db;
+    --primary: #46cbff; --border: #2c2c2c;
+    --success: #4ade80; --warning: #fbbf24; --danger: #f87171;
+    --mk1: #9ca3af; --mk2: #46cbff; --mk3: #4ade80;
+    --mk4: #fcd34d; --mk5: #fb923c; --mk6: #d8b4fe;
+    --pipe1: #5eead4; --pipe2: #67e8f9;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--fg);
+         font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 24px 0 8px; color: var(--primary); }
+  .meta { color: var(--fg-muted); font-size: 12px; margin-bottom: 16px; }
+  .meta a { color: var(--primary); }
+  table { border-collapse: collapse; width: 100%; max-width: 720px; }
+  th, td { border: 1px solid var(--border); padding: 5px 9px; text-align: left;
+           font-size: 13px; overflow-wrap: anywhere; }
+  th { background: var(--bg-raised); }
+  /* ---- the foundation grid ---- */
+  .grid { display: grid; gap: 2px; margin: 8px 0;
+          grid-template-columns: repeat(var(--cols, 12), minmax(44px, 1fr)); }
+  .cell { background: var(--bg-raised); border: 1px solid var(--border);
+          min-height: 44px; border-radius: 3px; position: relative;
+          font-size: 10px; color: var(--fg-muted); padding: 2px 4px;
+          overflow-wrap: anywhere; min-width: 0; }
+  .machine { background: #1e3a4c; border-color: var(--primary); color: var(--fg);
+             display: flex; align-items: center; justify-content: center;
+             text-align: center; font-size: 11px; }
+  .extractor { background: #2d2433; border-color: var(--mk6); }
+  .gen { background: #213326; border-color: var(--success); }
+  .belt { display: flex; align-items: center; justify-content: center;
+          font-size: 10px; font-weight: 600; }
+  .belt.mk1 { color: var(--mk1); border-color: var(--mk1); }
+  .belt.mk2 { color: var(--mk2); border-color: var(--mk2); }
+  .belt.mk3 { color: var(--mk3); border-color: var(--mk3); }
+  .belt.mk4 { color: var(--mk4); border-color: var(--mk4); }
+  .belt.mk5 { color: var(--mk5); border-color: var(--mk5); }
+  .belt.mk6 { color: var(--mk6); border-color: var(--mk6); }
+  .pipe { font-style: italic; }
+  .pipe.mk1 { color: var(--pipe1); border-color: var(--pipe1); }
+  .pipe.mk2 { color: var(--pipe2); border-color: var(--pipe2); }
+  .split { background: #3a2f1e; border-color: var(--warning); }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px;
+            color: var(--fg-muted); margin: 6px 0 18px; }
+  .legend span::before { content: "■ "; }
+  .ok { color: var(--success); } .warn { color: var(--warning); } .bad { color: var(--danger); }
+  footer { margin-top: 28px; font-size: 11px; color: var(--fg-muted); }
+</style>
+</head>
+<body>
+<h1>FACTORY NAME — Tier N</h1>
+<p class="meta">
+  Run: <a href="../index.html">YYYY-MM-DD-label</a> ·
+  Map position: X.X km E/W · Y.Y km N/S ·
+  Claims: node ids + extractor + clock ·
+  Power: +NN MW gen / −NN MW draw
+</p>
+
+<h2>Purpose</h2>
+<p>What this factory makes, at what rates, and where the outputs go (links
+to consuming factories' pages).</p>
+
+<h2>Foundation layout (8×8 m per cell)</h2>
+<div class="legend">
+  <span style="color: var(--primary)">machine</span>
+  <span style="color: var(--mk6)">extractor</span>
+  <span style="color: var(--success)">generator</span>
+  <span style="color: var(--warning)">splitter/merger</span>
+  <span style="color: var(--mk1)">belt Mk1 60</span>
+  <span style="color: var(--mk2)">Mk2 120</span>
+  <span style="color: var(--mk3)">Mk3 270</span>
+  <span style="color: var(--mk4)">Mk4 480</span>
+  <span style="color: var(--mk5)">Mk5 780</span>
+  <span style="color: var(--mk6)">Mk6 1200</span>
+  <span style="color: var(--pipe1)">pipe Mk1 300</span>
+  <span style="color: var(--pipe2)">Mk2 600</span>
+</div>
+<div class="grid" style="--cols: 12">
+  <!-- Example row — replace with the real layout. Span with inline
+       style="grid-column: span 2" etc. for bigger footprints. -->
+  <div class="cell extractor">Miner Mk.1<br/>Iron · Normal · 100%</div>
+  <div class="cell belt mk1">Mk1 → 60/min iron ore</div>
+  <div class="cell machine">Smelter ×1<br/>Iron Ingot 30/min</div>
+  <div class="cell belt mk1">Mk1 → 30/min ingot</div>
+  <div class="cell split">Splitter<br/>15 + 15</div>
+  <div class="cell machine">Constructor<br/>Plates 20/min</div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+</div>
+
+<h2>Belt audit</h2>
+<table>
+  <tr><th>Segment</th><th>Mark</th><th>Carrying</th><th>Cap</th><th>Status</th></tr>
+  <tr><td>Miner → Smelter bank</td><td>Mk1</td><td>60/min</td><td>60/min</td><td class="ok">at cap</td></tr>
+</table>
+
+<h2>Imports / exports</h2>
+<table>
+  <tr><th>Direction</th><th>Item</th><th>Rate</th><th>Partner factory</th><th>Transport</th></tr>
+</table>
+
+<h2>Delta from previous tier (upgrade pages only)</h2>
+<ul>
+  <li>e.g. "Mouth-of-miner split removed — Mk3 belt swallows the Mk.2 at 100%."</li>
+</ul>
+
+<footer>SPECS full-playthrough run artifact · template v1</footer>
+</body>
+</html>
