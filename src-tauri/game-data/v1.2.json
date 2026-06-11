@@ -1250,7 +1250,7 @@
       "name": "Assembler",
       "category": "manufacturing",
       "powerMw": 15,
-      "unlockTier": 1
+      "unlockTier": 2
     },
     {
       "id": "Build_Blender_C",
@@ -1271,7 +1271,7 @@
       "name": "Converter",
       "category": "manufacturing",
       "powerMw": 250,
-      "unlockTier": 8
+      "unlockTier": 9
     },
     {
       "id": "Build_FoundryMk1_C",
@@ -1285,7 +1285,7 @@
       "name": "Manufacturer",
       "category": "manufacturing",
       "powerMw": 55,
-      "unlockTier": 7
+      "unlockTier": 6
     },
     {
       "id": "Build_MinerMk1_C",
@@ -1299,14 +1299,14 @@
       "name": "Miner Mk.2",
       "category": "extraction",
       "powerMw": 12,
-      "unlockTier": 3
+      "unlockTier": 4
     },
     {
       "id": "Build_MinerMk3_C",
       "name": "Miner Mk.3",
       "category": "extraction",
       "powerMw": 30,
-      "unlockTier": 7
+      "unlockTier": 8
     },
     {
       "id": "Build_OilPump_C",
@@ -1348,14 +1348,14 @@
       "name": "Resource Well Extractor",
       "category": "extraction",
       "powerMw": 150,
-      "unlockTier": 7
+      "unlockTier": 8
     },
     {
       "id": "Build_FrackingSmasher_C",
       "name": "Resource Well Pressuriser",
       "category": "extraction",
       "powerMw": 300,
-      "unlockTier": 7
+      "unlockTier": 8
     },
     {
       "id": "Build_SmelterMk1_C",
@@ -1378,7 +1378,7 @@
       "name": "Adaptive Control Unit",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": false,
-      "unlockTier": 5,
+      "unlockTier": 6,
       "cycleSeconds": 60,
       "inputs": [
         {
@@ -1446,7 +1446,7 @@
       "name": "AI Limiter",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": false,
-      "unlockTier": 3,
+      "unlockTier": 7,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -1698,7 +1698,7 @@
       "name": "Ballistic Warp Drive",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": false,
-      "unlockTier": 7,
+      "unlockTier": 9,
       "cycleSeconds": 60,
       "inputs": [
         {
@@ -1762,7 +1762,7 @@
       "name": "Bauxite (Caterium)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -1786,7 +1786,7 @@
       "name": "Bauxite (Copper)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -1810,7 +1810,7 @@
       "name": "Biochemical Sculptor",
       "buildingId": "Build_Blender_C",
       "isAlt": false,
-      "unlockTier": 7,
+      "unlockTier": 9,
       "cycleSeconds": 120,
       "inputs": [
         {
@@ -2002,7 +2002,7 @@
       "name": "Caterium Ingot",
       "buildingId": "Build_SmelterMk1_C",
       "isAlt": false,
-      "unlockTier": 3,
+      "unlockTier": 5,
       "cycleSeconds": 4,
       "inputs": [
         {
@@ -2022,7 +2022,7 @@
       "name": "Caterium Ore (Copper)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -2046,7 +2046,7 @@
       "name": "Caterium Ore (Quartz)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -2118,7 +2118,7 @@
       "name": "Coal (Iron)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -2142,7 +2142,7 @@
       "name": "Coal (Limestone)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -2166,7 +2166,7 @@
       "name": "Computer",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": false,
-      "unlockTier": 5,
+      "unlockTier": 6,
       "cycleSeconds": 24,
       "inputs": [
         {
@@ -2290,7 +2290,7 @@
       "name": "Copper Ore (Quartz)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -2314,7 +2314,7 @@
       "name": "Copper Ore (Sulfur)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -2378,7 +2378,7 @@
       "name": "Crystal Oscillator",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": false,
-      "unlockTier": 3,
+      "unlockTier": 7,
       "cycleSeconds": 120,
       "inputs": [
         {
@@ -2406,7 +2406,7 @@
       "name": "Dark Matter Crystal",
       "buildingId": "Build_HadronCollider_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 2,
       "inputs": [
         {
@@ -2430,7 +2430,7 @@
       "name": "Dark Matter Residue",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -2450,7 +2450,7 @@
       "name": "Diamonds",
       "buildingId": "Build_HadronCollider_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 2,
       "inputs": [
         {
@@ -2614,7 +2614,7 @@
       "name": "Excited Photonic Matter",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 3,
       "inputs": [],
       "outputs": [
@@ -2681,7 +2681,7 @@
       "name": "Fancy Fireworks",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": false,
-      "unlockTier": 1,
+      "unlockTier": 2,
       "cycleSeconds": 24,
       "inputs": [
         {
@@ -2705,7 +2705,7 @@
       "name": "Ficsite Ingot (Aluminum)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 2,
       "inputs": [
         {
@@ -2729,7 +2729,7 @@
       "name": "Ficsite Ingot (Caterium)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 4,
       "inputs": [
         {
@@ -2753,7 +2753,7 @@
       "name": "Ficsite Ingot (Iron)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -2777,7 +2777,7 @@
       "name": "Ficsite Trigon",
       "buildingId": "Build_ConstructorMk1_C",
       "isAlt": false,
-      "unlockTier": 0,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -2837,7 +2837,7 @@
       "name": "FICSMAS Ornament Bundle",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": false,
-      "unlockTier": 1,
+      "unlockTier": 2,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -2881,7 +2881,7 @@
       "name": "FICSMAS Wonder Star",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": false,
-      "unlockTier": 1,
+      "unlockTier": 2,
       "cycleSeconds": 60,
       "inputs": [
         {
@@ -2905,7 +2905,7 @@
       "name": "FICSMAS Wreath",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": false,
-      "unlockTier": 1,
+      "unlockTier": 2,
       "cycleSeconds": 60,
       "inputs": [
         {
@@ -3141,7 +3141,7 @@
       "name": "Heavy Modular Frame",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": false,
-      "unlockTier": 4,
+      "unlockTier": 6,
       "cycleSeconds": 30,
       "inputs": [
         {
@@ -3173,7 +3173,7 @@
       "name": "High-Speed Connector",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": false,
-      "unlockTier": 3,
+      "unlockTier": 7,
       "cycleSeconds": 16,
       "inputs": [
         {
@@ -3345,7 +3345,7 @@
       "name": "Iron Ore (Limestone)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -3429,7 +3429,7 @@
       "name": "Limestone (Sulfur)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -3501,7 +3501,7 @@
       "name": "Modular Engine",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": false,
-      "unlockTier": 5,
+      "unlockTier": 6,
       "cycleSeconds": 60,
       "inputs": [
         {
@@ -3641,7 +3641,7 @@
       "name": "Nitrogen Gas (Bauxite)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -3665,7 +3665,7 @@
       "name": "Nitrogen Gas (Caterium)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -4301,7 +4301,7 @@
       "name": "Quartz Crystal",
       "buildingId": "Build_ConstructorMk1_C",
       "isAlt": false,
-      "unlockTier": 3,
+      "unlockTier": 7,
       "cycleSeconds": 8,
       "inputs": [
         {
@@ -4321,7 +4321,7 @@
       "name": "Quickwire",
       "buildingId": "Build_ConstructorMk1_C",
       "isAlt": false,
-      "unlockTier": 3,
+      "unlockTier": 5,
       "cycleSeconds": 5,
       "inputs": [
         {
@@ -4369,7 +4369,7 @@
       "name": "Raw Quartz (Bauxite)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -4393,7 +4393,7 @@
       "name": "Raw Quartz (Coal)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -4481,7 +4481,7 @@
       "name": "Residual Fuel",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": false,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -4501,7 +4501,7 @@
       "name": "Residual Plastic",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": false,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -4525,7 +4525,7 @@
       "name": "Residual Rubber",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": false,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -4721,7 +4721,7 @@
       "name": "Silica",
       "buildingId": "Build_ConstructorMk1_C",
       "isAlt": false,
-      "unlockTier": 3,
+      "unlockTier": 7,
       "cycleSeconds": 8,
       "inputs": [
         {
@@ -4741,7 +4741,7 @@
       "name": "Singularity Cell",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": false,
-      "unlockTier": 7,
+      "unlockTier": 9,
       "cycleSeconds": 60,
       "inputs": [
         {
@@ -4861,7 +4861,7 @@
       "name": "Sparkly Fireworks",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": false,
-      "unlockTier": 1,
+      "unlockTier": 2,
       "cycleSeconds": 24,
       "inputs": [
         {
@@ -5037,7 +5037,7 @@
       "name": "Sulfur (Coal)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -5061,7 +5061,7 @@
       "name": "Sulfur (Iron)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -5177,7 +5177,7 @@
       "name": "Sweet Fireworks",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": false,
-      "unlockTier": 1,
+      "unlockTier": 2,
       "cycleSeconds": 24,
       "inputs": [
         {
@@ -5269,7 +5269,7 @@
       "name": "Time Crystal",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 10,
       "inputs": [
         {
@@ -5377,7 +5377,7 @@
       "name": "Unpackage Alumina Solution",
       "buildingId": "Build_Packager_C",
       "isAlt": false,
-      "unlockTier": 0,
+      "unlockTier": 7,
       "cycleSeconds": 1,
       "inputs": [
         {
@@ -5401,7 +5401,7 @@
       "name": "Unpackage Fuel",
       "buildingId": "Build_Packager_C",
       "isAlt": false,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 2,
       "inputs": [
         {
@@ -5425,7 +5425,7 @@
       "name": "Unpackage Heavy Oil Residue",
       "buildingId": "Build_Packager_C",
       "isAlt": false,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -5473,7 +5473,7 @@
       "name": "Unpackage Liquid Biofuel",
       "buildingId": "Build_Packager_C",
       "isAlt": false,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 2,
       "inputs": [
         {
@@ -5497,7 +5497,7 @@
       "name": "Unpackage Nitric Acid",
       "buildingId": "Build_Packager_C",
       "isAlt": false,
-      "unlockTier": 0,
+      "unlockTier": 8,
       "cycleSeconds": 3,
       "inputs": [
         {
@@ -5521,7 +5521,7 @@
       "name": "Unpackage Nitrogen Gas",
       "buildingId": "Build_Packager_C",
       "isAlt": false,
-      "unlockTier": 0,
+      "unlockTier": 8,
       "cycleSeconds": 1,
       "inputs": [
         {
@@ -5545,7 +5545,7 @@
       "name": "Unpackage Oil",
       "buildingId": "Build_Packager_C",
       "isAlt": false,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 2,
       "inputs": [
         {
@@ -5593,7 +5593,7 @@
       "name": "Unpackage Sulfuric Acid",
       "buildingId": "Build_Packager_C",
       "isAlt": false,
-      "unlockTier": 0,
+      "unlockTier": 7,
       "cycleSeconds": 1,
       "inputs": [
         {
@@ -5641,7 +5641,7 @@
       "name": "Unpackage Water",
       "buildingId": "Build_Packager_C",
       "isAlt": false,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 1,
       "inputs": [
         {
@@ -5693,7 +5693,7 @@
       "name": "Uranium Ore (Bauxite)",
       "buildingId": "Build_Converter_C",
       "isAlt": false,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -6473,7 +6473,7 @@
       "name": "Alternate: Dark-Ion Fuel",
       "buildingId": "Build_Converter_C",
       "isAlt": true,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 3,
       "inputs": [
         {
@@ -7461,7 +7461,7 @@
       "name": "Alternate: Pink Diamonds",
       "buildingId": "Build_Converter_C",
       "isAlt": true,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 4,
       "inputs": [
         {
@@ -7485,7 +7485,7 @@
       "name": "Alternate: Plastic AI Limiter",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 1,
+      "unlockTier": 2,
       "cycleSeconds": 15,
       "inputs": [
         {

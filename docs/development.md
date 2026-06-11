@@ -87,10 +87,13 @@ game version:
    planner tests pin game-truth rates, so a parse mistake shows up as a
    failing ratio, not a silent drift.
 
-Recipe unlock tiers carry over by recipe id from
-`scripts/fixtures/recipe-tiers-v1.1.json` (the dump has no
-schematic→recipe table); brand-new recipes default to their building's
-unlock tier, with hand overrides for the MAM-ish chains.
+Recipe unlock tiers come from the dump's own milestone schematics
+(`schematicsData` carries a tier plus the recipes each milestone
+unlocks). MAM research and alternate-blueprint schematics have no tier
+there, so those fall back to hand overrides for the SAM chain, then the
+old scan tiers carried by recipe id from
+`scripts/fixtures/recipe-tiers-v1.1.json`, then the building's unlock
+tier.
 
 **Open question (parked until after 1.2):** playthroughs persist item
 and recipe ids in SQLite, so a dataset bump can orphan saved plans —

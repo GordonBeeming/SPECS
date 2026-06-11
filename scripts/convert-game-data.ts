@@ -17,11 +17,14 @@
  * tables, generators, transport-vehicle specs, belt/pipe tier marks,
  * milestones).
  *
- * Recipe unlock tiers: the calculator dump has no schematic→recipe links,
- * so tiers carry over by recipe id from the old SatisfactoryTools-derived
- * dataset (`scripts/fixtures/recipe-tiers-v1.1.json`, tier layout unchanged
- * in 1.2); recipes new to this dump default to their building's unlock
- * tier — a recipe can't run before its machine exists.
+ * Recipe unlock tiers: milestone schematics in the dump carry a `tier` and
+ * the recipes they unlock, which covers every standard recipe. MAM research
+ * and alternate-blueprint schematics carry no tier (and no resolvable
+ * requirement chain), so those fall back to hand pins, then tiers carried
+ * by recipe id from the old SatisfactoryTools-derived dataset
+ * (`scripts/fixtures/recipe-tiers-v1.1.json` — its EST_Alternate scan tiers
+ * are still the best signal for alts), then the building's unlock tier —
+ * a recipe can't run before its machine exists.
  *
  * Re-run with `bun run scripts/convert-game-data.ts`. The fixture under
  * `scripts/fixtures/satisfactory-calculator-gamedata-1.2.json` is checked
@@ -66,11 +69,20 @@ type ScItem = {
   stack?: number;
   color?: string;
 };
+type ScSchematic = {
+  className: string;
+  name: string;
+  /** Present on milestone schematics only — MAM/alternate nodes carry none. */
+  tier?: number;
+  /** Full asset paths of the recipes this schematic unlocks. */
+  recipes?: string[];
+};
 type ScData = {
   branch: string;
   itemsData: Record<string, ScItem>;
   buildingsData: Record<string, { name?: string }>;
   recipesData: Record<string, ScRecipe>;
+  schematicsData: Record<string, ScSchematic>;
 };
 
 const sc: ScData = JSON.parse(readFileSync(FIXTURE, "utf8"));
@@ -193,25 +205,29 @@ const BUILDING_CATEGORIES: Record<string, string> = {
   Build_MinerMk3_C: "extraction",
 };
 
+// Pinned from the dump's milestone schematics (each building's construction
+// recipe sits in a tiered milestone) — the 1.0 tier reshuffle moved several
+// of these from their long-remembered pre-1.0 homes (Assembler T2,
+// Manufacturer T6, Converter T9 "Matter Conversion", Miner Mk.2 T4).
 const BUILDING_UNLOCK_TIER: Record<string, number> = {
   Build_MinerMk1_C: 0,
-  Build_MinerMk2_C: 3,
-  Build_MinerMk3_C: 7,
+  Build_MinerMk2_C: 4,
+  Build_MinerMk3_C: 8,
   Build_SmelterMk1_C: 0,
   Build_FoundryMk1_C: 3,
   Build_ConstructorMk1_C: 0,
-  Build_AssemblerMk1_C: 1,
-  Build_ManufacturerMk1_C: 7,
+  Build_AssemblerMk1_C: 2,
+  Build_ManufacturerMk1_C: 6,
   Build_OilRefinery_C: 5,
   Build_Blender_C: 7,
   Build_HadronCollider_C: 8,
   Build_QuantumEncoder_C: 9,
-  Build_Converter_C: 8,
+  Build_Converter_C: 9,
   Build_Packager_C: 5,
   Build_OilPump_C: 5,
   Build_WaterPump_C: 3,
-  Build_FrackingExtractor_C: 7,
-  Build_FrackingSmasher_C: 7,
+  Build_FrackingExtractor_C: 8,
+  Build_FrackingSmasher_C: 8,
 };
 
 const INCLUDED_BUILDINGS = new Set(Object.keys(BUILDING_NAMES));
@@ -243,15 +259,26 @@ function toFlows(map: Record<string, number> | undefined, cycle: number): SpecsI
   });
 }
 
-// The MAM-ish chains the calculator dump can't tier for us (no
-// schematic→recipe table) and whose building defaults are wrong:
-// Reanimated SAM runs in a T0 Constructor but unlocks alongside the
-// T8 Converter; the Ficsonium pair is Phase-5/Tier-9 nuclear endgame.
+// Milestone schematics carry a tier plus the recipes they unlock — the
+// authoritative 1.2 source for every standard recipe. Min wins so a recipe
+// shared across milestones gets its earliest unlock.
+const milestoneTiers = new Map<string, number>();
+for (const schem of Object.values(sc.schematicsData)) {
+  if (schem.tier === undefined) continue;
+  for (const path of schem.recipes ?? []) {
+    const rid = classId(path);
+    const prev = milestoneTiers.get(rid);
+    if (prev === undefined || schem.tier < prev) milestoneTiers.set(rid, schem.tier);
+  }
+}
+
+// MAM research nodes carry no tier in the dump and the SAM pair post-dates
+// the carried 1.1 tier fixture: Reanimated SAM runs in a T0 Constructor but
+// is gated behind the Alien Technology tree's SAM chain, late-game in
+// practice, so pin both at T8.
 const HAND_TIERS: Record<string, number> = {
   Recipe_IngotSAM_C: 8,
   Recipe_SAMFluctuator_C: 8,
-  Recipe_Ficsonium_C: 9,
-  Recipe_FicsoniumFuelRod_C: 9,
 };
 
 const recipes: SpecsRecipe[] = [];
@@ -273,12 +300,13 @@ for (const r of Object.values(sc.recipesData)) {
   const inputs = toFlows(r.ingredients, cycle);
   const outputs = toFlows(r.produce, cycle);
 
-  // The calculator dump has no schematic→recipe table, so alternates are
-  // identified by the game's own naming convention.
+  // Alternates are identified by the game's own naming convention — the
+  // alternate-blueprint schematics exist in the dump but carry no tier, so
+  // the name prefix is just as reliable and simpler.
   const isAlt = id.startsWith("Recipe_Alternate_") || r.name.startsWith("Alternate:");
 
   const unlockTier =
-    HAND_TIERS[id] ?? carriedTiers[id] ?? BUILDING_UNLOCK_TIER[buildingId] ?? 0;
+    milestoneTiers.get(id) ?? HAND_TIERS[id] ?? carriedTiers[id] ?? BUILDING_UNLOCK_TIER[buildingId] ?? 0;
 
   recipes.push({
     id,
@@ -518,6 +546,19 @@ const samRecipes = recipes.filter((r) => r.inputs.some((i) => i.itemId === "Desc
 if (samRecipes.length === 0) fail("no SAM-consuming recipes — the SAM toggle would stay inert");
 if (!itemIds.has("Desc_FicsiteIngot_C")) fail("Desc_FicsiteIngot_C missing");
 if (!itemIds.has("Desc_SAM_C")) fail("Desc_SAM_C missing");
+if (milestoneTiers.size < 100) fail(`milestone tier coverage regressed: ${milestoneTiers.size} recipes`);
+// Endgame recipes run in low-tier machines — exactly the case the
+// building-tier fallback gets wrong. Pin a few so a regression in the
+// schematic parsing can't silently demote them.
+const TIER_PINS: Record<string, number> = {
+  Recipe_FicsiteMesh_C: 9, // Ficsite Trigon — T0 Constructor, T9 unlock
+  Recipe_SingularityCell_C: 9, // T6 Manufacturer, T9 unlock
+  Recipe_SpaceElevatorPart_11_C: 9, // Ballistic Warp Drive — Phase 5
+};
+for (const [rid, want] of Object.entries(TIER_PINS)) {
+  const got = recipes.find((r) => r.id === rid)?.unlockTier;
+  if (got !== want) fail(`${rid} unlockTier ${got} != ${want}`);
+}
 for (const r of recipes) {
   if (!INCLUDED_BUILDINGS.has(r.buildingId)) fail(`recipe ${r.id} uses excluded building ${r.buildingId}`);
   for (const io of [...r.inputs, ...r.outputs]) {
@@ -547,9 +588,12 @@ const output = {
 writeFileSync(OUT, JSON.stringify(output, null, 2) + "\n", "utf8");
 
 const altCount = recipes.filter((r) => r.isAlt).length;
-const newTiers = recipes.filter((r) => carriedTiers[r.id] === undefined).length;
+const tierFromMilestone = recipes.filter((r) => milestoneTiers.has(r.id)).length;
+const tierDefaulted = recipes.filter(
+  (r) => !milestoneTiers.has(r.id) && HAND_TIERS[r.id] === undefined && carriedTiers[r.id] === undefined,
+).length;
 console.log(
-  `wrote ${OUT}\n  items: ${items.length} (${synthesised.length} synthesised: ${synthesised.join(", ") || "none"})\n  buildings: ${buildings.length}\n  recipes: ${recipes.length} (${altCount} alts, ${samRecipes.length} SAM-consuming, ${newTiers} tiers defaulted to building tier)\n  milestones: ${milestones.length}\n  generators: ${generators.length}\n  miners: ${miners.length}\n  transportVehicles: ${transportVehicles.length}`,
+  `wrote ${OUT}\n  items: ${items.length} (${synthesised.length} synthesised: ${synthesised.join(", ") || "none"})\n  buildings: ${buildings.length}\n  recipes: ${recipes.length} (${altCount} alts, ${samRecipes.length} SAM-consuming, ${tierFromMilestone} tiers from milestones, ${tierDefaulted} defaulted to building tier)\n  milestones: ${milestones.length}\n  generators: ${generators.length}\n  miners: ${miners.length}\n  transportVehicles: ${transportVehicles.length}`,
 );
 
 function round2(n: number): number {
