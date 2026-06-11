@@ -52,22 +52,21 @@ pub fn water_group_output_ipm(group: &WaterGroupRow) -> f32 {
 /// truth for the pickers (NodeRow, map popover, placement loadout) and
 /// for `set_node_claim` validation — they must never disagree again.
 pub fn allowed_extractors(node: &MapNode, game_data: &GameData) -> Vec<ExtractorOption> {
-    let name = |id: &str, fallback: &str| {
-        game_data
-            .building(id)
-            .map(|b| b.name.clone())
-            .unwrap_or_else(|| fallback.to_string())
+    // One lookup per building; the fallbacks (catalog names) only fire
+    // if the dataset somehow drops the building.
+    let single = |id: &str, fallback_name: &str, base_ipm: f32, fallback_tier: u8| {
+        let building = game_data.building(id);
+        vec![ExtractorOption {
+            id: id.to_string(),
+            name: building
+                .map(|b| b.name.clone())
+                .unwrap_or_else(|| fallback_name.to_string()),
+            base_ipm,
+            unlock_tier: building.map(|b| b.unlock_tier).unwrap_or(fallback_tier),
+        }]
     };
     if is_oil_node(node) {
-        return vec![ExtractorOption {
-            id: "Build_OilPump_C".to_string(),
-            name: name("Build_OilPump_C", "Oil Extractor"),
-            base_ipm: OIL_EXTRACTOR_IPM,
-            unlock_tier: game_data
-                .building("Build_OilPump_C")
-                .map(|b| b.unlock_tier)
-                .unwrap_or(5),
-        }];
+        return single("Build_OilPump_C", "Oil Extractor", OIL_EXTRACTOR_IPM, 5);
     }
     match node.kind {
         NodeKind::MinerNode => game_data
@@ -75,20 +74,20 @@ pub fn allowed_extractors(node: &MapNode, game_data: &GameData) -> Vec<Extractor
             .iter()
             .map(|m| ExtractorOption {
                 id: m.id.clone(),
-                name: name(&m.id, &format!("Miner Mk{}", m.mark)),
+                name: game_data
+                    .building(&m.id)
+                    .map(|b| b.name.clone())
+                    .unwrap_or_else(|| format!("Miner Mk{}", m.mark)),
                 base_ipm: m.base_items_per_minute,
                 unlock_tier: m.unlock_tier,
             })
             .collect(),
-        NodeKind::FrackingWell => vec![ExtractorOption {
-            id: "Build_FrackingSmasher_C".to_string(),
-            name: name("Build_FrackingSmasher_C", "Resource Well Extractor"),
-            base_ipm: WELL_EXTRACTOR_IPM,
-            unlock_tier: game_data
-                .building("Build_FrackingSmasher_C")
-                .map(|b| b.unlock_tier)
-                .unwrap_or(8),
-        }],
+        NodeKind::FrackingWell => single(
+            "Build_FrackingSmasher_C",
+            "Resource Well Pressuriser",
+            WELL_EXTRACTOR_IPM,
+            8,
+        ),
         NodeKind::Geyser => Vec::new(),
     }
 }

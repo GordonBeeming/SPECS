@@ -10,7 +10,9 @@ export function claimDefaultExtractor(
   node: Pick<ResourceNodeRow, "allowedExtractors">,
   preferredId?: string | null,
 ): string | null {
-  const allowed = node.allowedExtractors;
+  // The type guarantees the field, but rows can arrive from a cache
+  // populated before this field existed — guard the array itself.
+  const allowed = node.allowedExtractors ?? [];
   if (allowed.length === 0) return null;
   if (preferredId && allowed.some((e) => e.id === preferredId)) return preferredId;
   return allowed[0].id;
