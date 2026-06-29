@@ -322,6 +322,15 @@ export function usePlanDesigner(factoryId: string) {
     [update],
   );
 
+  /** Replace the whole recipe-pin map. Clearing to {} re-optimizes (the LP
+      re-chooses against current unlocked alts); passing a captured map is the
+      "undo re-optimize" path. Either way the debounced recompute + autosave run. */
+  const setRecipeOverrides = useCallback(
+    (recipeOverrides: Record<string, string>) =>
+      update((prev) => ({ ...prev, recipeOverrides })),
+    [update],
+  );
+
   const invalidateAfterSave = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: queryKeys.factory.plan(factoryId) });
     queryClient.invalidateQueries({ queryKey: queryKeys.factory.detail(factoryId) });
@@ -399,6 +408,7 @@ export function usePlanDesigner(factoryId: string) {
     setImportCap,
     removeImportSource,
     setRecipeOverride,
+    setRecipeOverrides,
     setIncludeSam,
     save,
     flush,
