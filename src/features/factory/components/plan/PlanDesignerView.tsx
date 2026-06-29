@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Atom, Check, Loader2, Pencil, ScrollText, Trash2, Wrench, X, Zap } from "lucide-react";
+import { ArrowLeft, Atom, Check, ExternalLink, Loader2, Pencil, ScrollText, Trash2, Wrench, X, Zap } from "lucide-react";
 
 import { Button } from "@/shared/ui/Button";
 import { Icon } from "@/shared/ui/Icon";
 import { IconPicker } from "@/shared/ui/IconPicker";
 import { useNavStore } from "@/shared/nav-store";
+import { invoke } from "@/shared/tauri/invoke";
 import { AddMachineForm } from "../AddMachineForm";
 import { FactoryLedgerTable } from "../FactoryLedgerTable";
 import { useItems, useRecipes } from "@/features/library/hooks/useLibrary";
@@ -32,6 +33,9 @@ export interface PlanDesignerViewProps {
   /** Fresh from quick-create: auto-open the product picker and offer
       "Cancel & delete" until the first product lands. */
   firstRun?: boolean;
+  /** Rendered as the whole UI of a popped-out window: no Back button (the
+      window's own close button is the exit) and no Pop-out button. */
+  popped?: boolean;
   onBack: () => void;
   /** Used by first-run cancel — delete the factory and leave. */
   onDeleted: () => void;
@@ -42,7 +46,7 @@ export interface PlanDesignerViewProps {
  * the factory should make, the graph computes itself, and edits
  * auto-save in the background.
  */
-export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: PlanDesignerViewProps) {
+export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDeleted }: PlanDesignerViewProps) {
   const detail = useFactoryDetail(factoryId);
   const factories = useFactoryList();
   const items = useItems();
@@ -159,10 +163,12 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
   return (
     <div className="flex h-full flex-col">
       <header className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
-        <Button variant="ghost" onClick={handleBack} aria-label="Back">
-          <ArrowLeft className="h-4 w-4" />
-          Back
-        </Button>
+        {!popped && (
+          <Button variant="ghost" onClick={handleBack} aria-label="Back">
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
+        )}
 
         <button
           type="button"
@@ -251,6 +257,17 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
           <span className="text-xs">
             {designer.saving ? "Saving…" : designer.dirty ? "Unsaved" : "Saved"}
           </span>
+          {!popped && (
+            <Button
+              variant="ghost"
+              onClick={() => void invoke("pop_out_factory", { factoryId })}
+              title="Open this factory in its own window so you can edit several at once"
+              className="px-2 py-1 text-xs"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Pop out
+            </Button>
+          )}
           <Button
             variant="ghost"
             onClick={() => setLeftPanel((p) => (p === "ledger" ? null : "ledger"))}
@@ -271,18 +288,20 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
             <Wrench className="h-3.5 w-3.5" />
             Add machine
           </Button>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              useNavStore.getState().selectFactory(factoryId);
-              useNavStore.getState().goTo("power");
-            }}
-            title="Plan power for this factory"
-            className="px-2 py-1 text-xs"
-          >
-            <Zap className="h-3.5 w-3.5 text-warning" />
-            Add power
-          </Button>
+          {!popped && (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                useNavStore.getState().selectFactory(factoryId);
+                useNavStore.getState().goTo("power");
+              }}
+              title="Plan power for this factory"
+              className="px-2 py-1 text-xs"
+            >
+              <Zap className="h-3.5 w-3.5 text-warning" />
+              Add power
+            </Button>
+          )}
           <Button
             variant="danger"
             onClick={() => setConfirmDelete(true)}
@@ -400,7 +419,11 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
 
         {leftPanel && (
           <div className="absolute left-3 top-3 bottom-3 z-30">
-            <div className="flex max-h-full w-[360px] flex-col overflow-hidden rounded-lg border border-border bg-bg-raised shadow-xl">
+            <div
+              className={`flex max-h-full flex-col overflow-hidden rounded-lg border border-border bg-bg-raised shadow-xl ${
+                leftPanel === "machines" ? "w-[480px]" : "w-[360px]"
+              }`}
+            >
               <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
                 <span className="flex items-center gap-2 text-sm font-semibold text-fg">
                   {leftPanel === "ledger" ? (

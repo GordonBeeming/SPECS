@@ -105,6 +105,7 @@ pub fn run() {
             features::factory::commands::update_factory_machine,
             features::factory::commands::remove_factory_machine,
             features::factory::commands::factory_ledger,
+            features::factory::commands::pop_out_factory,
             features::elevator::commands::elevator_overview,
             features::logistics::commands::list_logistics_links,
             features::logistics::commands::get_logistics_link,

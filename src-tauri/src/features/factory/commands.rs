@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use tauri::State;
+use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
@@ -449,6 +449,30 @@ pub fn get_factory_detail(
         machines,
         ledger,
     })
+}
+
+/// Open (or focus) a separate OS window showing one factory's plan designer,
+/// so several factories can be edited side by side. The window is labelled
+/// `plan-<factoryId>`; the frontend reads that on boot to render the chrome-less
+/// plan-only shell. The shared Rust backend means the new window sees the same
+/// active playthrough and DB automatically. Re-popping the same factory just
+/// focuses the existing window instead of opening a duplicate.
+#[tauri::command]
+pub fn pop_out_factory(app: AppHandle, factory_id: String) -> AppResult<()> {
+    let label = format!("plan-{factory_id}");
+    if let Some(existing) = app.get_webview_window(&label) {
+        existing
+            .set_focus()
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
+        .title("S.P.E.C.S — Factory")
+        .inner_size(1100.0, 800.0)
+        .min_inner_size(900.0, 600.0)
+        .build()
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    Ok(())
 }
 
 /// Returns the Somersloop amplifier slot count for a building id.

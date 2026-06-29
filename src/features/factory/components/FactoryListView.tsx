@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Factory as FactoryGlyph, Plus } from "lucide-react";
+import { ExternalLink, Factory as FactoryGlyph, Plus } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { ConfirmDeleteButton } from "@/shared/ui/ConfirmDeleteButton";
 import { Icon } from "@/shared/ui/Icon";
 import { openPlanDesigner } from "@/shared/nav-store";
+import { invoke } from "@/shared/tauri/invoke";
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { useDeleteFactory, useFactoryList } from "../hooks/useFactories";
 import type { Factory } from "../types";
@@ -103,6 +104,15 @@ function FactoryRow({ factory, onOpen, onDelete }: FactoryRowProps) {
         <span className="ml-2 text-xs text-fg-muted tabular-nums">
           {factory.machineCount} {factory.machineCount === 1 ? "machine" : "machines"}
         </span>
+      </button>
+      <button
+        type="button"
+        onClick={() => void invoke("pop_out_factory", { factoryId: factory.id })}
+        title={`Open ${factory.name} in its own window`}
+        aria-label={`Pop out ${factory.name}`}
+        className="rounded p-1.5 text-fg-muted hover:bg-border hover:text-fg"
+      >
+        <ExternalLink className="h-4 w-4" />
       </button>
       <span className="mr-1">
         <ConfirmDeleteButton onConfirm={onDelete} label={`Delete ${factory.name}`} />
