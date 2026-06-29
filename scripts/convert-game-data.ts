@@ -416,6 +416,63 @@ const milestones = [
   { id: "tier-9", tier: 9, name: "Project Assembly Phase 5", unlocks: ["Build_QuantumEncoder_C"] },
 ];
 
+// Space Elevator / Project Assembly phases. The dump carries the part items
+// and their recipes but not the per-phase delivery requirements, so these are
+// hand-authored from the official wiki's "Initial phase requirements" table
+// (https://satisfactory.wiki.gg/wiki/Space_Elevator). The first three phases
+// each unlock two tiers, the fourth unlocks Tier 9, and the fifth launches the
+// project (no tier unlock). `unlocksTiers` is empty for the final phase.
+const spaceElevatorPhases = [
+  {
+    phase: 1,
+    name: "Distribution Platform",
+    unlocksTiers: [3, 4],
+    parts: [{ itemId: "Desc_SpaceElevatorPart_1_C", quantity: 50 }],
+  },
+  {
+    phase: 2,
+    name: "Construction Dock",
+    unlocksTiers: [5, 6],
+    parts: [
+      { itemId: "Desc_SpaceElevatorPart_1_C", quantity: 1000 },
+      { itemId: "Desc_SpaceElevatorPart_2_C", quantity: 1000 },
+      { itemId: "Desc_SpaceElevatorPart_3_C", quantity: 100 },
+    ],
+  },
+  {
+    phase: 3,
+    name: "Main Body",
+    unlocksTiers: [7, 8],
+    parts: [
+      { itemId: "Desc_SpaceElevatorPart_2_C", quantity: 2500 },
+      { itemId: "Desc_SpaceElevatorPart_4_C", quantity: 500 },
+      { itemId: "Desc_SpaceElevatorPart_5_C", quantity: 100 },
+    ],
+  },
+  {
+    phase: 4,
+    name: "Propulsion",
+    unlocksTiers: [9],
+    parts: [
+      { itemId: "Desc_SpaceElevatorPart_7_C", quantity: 500 },
+      { itemId: "Desc_SpaceElevatorPart_6_C", quantity: 500 },
+      { itemId: "Desc_SpaceElevatorPart_8_C", quantity: 250 },
+      { itemId: "Desc_SpaceElevatorPart_9_C", quantity: 100 },
+    ],
+  },
+  {
+    phase: 5,
+    name: "Assembly",
+    unlocksTiers: [],
+    parts: [
+      { itemId: "Desc_SpaceElevatorPart_9_C", quantity: 1000 },
+      { itemId: "Desc_SpaceElevatorPart_10_C", quantity: 1000 },
+      { itemId: "Desc_SpaceElevatorPart_12_C", quantity: 256 },
+      { itemId: "Desc_SpaceElevatorPart_11_C", quantity: 200 },
+    ],
+  },
+];
+
 const beltTiers = [
   { mark: 1, itemsPerMinute: 60, unlockTier: 0 },
   { mark: 2, itemsPerMinute: 120, unlockTier: 2 },
@@ -566,6 +623,14 @@ for (const r of recipes) {
     if (!itemIds.has(io.itemId)) fail(`recipe ${r.id} references unknown item ${io.itemId}`);
   }
 }
+if (spaceElevatorPhases.length !== 5) fail(`expected 5 Space Elevator phases, got ${spaceElevatorPhases.length}`);
+for (const ph of spaceElevatorPhases) {
+  if (ph.parts.length === 0) fail(`Space Elevator phase ${ph.phase} has no parts`);
+  for (const p of ph.parts) {
+    if (!itemIds.has(p.itemId)) fail(`Space Elevator phase ${ph.phase} references unknown item ${p.itemId}`);
+    if (!(p.quantity > 0)) fail(`Space Elevator phase ${ph.phase} part ${p.itemId} has non-positive quantity`);
+  }
+}
 
 // --- Output -------------------------------------------------------------
 
@@ -579,6 +644,7 @@ const output = {
     return a.name.localeCompare(b.name);
   }),
   milestones,
+  spaceElevatorPhases,
   beltTiers,
   pipeTiers,
   generators,

@@ -50,4 +50,7 @@ export const queryKeys = {
     budget: (assumption: string) => ["resources", "budget", assumption] as const,
     waterGroups: ["resources", "water-groups"] as const,
   },
+  elevator: {
+    overview: ["elevator", "overview"] as const,
+  },
 };

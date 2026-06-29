@@ -8638,6 +8638,114 @@
       ]
     }
   ],
+  "spaceElevatorPhases": [
+    {
+      "phase": 1,
+      "name": "Distribution Platform",
+      "unlocksTiers": [
+        3,
+        4
+      ],
+      "parts": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_1_C",
+          "quantity": 50
+        }
+      ]
+    },
+    {
+      "phase": 2,
+      "name": "Construction Dock",
+      "unlocksTiers": [
+        5,
+        6
+      ],
+      "parts": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_1_C",
+          "quantity": 1000
+        },
+        {
+          "itemId": "Desc_SpaceElevatorPart_2_C",
+          "quantity": 1000
+        },
+        {
+          "itemId": "Desc_SpaceElevatorPart_3_C",
+          "quantity": 100
+        }
+      ]
+    },
+    {
+      "phase": 3,
+      "name": "Main Body",
+      "unlocksTiers": [
+        7,
+        8
+      ],
+      "parts": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_2_C",
+          "quantity": 2500
+        },
+        {
+          "itemId": "Desc_SpaceElevatorPart_4_C",
+          "quantity": 500
+        },
+        {
+          "itemId": "Desc_SpaceElevatorPart_5_C",
+          "quantity": 100
+        }
+      ]
+    },
+    {
+      "phase": 4,
+      "name": "Propulsion",
+      "unlocksTiers": [
+        9
+      ],
+      "parts": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_7_C",
+          "quantity": 500
+        },
+        {
+          "itemId": "Desc_SpaceElevatorPart_6_C",
+          "quantity": 500
+        },
+        {
+          "itemId": "Desc_SpaceElevatorPart_8_C",
+          "quantity": 250
+        },
+        {
+          "itemId": "Desc_SpaceElevatorPart_9_C",
+          "quantity": 100
+        }
+      ]
+    },
+    {
+      "phase": 5,
+      "name": "Assembly",
+      "unlocksTiers": [],
+      "parts": [
+        {
+          "itemId": "Desc_SpaceElevatorPart_9_C",
+          "quantity": 1000
+        },
+        {
+          "itemId": "Desc_SpaceElevatorPart_10_C",
+          "quantity": 1000
+        },
+        {
+          "itemId": "Desc_SpaceElevatorPart_12_C",
+          "quantity": 256
+        },
+        {
+          "itemId": "Desc_SpaceElevatorPart_11_C",
+          "quantity": 200
+        }
+      ]
+    }
+  ],
   "beltTiers": [
     {
       "mark": 1,

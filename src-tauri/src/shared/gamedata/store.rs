@@ -122,6 +122,10 @@ impl GameData {
         &self.inner.file.milestones
     }
 
+    pub fn space_elevator_phases(&self) -> &[SpaceElevatorPhase] {
+        &self.inner.file.space_elevator_phases
+    }
+
     pub fn belt_tiers(&self) -> &[BeltTier] {
         &self.inner.file.belt_tiers
     }

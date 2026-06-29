@@ -17,6 +17,10 @@ pub struct GameDataFile {
     pub buildings: Vec<Building>,
     pub recipes: Vec<Recipe>,
     pub milestones: Vec<Milestone>,
+    /// Space Elevator / Project Assembly delivery requirements per phase.
+    /// Optional so older dataset files keep deserialising.
+    #[serde(default)]
+    pub space_elevator_phases: Vec<SpaceElevatorPhase>,
     pub belt_tiers: Vec<BeltTier>,
     pub pipe_tiers: Vec<PipeTier>,
     /// Power generators: Coal, Fuel, Nuclear, Biomass, Geothermal.
@@ -160,6 +164,28 @@ pub struct Milestone {
     /// Plain string ids — consumers cross-reference against the right list.
     #[serde(default)]
     pub unlocks: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SpaceElevatorPhase {
+    /// 1-based phase number (1–5).
+    pub phase: u8,
+    pub name: String,
+    /// HUB tiers this phase's delivery unlocks. The final phase unlocks no
+    /// tier (it launches the project), so this is empty there.
+    #[serde(default)]
+    pub unlocks_tiers: Vec<u8>,
+    pub parts: Vec<SpaceElevatorPart>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SpaceElevatorPart {
+    /// References an `Item.id` (a `Desc_SpaceElevatorPart_*_C`).
+    pub item_id: String,
+    /// Total units this phase requires delivered to the elevator.
+    pub quantity: u32,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
