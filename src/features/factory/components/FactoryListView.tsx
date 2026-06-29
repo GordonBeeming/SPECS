@@ -1,63 +1,20 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Factory as FactoryGlyph, Plus } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { ConfirmDeleteButton } from "@/shared/ui/ConfirmDeleteButton";
 import { Icon } from "@/shared/ui/Icon";
-import { useNavStore } from "@/shared/nav-store";
+import { openPlanDesigner } from "@/shared/nav-store";
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { useDeleteFactory, useFactoryList } from "../hooks/useFactories";
 import type { Factory } from "../types";
 import { CreateFactoryModal } from "./CreateFactoryModal";
-import { FactoryDetail } from "./FactoryDetail";
-
-const LAST_FACTORY_KEY = (playthroughId: string) =>
-  `specs:last-factory:${playthroughId}`;
 
 export function FactoryListView() {
   const playthrough = useCurrentPlaythrough();
   const list = useFactoryList();
   const deleteMut = useDeleteFactory();
-  const takePendingFactoryId = useNavStore((s) => s.takePendingFactoryId);
   const [showCreate, setShowCreate] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
-
-  // On mount + whenever the list of factories settles, pick a default
-  // selection so the right-hand pane isn't always the empty hint:
-  //   1. A pending id set by HomeView's deep-link tile wins.
-  //   2. Else, the last-selected factory id remembered in localStorage
-  //      for this playthrough wins (only if it still exists).
-  //   3. Else, leave the pane empty so the user picks.
-  useEffect(() => {
-    if (selected || !list.data || !playthrough.data) return;
-    const pending = takePendingFactoryId();
-    if (pending && list.data.some((f) => f.id === pending)) {
-      setSelected(pending);
-      return;
-    }
-    try {
-      const remembered = localStorage.getItem(
-        LAST_FACTORY_KEY(playthrough.data.id),
-      );
-      if (remembered && list.data.some((f) => f.id === remembered)) {
-        setSelected(remembered);
-      }
-    } catch {
-      // localStorage can throw (private mode, quota); ignore.
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [list.data, playthrough.data?.id]);
-
-  // Persist the selection so a refresh / app restart lands on the same
-  // factory. Stored per playthrough so two playthroughs don't collide.
-  useEffect(() => {
-    if (!selected || !playthrough.data) return;
-    try {
-      localStorage.setItem(LAST_FACTORY_KEY(playthrough.data.id), selected);
-    } catch {
-      // ignore — same reasons as the read path above.
-    }
-  }, [selected, playthrough.data?.id]);
 
   if (!playthrough.data) {
     return (
@@ -72,8 +29,8 @@ export function FactoryListView() {
   }
 
   return (
-    <div className="grid h-full gap-4 lg:grid-cols-[20rem_1fr]">
-      <Card className="flex flex-col gap-3 overflow-hidden">
+    <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
+      <Card className="flex flex-1 flex-col gap-3 overflow-hidden">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-lg font-semibold text-primary">Factories</h1>
@@ -106,35 +63,17 @@ export function FactoryListView() {
             <FactoryRow
               key={f.id}
               factory={f}
-              active={selected === f.id}
-              onSelect={() => setSelected(f.id)}
-              onDelete={() => {
-                deleteMut.mutate(f.id, {
-                  onSuccess: () => {
-                    if (selected === f.id) setSelected(null);
-                  },
-                });
-              }}
+              onOpen={() => openPlanDesigner(f.id)}
+              onDelete={() => deleteMut.mutate(f.id)}
             />
           )) ?? null}
         </ul>
       </Card>
 
-      <Card className="flex flex-col overflow-hidden">
-        {selected ? (
-          <FactoryDetail factoryId={selected} />
-        ) : (
-          <div className="m-auto max-w-md text-center text-sm text-fg-muted">
-            Select a factory on the left to inspect its machines and per-item
-            ledger, or create a new one.
-          </div>
-        )}
-      </Card>
-
       {showCreate && (
         <CreateFactoryModal
           onClose={() => setShowCreate(false)}
-          onCreated={(id) => setSelected(id)}
+          onCreated={(id) => openPlanDesigner(id, true)}
         />
       )}
     </div>
@@ -143,22 +82,16 @@ export function FactoryListView() {
 
 interface FactoryRowProps {
   factory: Factory;
-  active: boolean;
-  onSelect: () => void;
+  onOpen: () => void;
   onDelete: () => void;
 }
 
-function FactoryRow({ factory, active, onSelect, onDelete }: FactoryRowProps) {
+function FactoryRow({ factory, onOpen, onDelete }: FactoryRowProps) {
   return (
-    <li
-      className={`flex items-center gap-1 rounded-md transition-colors ${
-        active ? "bg-primary/10" : "hover:bg-border/40"
-      }`}
-    >
+    <li className="flex items-center gap-1 rounded-md transition-colors hover:bg-border/40">
       <button
         type="button"
-        onClick={onSelect}
-        aria-current={active ? "true" : undefined}
+        onClick={onOpen}
         className="flex flex-1 items-center gap-2 rounded-md px-3 py-2 text-left"
       >
         {factory.iconId ? (

@@ -36,7 +36,7 @@ import {
 } from "@/features/playthrough/hooks/usePlaythroughs";
 import { Card } from "@/shared/ui/Card";
 import { Icon } from "@/shared/ui/Icon";
-import { useNavStore } from "@/shared/nav-store";
+import { openPlanDesigner } from "@/shared/nav-store";
 
 interface HomeViewProps {
   /** Lets the home tiles deep-link into other tabs. */
@@ -232,7 +232,6 @@ function ActiveHome({ goTo }: HomeViewProps) {
   const inventory = useAmplifierInventory();
   const setTier = useSetCurrentTier();
   const deleteMut = useDeletePlaythrough();
-  const selectFactory = useNavStore((s) => s.selectFactory);
   const [showShare, setShowShare] = useState(false);
   const [showAmp, setShowAmp] = useState(false);
   const [showAddFactory, setShowAddFactory] = useState(false);
@@ -427,10 +426,7 @@ function ActiveHome({ goTo }: HomeViewProps) {
               <button
                 key={f.id}
                 type="button"
-                onClick={() => {
-                  selectFactory(f.id);
-                  goTo("factories");
-                }}
+                onClick={() => openPlanDesigner(f.id)}
                 className="flex items-center gap-3 rounded-lg border border-border bg-bg-raised p-3 text-left transition-colors hover:border-primary hover:bg-primary/5"
               >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary/10">

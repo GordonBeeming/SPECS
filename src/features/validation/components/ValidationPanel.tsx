@@ -169,10 +169,7 @@ function findingTarget(f: Finding): (() => void) | null {
     case "machineRecipeAboveTier":
     case "machineBuildingAboveTier": {
       const id = f.factoryId;
-      return () => {
-        nav.selectFactory(id);
-        nav.goTo("factories");
-      };
+      return () => openPlanDesigner(id);
     }
     case "planRecipeAboveTier":
     case "planDoesNotCompute":

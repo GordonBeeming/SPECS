@@ -1,7 +1,7 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { AlertTriangle, ArrowDownCircle, ExternalLink } from "lucide-react";
 
-import { useNavStore } from "@/shared/nav-store";
+import { openPlanDesigner } from "@/shared/nav-store";
 
 import type { FactoryNodeData } from "../types";
 
@@ -17,12 +17,7 @@ import type { FactoryNodeData } from "../types";
  * for the assembly.
  */
 export function FactoryNode({ data, id }: NodeProps & { data: FactoryNodeData }) {
-  const selectFactory = useNavStore((s) => s.selectFactory);
-  const goTo = useNavStore((s) => s.goTo);
-  const openInGraph = () => {
-    selectFactory(id);
-    goTo("factories");
-  };
+  const openInGraph = () => openPlanDesigner(id);
   return (
     <div className="group rounded-lg border border-border bg-bg-raised px-3 py-2 shadow-sm">
       <Handle type="target" position={Position.Left} className="!bg-primary" />

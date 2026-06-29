@@ -3,7 +3,7 @@ import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Rocket } from "lucid
 import { Card } from "@/shared/ui/Card";
 import { Badge } from "@/shared/ui/Badge";
 import { Icon } from "@/shared/ui/Icon";
-import { useNavStore } from "@/shared/nav-store";
+import { openPlanDesigner } from "@/shared/nav-store";
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { useElevatorOverview } from "../hooks/useElevatorOverview";
 import type { ElevatorPartProgress, ElevatorPhase, ElevatorProducer } from "../types";
@@ -192,10 +192,7 @@ function PartRow({ part }: { part: ElevatorPartProgress }) {
 }
 
 function ProducerRow({ producer }: { producer: ElevatorProducer }) {
-  const openFactory = () => {
-    useNavStore.getState().selectFactory(producer.factoryId);
-    useNavStore.getState().goTo("factories");
-  };
+  const openFactory = () => openPlanDesigner(producer.factoryId);
   // Round each value once, up front: the colour and the "show this span at all"
   // checks below must agree with what's printed, or f32 noise leaks through.
   const produced = r3(producer.producedPerMinute);

@@ -41,7 +41,6 @@ import {
   GripVertical,
   Maximize2,
   Minimize2,
-  Pencil,
   Unlink,
   Workflow,
   Zap,
@@ -1234,11 +1233,6 @@ export function MapView() {
                   openPlanDesigner(selectedFactoryId);
                   setSelectedFactoryId(null);
                 }}
-                onEdit={() => {
-                  useNavStore.getState().selectFactory(selectedFactoryId);
-                  useNavStore.getState().goTo("factories");
-                  setSelectedFactoryId(null);
-                }}
                 onEditPower={() => {
                   useNavStore.getState().selectFactory(selectedFactoryId);
                   useNavStore.getState().goTo("power");
@@ -1605,7 +1599,6 @@ interface FactoryPopoverProps {
   unsourcedInputs?: UnsourcedInput[];
   onStartImportDrag?: (input: UnsourcedInput, e: React.MouseEvent) => void;
   onOpenPlan?: () => void;
-  onEdit: () => void;
   onEditPower?: () => void;
   onClose: () => void;
 }
@@ -1618,7 +1611,6 @@ function FactoryPopover({
   unsourcedInputs = [],
   onStartImportDrag,
   onOpenPlan,
-  onEdit,
   onEditPower,
   onClose,
 }: FactoryPopoverProps) {
@@ -1891,10 +1883,6 @@ function FactoryPopover({
             Edit power
           </Button>
         )}
-        <Button variant="ghost" onClick={onEdit} className="px-3 py-1 text-xs">
-          <Pencil className="h-3 w-3" />
-          Details
-        </Button>
         {onOpenPlan && (
           <Button onClick={onOpenPlan} className="px-3 py-1 text-xs">
             <Workflow className="h-3 w-3" />
