@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   BookOpen,
   Compass,
@@ -173,9 +173,26 @@ export function AppShell() {
   // Clearing the undo stack when the active playthrough changes avoids
   // an undo against playthrough A landing reverse calls against
   // playthrough B's DB. The toast naturally falls away too.
+  //
+  // Once a playthrough is open, any change away from it — switching to a
+  // different one OR closing/deleting it (id → null) — returns us to Home and
+  // drops any open plan designer. The old route showed the previous
+  // playthrough's factories/graph, which is meaningless (and misleading) once
+  // that playthrough is no longer active. The ref skips the very first open
+  // (null → id) so this never fights the auto-open first paint, where the
+  // route is already Home.
+  const prevPlaythroughId = useRef<string | null>(null);
   useEffect(() => {
     reset();
-  }, [playthroughId, reset]);
+    if (
+      prevPlaythroughId.current !== null &&
+      prevPlaythroughId.current !== playthroughId
+    ) {
+      setRoute("home");
+      setPlanFactoryId(null);
+    }
+    prevPlaythroughId.current = playthroughId;
+  }, [playthroughId, reset, setRoute, setPlanFactoryId]);
 
   // Auto-dismiss the undo / redo toast after a short window.
   useEffect(() => {
