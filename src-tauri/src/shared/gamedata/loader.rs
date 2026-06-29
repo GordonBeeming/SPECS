@@ -118,6 +118,48 @@ pub fn validate(data: &GameDataFile) -> Result<()> {
         }
     }
 
+    // Space Elevator phases: every part must resolve to a known item, and a
+    // phase with no parts is meaningless. The Space Elevator view depends on
+    // these references holding so a typo here fails at load, not at render.
+    let mut phase_numbers: HashSet<u8> = HashSet::new();
+    for ph in &data.space_elevator_phases {
+        if ph.phase == 0 {
+            bail!("Space Elevator phase number must be >= 1");
+        }
+        if !phase_numbers.insert(ph.phase) {
+            bail!("duplicate Space Elevator phase number: {}", ph.phase);
+        }
+        if ph.parts.is_empty() {
+            bail!("Space Elevator phase {} has no parts", ph.phase);
+        }
+        // A part listed twice in one phase would silently double the
+        // requirement, so reject duplicates rather than summing them.
+        let mut phase_items: HashSet<&str> = HashSet::with_capacity(ph.parts.len());
+        for part in &ph.parts {
+            if !item_ids.contains(part.item_id.as_str()) {
+                return Err(anyhow!(
+                    "Space Elevator phase {} references unknown item {}",
+                    ph.phase,
+                    part.item_id
+                ));
+            }
+            if !phase_items.insert(part.item_id.as_str()) {
+                return Err(anyhow!(
+                    "Space Elevator phase {} lists item {} more than once",
+                    ph.phase,
+                    part.item_id
+                ));
+            }
+            if part.quantity == 0 {
+                return Err(anyhow!(
+                    "Space Elevator phase {} part {} has zero quantity",
+                    ph.phase,
+                    part.item_id
+                ));
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -304,6 +346,65 @@ mod tests {
         }"#;
         let err = parse_str(bad).unwrap_err();
         assert!(format!("{:#}", err).contains("no outputs"));
+    }
+
+    #[test]
+    fn bundled_dataset_has_five_space_elevator_phases() {
+        let data = load_bundled().unwrap();
+        assert_eq!(
+            data.space_elevator_phases.len(),
+            5,
+            "Project Assembly has 5 phases"
+        );
+        // Phase 1 is the 50 Smart Plating delivery that unlocks Tiers 3 & 4.
+        let p1 = data
+            .space_elevator_phases
+            .iter()
+            .find(|p| p.phase == 1)
+            .expect("phase 1 present");
+        assert_eq!(p1.unlocks_tiers, vec![3, 4]);
+        assert_eq!(p1.parts.len(), 1);
+        assert_eq!(p1.parts[0].item_id, "Desc_SpaceElevatorPart_1_C");
+        assert_eq!(p1.parts[0].quantity, 50);
+        // The final phase launches the project and unlocks no tier.
+        let p5 = data
+            .space_elevator_phases
+            .iter()
+            .find(|p| p.phase == 5)
+            .expect("phase 5 present");
+        assert!(p5.unlocks_tiers.is_empty());
+    }
+
+    #[test]
+    fn validate_rejects_phase_referencing_unknown_item() {
+        let bad = r#"{
+          "version":"x","gameVersion":"1.2",
+          "items":[{"id":"i","name":"i","category":"raw","stackSize":1,"isFluid":false}],
+          "buildings":[],"recipes":[],"milestones":[],
+          "spaceElevatorPhases":[
+            {"phase":1,"name":"P1","unlocksTiers":[3,4],"parts":[{"itemId":"NOPE","quantity":50}]}
+          ],
+          "beltTiers":[],"pipeTiers":[]
+        }"#;
+        let err = parse_str(bad).unwrap_err();
+        assert!(format!("{:#}", err).contains("unknown item"));
+    }
+
+    #[test]
+    fn validate_rejects_duplicate_part_within_a_phase() {
+        let bad = r#"{
+          "version":"x","gameVersion":"1.2",
+          "items":[{"id":"i","name":"i","category":"part","stackSize":1,"isFluid":false}],
+          "buildings":[],"recipes":[],"milestones":[],
+          "spaceElevatorPhases":[
+            {"phase":1,"name":"P1","unlocksTiers":[3],"parts":[
+              {"itemId":"i","quantity":10},{"itemId":"i","quantity":5}
+            ]}
+          ],
+          "beltTiers":[],"pipeTiers":[]
+        }"#;
+        let err = parse_str(bad).unwrap_err();
+        assert!(format!("{:#}", err).contains("more than once"));
     }
 
     #[test]

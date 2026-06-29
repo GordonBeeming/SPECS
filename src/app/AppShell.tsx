@@ -9,6 +9,7 @@ import {
   MapPin,
   Moon,
   Network,
+  Rocket,
   Share2,
   ShieldCheck,
   Sun,
@@ -26,6 +27,7 @@ import { LogisticsListView } from "@/features/logistics/components/LogisticsList
 import { TrainRoutesView } from "@/features/trains/components/TrainRoutesView";
 import { NetworkView } from "@/features/network/components/NetworkView";
 import { AltsView } from "@/features/alts/components/AltsView";
+import { SpaceElevatorView } from "@/features/elevator/components/SpaceElevatorView";
 import { PlaythroughSwitcher } from "@/features/playthrough/components/PlaythroughSwitcher";
 import {
   useCurrentPlaythrough,
@@ -52,6 +54,7 @@ type Route =
   | "alts"
   | "resources"
   | "map"
+  | "elevator"
   // Full-screen production-plan designer — reached via nav-store deep
   // link (openPlanDesigner), never from the sidebar.
   | "plan";
@@ -68,6 +71,7 @@ const NAV: ReadonlyArray<{ id: Route; label: string; Icon: typeof BookOpen }> = 
   { id: "resources", label: "Resources", Icon: MapPin },
   { id: "factories", label: "Factories", Icon: FactoryIcon },
   { id: "logistics", label: "Logistics", Icon: Network },
+  { id: "elevator", label: "Space Elevator", Icon: Rocket },
   { id: "trains", label: "Trains", Icon: TrainTrack },
   { id: "power", label: "Power", Icon: Zap },
   { id: "alts", label: "Alts", Icon: FlaskConical },
@@ -306,6 +310,7 @@ export function AppShell() {
             {route === "network" && <NetworkView />}
             {route === "factories" && <FactoryListView />}
             {route === "logistics" && <LogisticsListView />}
+            {route === "elevator" && <SpaceElevatorView />}
             {route === "trains" && <TrainRoutesView />}
             {route === "power" && <PowerView />}
             {route === "alts" && <AltsView />}
