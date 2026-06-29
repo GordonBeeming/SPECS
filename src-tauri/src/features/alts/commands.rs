@@ -6,7 +6,7 @@ use crate::features::playthrough::state::ActivePlaythrough;
 use crate::shared::error::{AppError, AppResult};
 use crate::shared::gamedata::GameData;
 
-use super::dto::{ToggleAltRecipeInput, UnlockedAltRecipe};
+use super::dto::{SetAltRecipesInput, ToggleAltRecipeInput, UnlockedAltRecipe};
 use super::repo;
 
 fn now_iso() -> String {
@@ -60,4 +60,26 @@ pub fn toggle_alt_recipe(
         }
         Ok(())
     })
+}
+
+/// Bulk unlock/lock — the Alts page's Select all / Select none. Every id must
+/// be a real alt recipe, same as the single toggle; one bad id rejects the
+/// whole batch so the UI never half-applies.
+#[tauri::command]
+pub fn set_alt_recipes(
+    active: State<ActivePlaythrough>,
+    game_data: State<GameData>,
+    input: SetAltRecipesInput,
+) -> AppResult<()> {
+    for id in &input.recipe_ids {
+        let recipe = game_data
+            .recipe(id)
+            .ok_or_else(|| AppError::Invalid(format!("unknown recipe id: {id}")))?;
+        if !recipe.is_alt {
+            return Err(AppError::Invalid(format!("recipe {id} is not an alt recipe")));
+        }
+    }
+    let db = require_active(&active)?;
+    let now = now_iso();
+    db.with(|c| repo::alt_set_many(c, &input.recipe_ids, input.unlocked, &now).map_err(AppError::from))
 }

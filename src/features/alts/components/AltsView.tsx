@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { CheckSquare, Search, Square } from "lucide-react";
 
 import { useRecipes } from "@/features/library/hooks/useLibrary";
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
+import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { Icon } from "@/shared/ui/Icon";
 
-import { useToggleAlt, useUnlockedAlts } from "../hooks/useAlts";
+import { useSetAlts, useToggleAlt, useUnlockedAlts } from "../hooks/useAlts";
 
 /**
  * Alts checklist. Lists every recipe with `isAlt = true` from bundled
@@ -19,6 +20,7 @@ export function AltsView() {
   const recipes = useRecipes();
   const unlocked = useUnlockedAlts();
   const toggle = useToggleAlt();
+  const setAlts = useSetAlts();
   const [filter, setFilter] = useState("");
 
   const alts = useMemo(() => {
@@ -31,6 +33,11 @@ export function AltsView() {
       )
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [recipes.data, filter]);
+
+  // Drive the Select all / none disabled states off the visible (filtered) rows.
+  const unlockedSet = unlocked.data ?? new Set<string>();
+  const allVisibleUnlocked = alts.length === 0 || alts.every((r) => unlockedSet.has(r.id));
+  const noneVisibleUnlocked = alts.length === 0 || alts.every((r) => !unlockedSet.has(r.id));
 
   if (!playthrough.data) {
     return (
@@ -54,16 +61,50 @@ export function AltsView() {
             {unlocked.data ? ` · ${unlocked.data.size} unlocked` : ""}
           </p>
         </div>
-        <label className="relative">
-          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-muted" />
-          <input
-            type="search"
-            placeholder="Filter…"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="h-9 w-48 rounded-md border border-border bg-bg pl-7 pr-2 text-sm text-fg outline-none focus:border-primary"
-          />
-        </label>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            onClick={() =>
+              setAlts.mutate({
+                recipeIds: alts.map((r) => r.id),
+                unlocked: true,
+                currentlyUnlocked: unlocked.data ?? new Set(),
+              })
+            }
+            disabled={allVisibleUnlocked}
+            title={filter.trim() ? "Unlock every alt matching the filter" : "Unlock every alt"}
+            className="px-2.5 py-1.5 text-xs"
+          >
+            <CheckSquare className="h-3.5 w-3.5" />
+            Select all
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() =>
+              setAlts.mutate({
+                recipeIds: alts.map((r) => r.id),
+                unlocked: false,
+                currentlyUnlocked: unlocked.data ?? new Set(),
+              })
+            }
+            disabled={noneVisibleUnlocked}
+            title={filter.trim() ? "Lock every alt matching the filter" : "Lock every alt"}
+            className="px-2.5 py-1.5 text-xs"
+          >
+            <Square className="h-3.5 w-3.5" />
+            Select none
+          </Button>
+          <label className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-muted" />
+            <input
+              type="search"
+              placeholder="Filter…"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="h-9 w-48 rounded-md border border-border bg-bg pl-7 pr-2 text-sm text-fg outline-none focus:border-primary"
+            />
+          </label>
+        </div>
       </div>
 
       {recipes.isPending && <div className="text-sm text-fg-muted">Loading…</div>}
