@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Atom, Check, Loader2, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Atom, Check, Loader2, Pencil, ScrollText, Trash2, Wrench, X, Zap } from "lucide-react";
 
 import { Button } from "@/shared/ui/Button";
 import { Icon } from "@/shared/ui/Icon";
 import { IconPicker } from "@/shared/ui/IconPicker";
+import { useNavStore } from "@/shared/nav-store";
+import { AddMachineForm } from "../AddMachineForm";
+import { FactoryLedgerTable } from "../FactoryLedgerTable";
 import { useItems, useRecipes } from "@/features/library/hooks/useLibrary";
 import { useUnlockedAlts } from "@/features/alts/hooks/useAlts";
 import { useLogisticsLinks } from "@/features/logistics/hooks/useLogistics";
@@ -52,6 +55,10 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
   const deleteFactory = useDeleteFactory();
 
   const [sourcesFor, setSourcesFor] = useState<string | null>(null);
+  // Left-side overlay panel: the per-item ledger and manual add-machine that
+  // used to live in the (now removed) factory detail pane. Mutually exclusive
+  // so they don't stack; independent of the right-hand SourcesPanel.
+  const [leftPanel, setLeftPanel] = useState<null | "ledger" | "machines">(null);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [editingIcon, setEditingIcon] = useState(false);
@@ -245,6 +252,38 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
             {designer.saving ? "Saving…" : designer.dirty ? "Unsaved" : "Saved"}
           </span>
           <Button
+            variant="ghost"
+            onClick={() => setLeftPanel((p) => (p === "ledger" ? null : "ledger"))}
+            aria-pressed={leftPanel === "ledger"}
+            title="Per-item ledger — what this factory's built machines make and use"
+            className="px-2 py-1 text-xs"
+          >
+            <ScrollText className="h-3.5 w-3.5" />
+            Ledger
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => setLeftPanel((p) => (p === "machines" ? null : "machines"))}
+            aria-pressed={leftPanel === "machines"}
+            title="Add a machine by hand, outside the production plan"
+            className="px-2 py-1 text-xs"
+          >
+            <Wrench className="h-3.5 w-3.5" />
+            Add machine
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              useNavStore.getState().selectFactory(factoryId);
+              useNavStore.getState().goTo("power");
+            }}
+            title="Plan power for this factory"
+            className="px-2 py-1 text-xs"
+          >
+            <Zap className="h-3.5 w-3.5 text-warning" />
+            Add power
+          </Button>
+          <Button
             variant="danger"
             onClick={() => setConfirmDelete(true)}
             aria-label="Delete factory"
@@ -356,6 +395,45 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
             {designer.planQuery.isError
               ? "Couldn't load this factory's plan."
               : "Computing the production graph…"}
+          </div>
+        )}
+
+        {leftPanel && (
+          <div className="absolute left-3 top-3 bottom-3 z-30">
+            <div className="flex max-h-full w-[360px] flex-col overflow-hidden rounded-lg border border-border bg-bg-raised shadow-xl">
+              <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+                <span className="flex items-center gap-2 text-sm font-semibold text-fg">
+                  {leftPanel === "ledger" ? (
+                    <>
+                      <ScrollText className="h-4 w-4" /> Ledger
+                    </>
+                  ) : (
+                    <>
+                      <Wrench className="h-4 w-4" /> Add machine
+                    </>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setLeftPanel(null)}
+                  aria-label="Close panel"
+                  className="rounded p-1 text-fg-muted hover:bg-border hover:text-fg"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3">
+                {leftPanel === "ledger" ? (
+                  detail.data ? (
+                    <FactoryLedgerTable ledger={detail.data.ledger} itemNames={itemNames} />
+                  ) : (
+                    <div className="text-sm text-fg-muted">Loading ledger…</div>
+                  )
+                ) : (
+                  <AddMachineForm factoryId={factoryId} onSubmitted={() => setLeftPanel(null)} />
+                )}
+              </div>
+            </div>
           </div>
         )}
 
