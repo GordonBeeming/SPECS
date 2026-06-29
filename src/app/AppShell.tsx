@@ -174,11 +174,13 @@ export function AppShell() {
   // an undo against playthrough A landing reverse calls against
   // playthrough B's DB. The toast naturally falls away too.
   //
-  // On an actual *switch* (one open playthrough → a different one) we also
-  // return to Home and drop any open plan designer: the old route showed
-  // playthrough A's factories/graph, which is meaningless — and misleading —
-  // against playthrough B. The ref skips the first open (null → id) so this
-  // never fights the auto-open first paint, where the route is already Home.
+  // Once a playthrough is open, any change away from it — switching to a
+  // different one OR closing/deleting it (id → null) — returns us to Home and
+  // drops any open plan designer. The old route showed the previous
+  // playthrough's factories/graph, which is meaningless (and misleading) once
+  // that playthrough is no longer active. The ref skips the very first open
+  // (null → id) so this never fights the auto-open first paint, where the
+  // route is already Home.
   const prevPlaythroughId = useRef<string | null>(null);
   useEffect(() => {
     reset();
@@ -190,7 +192,7 @@ export function AppShell() {
       setPlanFactoryId(null);
     }
     prevPlaythroughId.current = playthroughId;
-  }, [playthroughId, reset]);
+  }, [playthroughId, reset, setRoute, setPlanFactoryId]);
 
   // Auto-dismiss the undo / redo toast after a short window.
   useEffect(() => {
