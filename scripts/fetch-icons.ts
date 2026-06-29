@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Fetch the 64-pixel icon for every item + building + generator in the
- * v1.1 dataset from the satisfactorytools GitHub repo into
+ * v1.2 dataset from the satisfactorytools GitHub repo into
  * `src/assets/icons/satisfactory/`.
  *
  * Naming: SF class names like `Desc_IronIngot_C` translate to the
@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(__dirname, "..");
-const DATASET = resolve(REPO, "src-tauri/game-data/v1.1.json");
+const DATASET = resolve(REPO, "src-tauri/game-data/v1.2.json");
 const OUT_DIR = resolve(REPO, "src/assets/icons/satisfactory");
 const BASE =
   "https://raw.githubusercontent.com/greeny/SatisfactoryTools/master/www/assets/images/items";
@@ -72,6 +72,7 @@ for (const id of ids) {
   if (!res.ok) {
     if (res.status === 404) {
       missing += 1;
+      console.warn(`missing upstream art for ${id} (${url})`);
       continue;
     }
     console.error(`error fetching ${id} (${url}): ${res.status}`);
