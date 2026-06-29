@@ -19,7 +19,12 @@ function phaseDone(phase: ElevatorPhase, currentTier: number): boolean {
 }
 
 const num = new Intl.NumberFormat();
-const rate = (n: number) => `${Math.round(n * 100) / 100}`;
+// Rates use the app's convention (see FilterSelect): up to 3 decimals, trailing
+// zeros dropped. `r3` rounds to a number so colour/visibility decisions are made
+// on the *displayed* value — f32 noise like 0.0004 must never render as a green
+// "0/min free" or a stray "0 used here".
+const r3 = (n: number) => Number(n.toFixed(3));
+const rate = (n: number) => r3(n).toString();
 
 export function SpaceElevatorView() {
   const playthrough = useCurrentPlaythrough();
@@ -134,9 +139,9 @@ function PhaseCard({ phase, state }: { phase: ElevatorPhase; state: PhaseState }
 function partStatus(part: ElevatorPartProgress): { tone: "success" | "warning" | "danger"; label: string } {
   if (part.producers.length === 0) return { tone: "danger", label: "No producer" };
   const freeRaw = part.producers.reduce((s, p) => s + Math.max(0, p.availablePerMinute), 0);
-  // Round before branching so a sub-0.01 sliver (f32 noise) doesn't read as a
+  // Round before branching so a sub-rounding sliver (f32 noise) doesn't read as a
   // green "0/min free" — that rounds to zero and belongs in "All committed".
-  const free = Math.round(freeRaw * 100) / 100;
+  const free = r3(freeRaw);
   if (free <= 0) return { tone: "warning", label: "All committed" };
   return { tone: "success", label: `${rate(free)}/min free` };
 }
@@ -191,7 +196,12 @@ function ProducerRow({ producer }: { producer: ElevatorProducer }) {
     useNavStore.getState().selectFactory(producer.factoryId);
     useNavStore.getState().goTo("factories");
   };
-  const free = producer.availablePerMinute;
+  // Round each value once, up front: the colour and the "show this span at all"
+  // checks below must agree with what's printed, or f32 noise leaks through.
+  const produced = r3(producer.producedPerMinute);
+  const consumed = r3(producer.consumedInternallyPerMinute);
+  const synced = r3(producer.syncedOutPerMinute);
+  const free = r3(producer.availablePerMinute);
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
       <button
@@ -202,22 +212,18 @@ function ProducerRow({ producer }: { producer: ElevatorProducer }) {
         {producer.factoryName}
       </button>
       <span className="text-fg-muted tabular-nums">
-        makes <span className="font-mono text-fg">{rate(producer.producedPerMinute)}</span>/min
+        makes <span className="font-mono text-fg">{produced}</span>/min
       </span>
-      {producer.consumedInternallyPerMinute > 0 ? (
-        <span className="text-fg-muted tabular-nums">
-          · {rate(producer.consumedInternallyPerMinute)} used here
-        </span>
+      {consumed > 0 ? (
+        <span className="text-fg-muted tabular-nums">· {consumed} used here</span>
       ) : null}
-      {producer.syncedOutPerMinute > 0 ? (
-        <span className="text-fg-muted tabular-nums">
-          · {rate(producer.syncedOutPerMinute)} shipped out
-        </span>
+      {synced > 0 ? (
+        <span className="text-fg-muted tabular-nums">· {synced} shipped out</span>
       ) : null}
       <span
         className={`tabular-nums ${free > 0 ? "text-success" : free < 0 ? "text-danger" : "text-fg-muted"}`}
       >
-        · {rate(free)}/min free
+        · {free}/min free
       </span>
     </li>
   );

@@ -40,23 +40,27 @@ fn build_overview(db: &PlaythroughDb, game_data: &GameData) -> AppResult<Elevato
     let factories = db.with(|c| factory_repo::factory_list(c).map_err(AppError::from))?;
     let links = db.with(|c| logistics_repo::link_list(c).map_err(AppError::from))?;
 
-    // Sum every outgoing link by (source factory, item) — that's the slice of a
-    // factory's output already committed to feeding another factory.
-    let mut synced_out: HashMap<(String, String), f32> = HashMap::new();
+    // Sum every outgoing link by source factory → item → ipm — that's the slice
+    // of a factory's output already committed to feeding another factory. Nested
+    // so the per-part lookup below borrows the keys instead of allocating a
+    // `(String, String)` tuple on every iteration.
+    let mut synced_out: HashMap<String, HashMap<String, f32>> = HashMap::new();
     for link in &links {
         *synced_out
-            .entry((link.from_factory_id.clone(), link.item_id.clone()))
+            .entry(link.from_factory_id.clone())
+            .or_default()
+            .entry(link.item_id.clone())
             .or_insert(0.0) += link.items_per_minute;
     }
 
     // Compute each factory's ledger once, up front, so the per-part loop below
     // is a pure in-memory join.
     let mut ledgers = Vec::with_capacity(factories.len());
-    for factory in &factories {
+    for factory in factories {
         let machines =
             db.with(|c| factory_repo::machines_for_factory(c, &factory.id).map_err(AppError::from))?;
         let ledger = compose_ledger(&factory.id, &machines, game_data);
-        ledgers.push((factory.clone(), ledger));
+        ledgers.push((factory, ledger));
     }
 
     let phases = game_data
@@ -80,7 +84,8 @@ fn build_overview(db: &PlaythroughDb, game_data: &GameData) -> AppResult<Elevato
                                 .iter()
                                 .find(|f| f.item_id == part.item_id && f.produced_per_minute > 0.0)?;
                             let synced = synced_out
-                                .get(&(factory.id.clone(), part.item_id.clone()))
+                                .get(&factory.id)
+                                .and_then(|m| m.get(&part.item_id))
                                 .copied()
                                 .unwrap_or(0.0);
                             Some(ElevatorProducer {
