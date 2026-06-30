@@ -35,9 +35,16 @@ export function AltsView() {
   }, [recipes.data, filter]);
 
   // Drive the Select all / none disabled states off the visible (filtered) rows.
+  // Until the unlocked-alts query has loaded, both stay disabled: acting on an
+  // empty fallback set would mark every visible recipe as "changed" and push a
+  // bogus entry onto the undo stack (an undo would then lock already-unlocked
+  // alts).
+  const unlockedReady = unlocked.data !== undefined;
   const unlockedSet = unlocked.data ?? new Set<string>();
-  const allVisibleUnlocked = alts.length === 0 || alts.every((r) => unlockedSet.has(r.id));
-  const noneVisibleUnlocked = alts.length === 0 || alts.every((r) => !unlockedSet.has(r.id));
+  const allVisibleUnlocked =
+    !unlockedReady || alts.length === 0 || alts.every((r) => unlockedSet.has(r.id));
+  const noneVisibleUnlocked =
+    !unlockedReady || alts.length === 0 || alts.every((r) => !unlockedSet.has(r.id));
 
   if (!playthrough.data) {
     return (

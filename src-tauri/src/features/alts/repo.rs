@@ -22,15 +22,19 @@ pub fn alt_lock(conn: &Connection, recipe_id: &str) -> Result<usize> {
 }
 
 /// Unlock or lock many recipes at once (the Select all / Select none path).
-/// Same per-row semantics as `alt_unlock`/`alt_lock`, just batched.
+/// Same per-row semantics as `alt_unlock`/`alt_lock`, wrapped in one
+/// transaction so a Select all over hundreds of alts is a single disk sync
+/// instead of one per row.
 pub fn alt_set_many(conn: &Connection, recipe_ids: &[String], unlocked: bool, now: &str) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
     for id in recipe_ids {
         if unlocked {
-            alt_unlock(conn, id, now)?;
+            alt_unlock(&tx, id, now)?;
         } else {
-            alt_lock(conn, id)?;
+            alt_lock(&tx, id)?;
         }
     }
+    tx.commit()?;
     Ok(())
 }
 
