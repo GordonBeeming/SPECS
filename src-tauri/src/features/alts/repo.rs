@@ -21,6 +21,23 @@ pub fn alt_lock(conn: &Connection, recipe_id: &str) -> Result<usize> {
     Ok(affected)
 }
 
+/// Unlock or lock many recipes at once (the Select all / Select none path).
+/// Same per-row semantics as `alt_unlock`/`alt_lock`, wrapped in one
+/// transaction so a Select all over hundreds of alts is a single disk sync
+/// instead of one per row.
+pub fn alt_set_many(conn: &Connection, recipe_ids: &[String], unlocked: bool, now: &str) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    for id in recipe_ids {
+        if unlocked {
+            alt_unlock(&tx, id, now)?;
+        } else {
+            alt_lock(&tx, id)?;
+        }
+    }
+    tx.commit()?;
+    Ok(())
+}
+
 pub fn alt_list(conn: &Connection) -> Result<Vec<UnlockedAltRecipe>> {
     let mut stmt = conn.prepare(
         "SELECT recipe_id, unlocked_at
@@ -70,6 +87,24 @@ mod tests {
             assert_eq!(list.len(), 1);
             // First unlock wins on conflict — the row is preserved as-is.
             assert_eq!(list[0].unlocked_at, "2026-05-11T00:00:00Z");
+        });
+    }
+
+    #[test]
+    fn set_many_unlocks_then_locks_a_subset() {
+        let pt = db();
+        pt.with(|c| {
+            let all = vec![
+                "Recipe_Alt_A_C".to_string(),
+                "Recipe_Alt_B_C".to_string(),
+                "Recipe_Alt_C_C".to_string(),
+            ];
+            alt_set_many(c, &all, true, "2026-05-11T00:00:00Z").unwrap();
+            assert_eq!(alt_list(c).unwrap().len(), 3);
+            // Lock a subset; the rest stay unlocked.
+            alt_set_many(c, &["Recipe_Alt_B_C".to_string()], false, "2026-05-11T00:00:00Z").unwrap();
+            let left: Vec<String> = alt_list(c).unwrap().into_iter().map(|r| r.recipe_id).collect();
+            assert_eq!(left, vec!["Recipe_Alt_A_C", "Recipe_Alt_C_C"]);
         });
     }
 

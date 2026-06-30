@@ -15,3 +15,11 @@ pub struct ToggleAltRecipeInput {
     /// React side simple: a single endpoint covers the checkbox both ways.
     pub unlocked: bool,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetAltRecipesInput {
+    /// Recipe ids to apply `unlocked` to in one shot (Select all / none).
+    pub recipe_ids: Vec<String>,
+    pub unlocked: bool,
+}

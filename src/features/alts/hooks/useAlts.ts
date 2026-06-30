@@ -7,6 +7,15 @@ import { useUndoStore } from "@/shared/undo/store";
 import { altsApi } from "../api";
 import type { ToggleAltRecipeInput } from "../types";
 
+interface SetManyArgs {
+  /** Ids being targeted (e.g. the currently-filtered alts). */
+  recipeIds: string[];
+  unlocked: boolean;
+  /** Current unlocked set, so we only write — and only reverse — the ids
+      that actually change. Keeps undo exact and skips no-op writes. */
+  currentlyUnlocked: Set<string>;
+}
+
 /**
  * Set of unlocked alt-recipe IDs for the active playthrough. Stored as a
  * Set in the cache so the recipe picker can do `O(1)` membership tests
@@ -49,6 +58,34 @@ export function useToggleAlt() {
           invalidate();
         },
         label: input.unlocked ? "Unlock alt recipe" : "Lock alt recipe",
+      });
+    },
+  });
+}
+
+/**
+ * Bulk unlock/lock for Select all / Select none. Only the ids whose state
+ * actually changes are written, so the reverse flips exactly that subset back
+ * — ⌘Z restores the prior selection and no-op writes are skipped.
+ */
+export function useSetAlts() {
+  const client = useQueryClient();
+  const invalidate = () =>
+    client.invalidateQueries({ queryKey: queryKeys.alts.list });
+  return useMutation({
+    mutationFn: async ({ recipeIds, unlocked, currentlyUnlocked }: SetManyArgs) => {
+      const changed = recipeIds.filter((id) => currentlyUnlocked.has(id) !== unlocked);
+      if (changed.length === 0) return;
+      await useUndoStore.getState().push({
+        apply: async () => {
+          await altsApi.setMany({ recipeIds: changed, unlocked });
+          invalidate();
+        },
+        reverse: async () => {
+          await altsApi.setMany({ recipeIds: changed, unlocked: !unlocked });
+          invalidate();
+        },
+        label: unlocked ? "Unlock alt recipes" : "Lock alt recipes",
       });
     },
   });

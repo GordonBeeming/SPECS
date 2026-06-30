@@ -7,3 +7,8 @@ export interface ToggleAltRecipeInput {
   recipeId: string;
   unlocked: boolean;
 }
+
+export interface SetAltRecipesInput {
+  recipeIds: string[];
+  unlocked: boolean;
+}
