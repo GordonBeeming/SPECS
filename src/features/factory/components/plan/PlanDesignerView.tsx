@@ -4,6 +4,7 @@ import { ArrowLeft, Atom, Check, ExternalLink, Loader2, Pencil, ScrollText, Tras
 import { Button } from "@/shared/ui/Button";
 import { Icon } from "@/shared/ui/Icon";
 import { IconPicker } from "@/shared/ui/IconPicker";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useNavStore } from "@/shared/nav-store";
 import { invoke } from "@/shared/tauri/invoke";
 import { AddMachineForm } from "../AddMachineForm";
@@ -161,6 +162,32 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
     // Leaving never loses work: flush any pending edits first.
     void designer.flush().finally(onBack);
   };
+
+  // In a pop-out window the Back button is hidden, so the OS close button is
+  // the only exit — and plan saves are debounced. Intercept the close, flush
+  // pending edits, then destroy the window so a quick edit-then-close can't
+  // drop the change. `flushRef` keeps the handler pinned to the latest flush
+  // without re-registering the listener every render.
+  const flushRef = useRef(designer.flush);
+  flushRef.current = designer.flush;
+  useEffect(() => {
+    if (!popped) return;
+    const win = getCurrentWebviewWindow();
+    let unlisten: (() => void) | undefined;
+    void win
+      .onCloseRequested(async (event) => {
+        event.preventDefault();
+        try {
+          await flushRef.current();
+        } finally {
+          void win.destroy();
+        }
+      })
+      .then((u) => {
+        unlisten = u;
+      });
+    return () => unlisten?.();
+  }, [popped]);
 
   const factoryName = detail.data?.factory.name ?? "…";
   const pinCount = Object.keys(working?.recipeOverrides ?? {}).length;

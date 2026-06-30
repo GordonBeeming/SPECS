@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
@@ -22,6 +23,13 @@ export function PoppedFactoryWindow({ factoryId }: { factoryId: string }) {
 
   const ready = !!current.data && !!factories.data;
   const present = factories.data?.some((f) => f.id === factoryId) ?? false;
+  const factoryName = factories.data?.find((f) => f.id === factoryId)?.name;
+
+  // Name the OS window after the factory so several pop-outs are
+  // distinguishable in the taskbar / window switcher.
+  useEffect(() => {
+    if (factoryName) void getCurrentWebviewWindow().setTitle(`${factoryName} — S.P.E.C.S`);
+  }, [factoryName]);
 
   if (ready && !present) {
     return (

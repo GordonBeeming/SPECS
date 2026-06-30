@@ -77,20 +77,40 @@ export function usePlanDesigner(factoryId: string) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Seed the working copy from the persisted plan exactly once per
-  // factory load — later refetches (e.g. after save) must not clobber
-  // in-flight edits.
+  // Seed the working copy from the persisted plan on first load. On a later
+  // refetch (another window saved this same factory's plan via the
+  // cross-window `data:changed` broadcast) we *adopt* the new persisted plan
+  // — but only when this window has no unsaved local edits, so an open
+  // designer reflects the other window's save instead of overwriting it with
+  // a stale copy. If local edits are in flight we keep them (last-writer-wins
+  // on the next save). `lastSeeded` is the snapshot we seeded from, so "has
+  // local edits" = working differs from it (not from the just-refetched data).
   const seededFor = useRef<string | null>(null);
+  const lastSeeded = useRef<PlanWorkingState | null>(null);
+  const workingRef = useRef<PlanWorkingState | null>(null);
+  workingRef.current = working;
   useEffect(() => {
     if (!planQuery.data) return;
-    if (seededFor.current === factoryId) return;
-    seededFor.current = factoryId;
-    setWorking(workingFromPlan(planQuery.data));
+    const incoming = workingFromPlan(planQuery.data);
+    if (seededFor.current !== factoryId) {
+      seededFor.current = factoryId;
+      lastSeeded.current = incoming;
+      setWorking(incoming);
+      return;
+    }
+    const w = workingRef.current;
+    const hasLocalEdits =
+      w != null && lastSeeded.current != null && !statesEqual(w, lastSeeded.current);
+    if (!hasLocalEdits && lastSeeded.current && !statesEqual(incoming, lastSeeded.current)) {
+      lastSeeded.current = incoming;
+      setWorking(incoming);
+    }
   }, [planQuery.data, factoryId]);
   useEffect(() => {
     // Switching factories resets the seed gate so the new plan loads.
     if (seededFor.current !== factoryId) {
       seededFor.current = null;
+      lastSeeded.current = null;
       setWorking(null);
       setCompute(null);
     }
@@ -354,6 +374,10 @@ export function usePlanDesigner(factoryId: string) {
         recipeOverrides: next.recipeOverrides,
         options: { includeSam: next.includeSam, solverBudgetMs: solverBudgetMs() },
       });
+      // Rebaseline: what we just saved IS the new persisted plan, so it's no
+      // longer a "local edit". Without this, a window that saved once would
+      // read as permanently dirty and never adopt another window's later save.
+      lastSeeded.current = next;
       invalidateAfterSave();
       return result;
     } catch (err) {
