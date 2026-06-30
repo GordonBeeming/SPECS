@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Atom, Check, Loader2, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Atom, Check, ExternalLink, Loader2, Pencil, ScrollText, Trash2, Wand2, Wrench, X, Zap } from "lucide-react";
 
 import { Button } from "@/shared/ui/Button";
 import { Icon } from "@/shared/ui/Icon";
 import { IconPicker } from "@/shared/ui/IconPicker";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { useNavStore } from "@/shared/nav-store";
+import { invoke } from "@/shared/tauri/invoke";
+import { AddMachineForm } from "../AddMachineForm";
+import { FactoryLedgerTable } from "../FactoryLedgerTable";
 import { useItems, useRecipes } from "@/features/library/hooks/useLibrary";
 import { useUnlockedAlts } from "@/features/alts/hooks/useAlts";
 import { useLogisticsLinks } from "@/features/logistics/hooks/useLogistics";
@@ -29,6 +34,9 @@ export interface PlanDesignerViewProps {
   /** Fresh from quick-create: auto-open the product picker and offer
       "Cancel & delete" until the first product lands. */
   firstRun?: boolean;
+  /** Rendered as the whole UI of a popped-out window: no Back button (the
+      window's own close button is the exit) and no Pop-out button. */
+  popped?: boolean;
   onBack: () => void;
   /** Used by first-run cancel — delete the factory and leave. */
   onDeleted: () => void;
@@ -39,7 +47,7 @@ export interface PlanDesignerViewProps {
  * the factory should make, the graph computes itself, and edits
  * auto-save in the background.
  */
-export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: PlanDesignerViewProps) {
+export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDeleted }: PlanDesignerViewProps) {
   const detail = useFactoryDetail(factoryId);
   const factories = useFactoryList();
   const items = useItems();
@@ -52,10 +60,18 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
   const deleteFactory = useDeleteFactory();
 
   const [sourcesFor, setSourcesFor] = useState<string | null>(null);
+  // Left-side overlay panel: the per-item ledger and manual add-machine that
+  // used to live in the (now removed) factory detail pane. Mutually exclusive
+  // so they don't stack; independent of the right-hand SourcesPanel.
+  const [leftPanel, setLeftPanel] = useState<null | "ledger" | "machines">(null);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [editingIcon, setEditingIcon] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmReoptimize, setConfirmReoptimize] = useState(false);
+  // Holds the recipe pins dropped by the last re-optimize so the Undo
+  // snackbar can put them back. Null = no snackbar showing.
+  const [reoptimizeUndo, setReoptimizeUndo] = useState<Record<string, string> | null>(null);
 
   const itemNames = useMemo(
     () => new Map(items.data?.map((i) => [i.id, i.name]) ?? []),
@@ -147,15 +163,57 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
     void designer.flush().finally(onBack);
   };
 
+  // In a pop-out window the Back button is hidden, so the OS close button is
+  // the only exit — and plan saves are debounced. Intercept the close, flush
+  // pending edits, then destroy the window so a quick edit-then-close can't
+  // drop the change. `flushRef` keeps the handler pinned to the latest flush
+  // without re-registering the listener every render.
+  const flushRef = useRef(designer.flush);
+  flushRef.current = designer.flush;
+  useEffect(() => {
+    if (!popped) return;
+    const win = getCurrentWebviewWindow();
+    let unlisten: (() => void) | undefined;
+    void win
+      .onCloseRequested(async (event) => {
+        event.preventDefault();
+        try {
+          await flushRef.current();
+        } finally {
+          void win.destroy();
+        }
+      })
+      .then((u) => {
+        unlisten = u;
+      });
+    return () => unlisten?.();
+  }, [popped]);
+
   const factoryName = detail.data?.factory.name ?? "…";
+  const pinCount = Object.keys(working?.recipeOverrides ?? {}).length;
+
+  // Auto-dismiss the re-optimize Undo snackbar after a short window.
+  useEffect(() => {
+    if (!reoptimizeUndo) return;
+    const t = window.setTimeout(() => setReoptimizeUndo(null), 8000);
+    return () => window.clearTimeout(t);
+  }, [reoptimizeUndo]);
+
+  const reoptimize = () => {
+    setReoptimizeUndo(working ? { ...working.recipeOverrides } : {});
+    designer.setRecipeOverrides({});
+    setConfirmReoptimize(false);
+  };
 
   return (
     <div className="flex h-full flex-col">
       <header className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
-        <Button variant="ghost" onClick={handleBack} aria-label="Back">
-          <ArrowLeft className="h-4 w-4" />
-          Back
-        </Button>
+        {!popped && (
+          <Button variant="ghost" onClick={handleBack} aria-label="Back">
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
+        )}
 
         <button
           type="button"
@@ -244,6 +302,65 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
           <span className="text-xs">
             {designer.saving ? "Saving…" : designer.dirty ? "Unsaved" : "Saved"}
           </span>
+          {!popped && (
+            <Button
+              variant="ghost"
+              onClick={() => void invoke("pop_out_factory", { factoryId })}
+              title="Open this factory in its own window so you can edit several at once"
+              className="px-2 py-1 text-xs"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Pop out
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            onClick={() => setLeftPanel((p) => (p === "ledger" ? null : "ledger"))}
+            aria-pressed={leftPanel === "ledger"}
+            title="Per-item ledger — what this factory's built machines make and use"
+            className="px-2 py-1 text-xs"
+          >
+            <ScrollText className="h-3.5 w-3.5" />
+            Ledger
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => setLeftPanel((p) => (p === "machines" ? null : "machines"))}
+            aria-pressed={leftPanel === "machines"}
+            title="Add a machine by hand, outside the production plan"
+            className="px-2 py-1 text-xs"
+          >
+            <Wrench className="h-3.5 w-3.5" />
+            Add machine
+          </Button>
+          {!popped && (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                useNavStore.getState().selectFactory(factoryId);
+                useNavStore.getState().goTo("power");
+              }}
+              title="Plan power for this factory"
+              className="px-2 py-1 text-xs"
+            >
+              <Zap className="h-3.5 w-3.5 text-warning" />
+              Add power
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            onClick={() => setConfirmReoptimize(true)}
+            disabled={pinCount === 0}
+            title={
+              pinCount === 0
+                ? "No pinned recipes — the plan is already optimizer-chosen"
+                : "Drop the pinned recipes and re-optimize with the latest unlocked alts"
+            }
+            className="px-2 py-1 text-xs"
+          >
+            <Wand2 className="h-3.5 w-3.5" />
+            Re-optimize
+          </Button>
           <Button
             variant="danger"
             onClick={() => setConfirmDelete(true)}
@@ -265,6 +382,26 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
               setEditingIcon(false);
             }}
           />
+        </div>
+      )}
+
+      {confirmReoptimize && (
+        <div role="alertdialog" className="border-b border-warning/40 bg-warning/10 px-4 py-3 text-sm">
+          <div className="font-semibold text-warning">Re-optimize {factoryName}?</div>
+          <p className="mt-1 text-fg-muted">
+            This drops your {pinCount} pinned {pinCount === 1 ? "recipe" : "recipes"} and lets the
+            optimizer pick fresh ones using the latest unlocked alts. The new choices can change what
+            this factory needs, so existing imports or links may end up unsourced or unused. You can
+            undo it right after.
+          </p>
+          <div className="mt-2 flex items-center gap-2">
+            <Button variant="ghost" onClick={() => setConfirmReoptimize(false)} className="px-3 py-1 text-xs">
+              Cancel
+            </Button>
+            <Button onClick={reoptimize} className="px-3 py-1 text-xs">
+              Re-optimize
+            </Button>
+          </div>
         </div>
       )}
 
@@ -359,6 +496,49 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
           </div>
         )}
 
+        {leftPanel && (
+          <div className="absolute left-3 top-3 bottom-3 z-30">
+            <div
+              className={`flex max-h-full flex-col overflow-hidden rounded-lg border border-border bg-bg-raised shadow-xl ${
+                leftPanel === "machines" ? "w-[480px]" : "w-[360px]"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+                <span className="flex items-center gap-2 text-sm font-semibold text-fg">
+                  {leftPanel === "ledger" ? (
+                    <>
+                      <ScrollText className="h-4 w-4" /> Ledger
+                    </>
+                  ) : (
+                    <>
+                      <Wrench className="h-4 w-4" /> Add machine
+                    </>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setLeftPanel(null)}
+                  aria-label="Close panel"
+                  className="rounded p-1 text-fg-muted hover:bg-border hover:text-fg"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3">
+                {leftPanel === "ledger" ? (
+                  detail.data ? (
+                    <FactoryLedgerTable ledger={detail.data.ledger} itemNames={itemNames} />
+                  ) : (
+                    <div className="text-sm text-fg-muted">Loading ledger…</div>
+                  )
+                ) : (
+                  <AddMachineForm factoryId={factoryId} onSubmitted={() => setLeftPanel(null)} />
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {sourcesFor && working && (
           <div className="absolute right-3 top-3 bottom-3 z-30">
             <SourcesPanel
@@ -381,6 +561,25 @@ export function PlanDesignerView({ factoryId, firstRun, onBack, onDeleted }: Pla
               onSetSource={designer.setImportSource}
               onClose={() => setSourcesFor(null)}
             />
+          </div>
+        )}
+
+        {reoptimizeUndo && (
+          <div
+            role="status"
+            className="absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-border bg-bg-raised px-4 py-2.5 text-sm shadow-xl"
+          >
+            <span className="text-fg">Recipes re-optimized.</span>
+            <button
+              type="button"
+              onClick={() => {
+                designer.setRecipeOverrides(reoptimizeUndo);
+                setReoptimizeUndo(null);
+              }}
+              className="font-medium text-primary hover:underline"
+            >
+              Undo
+            </button>
           </div>
         )}
       </div>

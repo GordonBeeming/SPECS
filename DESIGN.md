@@ -223,38 +223,31 @@ node markers + draggable factory pins.
   first-class — 100.01–250.00, matching the x100 storage precision.
   Sliders alone are banned; precision lives in the text field.
 
-## Factory graph view
+## Factory editor
 
-Factory detail no longer renders machines as a table — the canonical
-view is an `@xyflow/react` graph laid out with `dagre` (LR rank
-direction, 240×110 px cards, 80 px rank gap). Drag persists per
-machine via a new `factory_machine_layout` table so the user's
-nudges survive reloads. Edges are heuristically drawn between any
-two machines whose recipes share an input/output item; they animate
-to convey flow direction. This is a stand-in for true machine-to-
-machine routing (factories currently only model bulk inputs/outputs
-at their boundaries) and will tighten when that lands.
+There's one factory editor: the production plan designer below. The old
+standalone "detail" view — a built-machines `@xyflow/react` graph with inline
+machine editing — is gone, and every factory click (factories list, Home,
+Network, Map pin, Space Elevator, validation findings) opens the designer
+instead. The three things that pane uniquely offered now live in the designer's
+header:
 
-**Inline machine editing.** The pencil on a node card flips it into
-expanded mode (320 px wide, no overlay) with: recipe `FilterSelect`
-filtered to recipes for the same `building_id` so a swap never
-violates the backend's `recipe.building_id != building_id` check;
-count `±` stepper; clock slider + numeric input capped by
-`clockCapForShards`; somersloop stepper bounded by
-`ampSlotsForBuilding`; power-shard stepper (0–3). When the user
-enters edit mode the canvas refits (`useReactFlow().fitView()` after
-a `requestAnimationFrame`) so the larger card doesn't spill off the
-visible area. Save/Cancel buttons in-card; every save pushes through
-`useUndoStore` so a single ⌘Z restores the prior state.
+- **Ledger** toggle → left panel with the per-item current-flow table
+  (`FactoryLedgerTable` over `factory_ledger`): produced vs consumed vs net for
+  the machines actually built.
+- **Add machine** toggle → left panel with `AddMachineForm` to add a machine by
+  hand, outside the plan. Hand-added machines coexist with plan-materialised ones
+  (`plan_node_key = NULL`).
+- **Add power** → jumps to the Power tab scoped to this factory.
 
 ## Production plan designer
 
 Factory design is outcome-first: the user names what the factory
 should make ("60/min Cable", plus any other products) and the app
 computes the whole production graph back to raw. The designer is a
-**full-screen surface** (route `plan`) opened from factory detail,
-the factories list, or a map pin — the sidebar hides, a back button
-returns to where the user came from. The word "derive" never
+**full-screen surface** (route `plan`) opened from anywhere a factory
+is clicked — the sidebar hides, a back button returns to where the
+user came from. The word "derive" never
 appears in the UI; the feature is the **Production plan**, compute
 is automatic on every edit, and the only verb is **Save plan**.
 

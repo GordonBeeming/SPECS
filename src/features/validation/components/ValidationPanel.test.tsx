@@ -103,7 +103,7 @@ describe("<ValidationPanel />", () => {
     expect(screen.getByText("Crystal Computer")).toBeInTheDocument();
   });
 
-  it("deep-links a tier finding to its factory and closes the panel", async () => {
+  it("deep-links a tier finding to its factory's plan and closes the panel", async () => {
     vi.spyOn(validationApi, "validate").mockResolvedValue(messyReport);
     const onClose = vi.fn();
     renderWithProviders(<ValidationPanel onClose={onClose} />);
@@ -111,7 +111,8 @@ describe("<ValidationPanel />", () => {
     fireEvent.click(row.closest("button")!);
     await waitFor(() => {
       expect(useNavStore.getState().pendingFactoryId).toBe("f1");
-      expect(useNavStore.getState().pendingRoute).toBe("factories");
+      // Machine-tier findings now open the plan designer, not the old detail pane.
+      expect(useNavStore.getState().pendingRoute).toBe("plan");
       expect(onClose).toHaveBeenCalled();
     });
   });
