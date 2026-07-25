@@ -33,7 +33,7 @@ Mk2 belts, and the first space elevator part.
   three belts.
 - First logistics links appear here. Check the link planner offers a sane
   belt plan for the Iron Works → Elevator Yard distance; if it suggests
-  something absurd, bug report.
+  something absurd, file an issue.
 
 ## Checkpoint
 

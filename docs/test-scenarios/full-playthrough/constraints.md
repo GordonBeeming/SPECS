@@ -30,7 +30,7 @@ report — the run exists to find exactly those gaps.
 - Every claim uses an extractor the node actually accepts — the app's picker
   enforces this (miner marks for ore, Oil Extractor for oil seeps, Resource
   Well Pressuriser for well satellites). If a picker ever offers something
-  the game wouldn't allow, that's a bug report.
+  the game wouldn't allow, file it as a finding.
 - Miner marks are tier-gated: Mk.1 at T0, Mk.2 at T4, Mk.3 at T8. Oil
   Extractor at T5; resource wells at T8.
 - Clocks range 1–250%, but shards above 100% must be plausible: no

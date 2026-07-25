@@ -16,15 +16,16 @@ trigger — no separate tag push needed.
 1. Sync the workspace: `but clean --pull`.
 2. Determine the next version by checking existing releases:
    ```bash
-   gh release list --repo GordonBeeming/SPECS --limit 5
+   gh release list --repo GordonBeeming/SPECS --limit 5 --exclude-pre-releases
    ```
+   `--exclude-pre-releases` matters here: the repo carries an `assets` release (a prerelease used as an image bucket for issue attachments, not a product build — see `.claude/skills/playthrough-test/references/pbi-filing.md`). Without the flag it can sort ahead of the real latest tag and get read as the current version.
 3. Bump the **minor** version. Tags are `v{major}.{minor}` — never include a patch number in the tag itself (CI stamps the build number).
 4. Gather changes since the last release:
    ```bash
-   LAST_TAG=$(gh release list --repo GordonBeeming/SPECS --limit 1 --json tagName --jq '.[0].tagName')
+   LAST_TAG=$(gh release list --repo GordonBeeming/SPECS --limit 1 --exclude-pre-releases --json tagName --jq '.[0].tagName')
    git log ${LAST_TAG}..HEAD --oneline
    ```
-   When `LAST_TAG` is empty (first release), use `git log main` instead and craft the changelog manually from PR titles.
+   Same reasoning as step 2 — without `--exclude-pre-releases`, `LAST_TAG` can resolve to the `assets` bucket and silently drop real product commits from the changelog. When `LAST_TAG` is empty (first release), use `git log main` instead and craft the changelog manually from PR titles.
 5. Create the release. The `--target main` keeps the tag on the trunk; the body uses a heredoc so you can preview it before posting:
    ```bash
    gh release create v{major}.{minor} \

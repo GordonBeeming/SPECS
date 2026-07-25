@@ -15,6 +15,8 @@ One tier group per invocation. A full Tier 0→9 sweep is far more UI driving th
 
 Take the tier group from the user's argument (`tier-0`, `tiers-1-2`, `tiers-3-4`, `tiers-5-6`, `tiers-7-8`, `tier-9`). With no argument, resume the open run at its next unfinished group, or start a fresh run if none is open.
 
+A named group past `tier-0` requires every earlier group to already be `done` in an open run's ledger — later groups extend factories the earlier ones build. If the ledger doesn't show that, refuse and say which group to run first instead of starting fresh; starting a brand-new run is only valid for `tier-0` or the no-argument case above.
+
 ## Before you start
 
 - The dev app is up: `./run.sh` (Vite + Tauri with the MCP bridge).

@@ -28,6 +28,8 @@ It has to be a published prerelease, not a draft. Draft assets aren't publicly d
 
 Never delete or repurpose it once URLs point at it, and never use a product tag (`v0.7`) as the bucket.
 
+Because it's a prerelease, `create-release/SKILL.md` has to filter it out of its own release lookups (`gh release list --exclude-pre-releases`) — otherwise the next `create-release` run reads `assets` as the latest tag and drops real commits from its changelog.
+
 ## Screenshots
 
 Asset names are unique across the whole release, so name them for what they show and which run they came from:

@@ -23,7 +23,7 @@ and the Manufacturer for the big four-input parts.
    must be clear on the saved plans).
 2. **Caterium Electronics** (new, near a caterium node) — Caterium Ingot
    15/min, Quickwire 60/min, AI Limiter waits for T7 (it's tier-gated —
-   confirm the app gates it; if it's offered early, bug report).
+   confirm the app gates it; if it's offered early, file an issue).
 3. **Computer Plant** (extend Copper Works or new) — Circuit Board 10/min,
    Computer 2.5/min via Manufacturer. Plastic via link from the refinery.
 4. **Elevator Yard** — Modular Engine 1/min and Adaptive Control Unit
@@ -38,8 +38,8 @@ and the Manufacturer for the big four-input parts.
   big refinery banks.
 - This group usually triggers the first long-haul links (oil coast →
   inland). If belts rank as the planner's best option over multi-km
-  distances, sanity-check against trucks/trains and bug-report weird
-  rankings.
+  distances, sanity-check against trucks/trains and file an issue for
+  weird rankings.
 
 ## Checkpoint
 
