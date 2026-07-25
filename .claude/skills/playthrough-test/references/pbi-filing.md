@@ -32,18 +32,18 @@ Because it's a prerelease, `create-release/SKILL.md` has to filter it out of its
 
 ## Screenshots
 
-Asset names are unique across the whole release, so name them for what they show and which run they came from:
+Asset names are unique across the whole release, so prefix every one with the run's `<YYYY-MM-DD>-<label>` (the same folder name as the ledger) before the tier and what it shows — two different runs hitting the same rough edge must not collide on the same filename:
 
 ```
-t0-sources-panel-empty.png
-t3-4-coal-power-belt-mk-mismatch.png
+2026-07-25-iron-giant-t0-sources-panel-empty.png
+2026-07-25-iron-giant-t3-4-coal-power-belt-mk-mismatch.png
 ```
 
 Never `screenshot.png`. Upload, then confirm the URL resolves before you put it in an issue body:
 
 ```bash
-gh release upload assets t0-sources-panel-empty.png --repo GordonBeeming/SPECS
-curl -sIL https://github.com/GordonBeeming/SPECS/releases/download/assets/t0-sources-panel-empty.png | grep ^HTTP
+gh release upload assets 2026-07-25-iron-giant-t0-sources-panel-empty.png --repo GordonBeeming/SPECS
+curl -sIL https://github.com/GordonBeeming/SPECS/releases/download/assets/2026-07-25-iron-giant-t0-sources-panel-empty.png | grep ^HTTP
 ```
 
 The last status has to be 200. `--clobber` replaces an asset of the same name if you're re-uploading a better capture.
