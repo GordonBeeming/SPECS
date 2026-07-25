@@ -51,9 +51,9 @@ and the run closes with Space Elevator Phase 5.
 - [ ] SAM toggle auto-forced on Ficsite plans (else showstopper filed)
 - [ ] Ficsonium loop consumes the plutonium waste stream
 - [ ] Final Validate playthrough → no findings across every factory —
-      this is the whole-run sweep; anything that can't be cleared gets a
-      bug report plus an artifact note, and the validation panel
+      this is the whole-run sweep; anything that can't be cleared gets
+      an issue plus an artifact note, and the validation panel
       screenshot goes in the index
 - [ ] Final grid statement; belt ≤ 1200/min everywhere
 - [ ] Layouts + screenshots; run index verdict written (worked / worked
-      with bugs / blocked), bug list complete
+      with bugs / blocked), every filed issue linked from the index

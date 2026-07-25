@@ -6,7 +6,8 @@
 <!--
   Run index template — copy to runs/<run>/index.html and fill in. This is
   the page a reviewer opens first: verdict up top, then tiers → factories,
-  then the bug ledger. Keep links relative (factories/, bugs/, screenshots/).
+  then the issue ledger. Local links stay relative (factories/, screenshots/);
+  findings link out to GitHub issues.
 -->
 <title>Full playthrough run — YYYY-MM-DD-label</title>
 <style>
@@ -46,7 +47,7 @@ what a maintainer should look at first.</p>
 
 <h2>Tiers</h2>
 <table>
-  <tr><th>Group</th><th>Factories touched</th><th>Checkpoint</th><th>Bugs</th></tr>
+  <tr><th>Group</th><th>Factories touched</th><th>Checkpoint</th><th>Issues</th></tr>
   <tr>
     <td>Tier 0</td>
     <td><a href="factories/iron-works.html">Iron Works</a>, <a href="factories/copper-works.html">Copper Works</a></td>
@@ -57,15 +58,15 @@ what a maintainer should look at first.</p>
     <td>Tiers 1–2</td>
     <td><a href="factories/elevator-yard.html">Elevator Yard</a>, <a href="factories/iron-works-t2.html">Iron Works (upgrade)</a></td>
     <td>passed</td>
-    <td><a href="bugs/001-example.md">001</a></td>
+    <td><a href="https://github.com/GordonBeeming/SPECS/issues/NNN">#NNN</a></td>
   </tr>
 </table>
 
-<h2>Bug ledger</h2>
+<h2>Issue ledger</h2>
 <table>
-  <tr><th>#</th><th>Severity</th><th>Tier</th><th>Title</th></tr>
+  <tr><th>Issue</th><th>Severity</th><th>Tier</th><th>Title</th></tr>
   <tr>
-    <td><a href="bugs/001-example.md">001</a></td>
+    <td><a href="https://github.com/GordonBeeming/SPECS/issues/NNN">#NNN</a></td>
     <td class="sev-blocking-flow">blocking-flow</td>
     <td>1–2</td>
     <td>One-line title</td>
@@ -80,7 +81,7 @@ what a maintainer should look at first.</p>
 
 <h2>Screenshots</h2>
 <p class="muted">Checkpoint captures live in <code>screenshots/</code>, named
-<code>&lt;tier&gt;-&lt;what&gt;.png</code>; each tier row above should link the
+<code>&lt;YYYY-MM-DD&gt;-&lt;label&gt;-&lt;tier&gt;-&lt;what&gt;.png</code>; each tier row above should link the
 interesting ones inline.</p>
 
 <footer>SPECS full-playthrough run artifact · template v1</footer>

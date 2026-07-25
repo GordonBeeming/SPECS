@@ -24,7 +24,7 @@ byproduct netting harder than anything before it.
    feeding Alclad Sheet 30/min and Casing 40/min. The recycled-water loop
    must show as reuse edges on the plan; silica byproduct consumed or
    sunk. This is the canonical optimizer check — compare machine counts
-   against satisfactorytools and bug-report drift.
+   against satisfactorytools and file an issue for drift.
 2. **Quartz Electronics** (extend Caterium Electronics) — Quartz Crystal
    22.5/min, Silica 37.5/min, Crystal Oscillator 1/min, AI Limiter 5/min,
    High-Speed Connector 2/min, Radio Control Unit 1/min, Supercomputer
@@ -52,7 +52,7 @@ byproduct netting harder than anything before it.
   Belt math at the miner mouth gets real; show the splits.
 - Resource wells: the pressuriser is the clocked building; satellites
   carry purity. The app's claims are per-satellite — verify the totals
-  match pressuriser × satellites and bug-report mismatches.
+  match pressuriser × satellites and file an issue for mismatches.
 
 ## Checkpoint
 
