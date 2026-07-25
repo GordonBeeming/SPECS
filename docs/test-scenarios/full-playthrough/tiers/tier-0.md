@@ -37,10 +37,10 @@ choice.
 
 ## Checkpoint
 
-- [ ] Validate playthrough → no findings (anything you cannot clear gets a
-      bug report and an artifact note)
+- [ ] Validate playthrough → no findings (anything you cannot clear gets an
+      issue and an artifact note)
 - [ ] No belt segment over 60/min in the layouts
 - [ ] Layout artifacts written for both factories; screenshots of each
       factory's plan graph, the map with claims, and the validation
       panel
-- [ ] Bugs filed for anything that fought back
+- [ ] Issues filed for anything that fought back, hesitation log emptied

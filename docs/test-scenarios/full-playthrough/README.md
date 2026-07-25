@@ -23,6 +23,12 @@ the checkpoint that must pass before moving on.
 | Tiers 7–8 | [`tiers/tiers-7-8.md`](./tiers/tiers-7-8.md) | Aluminum, Blender, nuclear, resource wells, Mk5 belts, Phase 4 |
 | Tier 9 | [`tiers/tier-9.md`](./tiers/tier-9.md) | Converter, Quantum Encoder, SAM chain, Mk6 belts, Phase 5 |
 
+## Running it
+
+Use the `playthrough-test` skill — it drives one tier group per invocation,
+resumes from the run ledger, critiques the UX as it goes, and files findings
+as GitHub issues. The protocol below is what it follows.
+
 ## Run protocol
 
 1. **Boot + connect.** `./run.sh`, then Tauri MCP `driver_session` start.
@@ -44,7 +50,7 @@ the checkpoint that must pass before moving on.
       assertions. Warnings matter here because supply gaps and per-factory
       power deficits report as warnings, and the alt-unlock step above
       should have emptied the shopping list. A finding you genuinely can't
-      clear gets a bug report and an explanation in the run artifact, not
+      clear gets an issue and an explanation in the run artifact, not
       a shrug.
    5. Write the tier's artifacts (below) before touching the next group.
 4. **Finish.** Fill in the run index verdict, final screenshots, commit the
@@ -64,15 +70,16 @@ Everything lands in `runs/<YYYY-MM-DD>-<label>/` — see
   placements, extractor hookups, and every belt segment labeled with its mark
   and items/min. An upgrade page shows the delta from the previous tier, not a
   re-description.
-- **Bug reports** (`bugs/NNN-<slug>.md`, from
-  [`templates/bug-report.md`](./templates/bug-report.md)) — numbered, linked
-  from the index.
+- **Run ledger** (`RUN.md`) — playthrough name, per-group state, and the
+  issues each group filed. This is what a resuming run reads first.
 - **Screenshots** (`screenshots/`) — the checkpoint captures each tier page
-  asks for.
+  asks for, plus every capture backing an issue.
+
+Findings go to GitHub Issues, not into the run folder. The index links them.
 
 ## Past runs
 
 None yet. Each run adds a row here:
 
-| Date | Label | Verdict | Bugs filed |
-| ---- | ----- | ------- | ---------- |
+| Date | Label | Verdict | Issues filed |
+| ---- | ----- | ------- | ------------ |

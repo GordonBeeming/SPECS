@@ -18,7 +18,15 @@ docs/test-scenarios/
     runs/            — committed outputs, one folder per run
 ```
 
+The scenario docs are the rulebook and the work list. Everything about *how*
+an agent drives a run lives in the skill.
+
 ## How an agent runs a scenario
+
+Scenarios with a skill are run through it — `full-playthrough` has
+`playthrough-test`, which handles resuming, the UX critique pass, and issue
+filing. The steps below are what that skill automates, and what a scenario
+without one needs by hand.
 
 1. Start the dev app with `./run.sh` (Vite + Tauri with the MCP bridge).
 2. Connect over the Tauri MCP tools (`driver_session` start, then the
@@ -31,13 +39,18 @@ docs/test-scenarios/
    `docs/test-scenarios/<scenario>/runs/<YYYY-MM-DD>-<label>/` — and commit
    them with the run.
 
-## Bug reports are a deliverable
+## Findings are a deliverable
 
 When the app fights you — wrong data, a flow that dead-ends, a number that
-doesn't match the game — that's not a thing to work around quietly. File it
-using the scenario's bug-report template, link it from the run index, and keep
-going if you can. Severity `showstopper` means you genuinely can't continue:
-stop the run, write up where and why, and hand back.
+doesn't match the game, a screen that made you stop and think — that's not a
+thing to work around quietly. File it as a GitHub issue with a screenshot,
+link it from the run index, and keep going if you can. Severity `showstopper`
+means you genuinely can't continue: stop the run, write up where and why, and
+hand back.
+
+Issues are the only home for findings — nothing gets written into the run
+folder as a bug report. The `playthrough-test` skill carries the filing
+mechanics, including how screenshots get embedded.
 
 The app's own library data is the working source of truth during a run. If you
 know the game disagrees with it, you still plan with the app's numbers — and
