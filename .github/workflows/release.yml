@@ -62,6 +62,12 @@ concurrency:
 jobs:
   bundle:
     name: ${{ matrix.platform.name }}
+    # The `assets` release is an image bucket for issue and PR attachments, not a
+    # product release — publishing it must not bundle, notarise, or push to
+    # Homebrew/winget. Every other job needs this one, so the guard stops the
+    # whole pipeline here. On workflow_dispatch there is no release payload, so
+    # the comparison reads '' != 'assets' and the job runs as normal.
+    if: github.event.release.tag_name != 'assets'
     runs-on: ${{ matrix.platform.os }}
     strategy:
       fail-fast: false
