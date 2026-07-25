@@ -73,7 +73,9 @@ Everything lands in `runs/<YYYY-MM-DD>-<label>/` — see
 - **Run ledger** (`RUN.md`) — playthrough name, per-group state, and the
   issues each group filed. This is what a resuming run reads first.
 - **Screenshots** (`screenshots/`) — the checkpoint captures each tier page
-  asks for, plus every capture backing an issue.
+  asks for, plus every capture backing an issue, named
+  `<YYYY-MM-DD>-<label>-<tier>-<what>.png` so two runs never collide on the
+  same filename in the shared `assets` release.
 
 Findings go to GitHub Issues, not into the run folder. The index links them.
 

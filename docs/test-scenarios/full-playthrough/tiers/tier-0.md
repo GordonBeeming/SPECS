@@ -43,4 +43,4 @@ choice.
 - [ ] Layout artifacts written for both factories; screenshots of each
       factory's plan graph, the map with claims, and the validation
       panel
-- [ ] Issues filed for anything that fought back, hesitation log emptied
+- [ ] Issues filed for anything that fought back, `hesitations.md` emptied

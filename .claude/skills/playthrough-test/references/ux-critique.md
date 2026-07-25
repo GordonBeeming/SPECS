@@ -34,14 +34,14 @@ Run these against every screen you land on. They're prompts for attention, not a
 
 ## The hesitation log
 
-Keep this as you go, in the run folder. One entry per hesitation, written at the moment it happens:
+Keep this as you go, in the run folder's `hesitations.md`. One entry per hesitation, written at the moment it happens:
 
 ```
 - **Screen:** plan designer → sources panel
   **Doing:** wiring the Iron Rod line to the Iron Works ingot output
   **Expected:** the panel to list ingot sources I'd already claimed
   **Got:** empty list, no message explaining why
-  **Shot:** t0-sources-panel-empty.png
+  **Shot:** 2026-07-25-iron-giant-t0-sources-panel-empty.png
   **Severity:** blocking-flow
 ```
 

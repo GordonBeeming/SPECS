@@ -13,8 +13,9 @@ Required shape:
   factories/
     <factory-slug>.html           — first full layout (templates/factory-layout.html)
     <factory-slug>-t<N>.html      — upgrade deltas per tier the factory changed in
+  hesitations.md      — running hesitation log kept during building; ranked and filed at checkpoint
   screenshots/
-    <tier>-<what>.png — checkpoint captures, plus anything backing an issue
+    <YYYY-MM-DD>-<label>-<tier>-<what>.png — checkpoint captures, plus anything backing an issue
 ```
 
 `RUN.md` is the resume point — a run spans several invocations, one tier group
