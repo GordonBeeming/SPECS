@@ -390,7 +390,7 @@ jobs:
             name "SPECS"
             desc "Plan whole-playthrough Satisfactory factory networks"
             homepage "https://github.com/GordonBeeming/SPECS"
-            depends_on macos: ">= :sonoma"
+            depends_on macos: :sonoma
 
             app "SPECS.app"
 
