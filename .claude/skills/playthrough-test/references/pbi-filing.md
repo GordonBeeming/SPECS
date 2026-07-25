@@ -14,7 +14,7 @@ Check whether it's there:
 gh release view assets --repo GordonBeeming/SPECS
 ```
 
-If it isn't, **confirm the guard is on `main` first**. `.github/workflows/release.yml` triggers on `release: types: [published]`, so publishing this bucket would otherwise fire the entire product pipeline — Tauri bundles on three runners, Apple notarisation, a Homebrew cask push, a winget submission. The `bundle` job carries `if: github.event.release.tag_name != 'assets'` to stop that, and every other job needs `bundle`, so the guard covers the pipeline. GitHub runs the workflow as it exists on the default branch, so the guard has to be merged before the release is created — not sitting on a branch.
+If it isn't, **confirm the guard is on `main` first**. `.github/workflows/release.yml` triggers on `release: types: [published]`, so publishing this bucket would otherwise fire the entire product pipeline — Tauri bundles on three runners, Apple notarisation, a Homebrew cask push, a winget submission. The `bundle` job carries `if: github.event_name != 'release' || github.event.release.tag_name != 'assets'` to stop that — the first clause short-circuits true on `workflow_dispatch`, which carries no release payload at all — and every other job needs `bundle`, so the guard covers the pipeline. GitHub runs the workflow as it exists on the default branch, so the guard has to be merged before the release is created — not sitting on a branch.
 
 With that confirmed:
 
@@ -104,10 +104,14 @@ Keep it tight. Enough for someone to reproduce it cold, and nothing else — no 
 
 UX-flavoured `blocking-flow` findings take `ux` as well. `playthrough` goes on everything the run files, so the whole batch is one filter away.
 
+Most `UX:`-titled findings are `friction`/`polish` severity, so most take `enhancement` + `ux` + `playthrough`:
+
 ```bash
 gh issue create --repo GordonBeeming/SPECS \
-  --title "UX: ..." --label bug --label ux --label playthrough --body-file <path>
+  --title "UX: ..." --label enhancement --label ux --label playthrough --body-file <path>
 ```
+
+A `UX:`-titled `blocking-flow` finding is the exception — swap `enhancement` for `bug`.
 
 Both `ux` and `playthrough` are repo-specific labels this workflow depends on — create them once if they're missing:
 

@@ -46,7 +46,7 @@ Each run owns `docs/test-scenarios/full-playthrough/runs/<YYYY-MM-DD>-<label>/RU
 3. **Build what the tier page asks.** Claim nodes, place extractors, create factories, set up plans and machines, wire power and logistics. **Drive the UI for all of it** — `ipc_execute_command` and backend-state reads are for asserting what the UI did, never for shortcutting a flow the UI owns. A flow you can't complete through the UI is itself a finding.
 4. **Critique while you build.** Every hesitation gets logged to the run folder's `hesitations.md` and screenshotted the moment it happens, not reconstructed afterwards. [`references/ux-critique.md`](./references/ux-critique.md) carries the lens and the capture format.
 5. **Checkpoint.** Work the tier page's checklist, and run the header's **Validate** button until it comes back clean — warnings included, since supply gaps and per-factory power deficits report as warnings. A finding you genuinely can't clear becomes an issue with an explanation, not a shrug.
-6. **Rank, then file.** Now sort the captured hesitations by severity and file them. [`references/pbi-filing.md`](./references/pbi-filing.md) has the mechanics.
+6. **Rank, then file.** Now sort the captured hesitations by severity and file them, then clear the filed entries from `hesitations.md` — a checkpoint always ends with that file empty, so the next tier group starts from a blank log. [`references/pbi-filing.md`](./references/pbi-filing.md) has the mechanics.
 7. **Write the artifacts.** Factory layout pages for anything built or changed this group, checkpoint screenshots, the run index, and the ledger row.
 8. **Report back.** What you built, what worked, the issues filed with their numbers, and the verdict for the group.
 

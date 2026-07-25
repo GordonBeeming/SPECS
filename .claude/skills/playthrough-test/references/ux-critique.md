@@ -47,6 +47,8 @@ Keep this as you go, in the run folder's `hesitations.md`. One entry per hesitat
 
 Screenshot at the moment of friction — the state that confused you, not the state after you worked it out. A screenshot taken three steps later shows a problem that no longer exists.
 
+A checkpoint always ends with `hesitations.md` empty — clear each entry once it's filed, so the next tier group starts from a blank log instead of re-processing or mixing in the last group's findings.
+
 ## Severity
 
 | Level | Means |
