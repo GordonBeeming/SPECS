@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Iron Works — Tier 0 layout</title>
+<style>
+  :root {
+    --bg: #1a1a1a; --bg-raised: #232323; --fg: #e0e0e0; --fg-muted: #d1d5db;
+    --primary: #46cbff; --border: #2c2c2c;
+    --success: #4ade80; --warning: #fbbf24; --danger: #f87171;
+    --mk1: #9ca3af; --mk2: #46cbff; --mk3: #4ade80;
+    --mk4: #fcd34d; --mk5: #fb923c; --mk6: #d8b4fe;
+    --pipe1: #5eead4; --pipe2: #67e8f9;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--fg);
+         font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 24px 0 8px; color: var(--primary); }
+  .meta { color: var(--fg-muted); font-size: 12px; margin-bottom: 16px; }
+  .meta a { color: var(--primary); }
+  table { border-collapse: collapse; width: 100%; max-width: 720px; }
+  th, td { border: 1px solid var(--border); padding: 5px 9px; text-align: left;
+           font-size: 13px; overflow-wrap: anywhere; }
+  th { background: var(--bg-raised); }
+  .grid { display: grid; gap: 2px; margin: 8px 0;
+          grid-template-columns: repeat(var(--cols, 12), minmax(44px, 1fr)); }
+  .cell { background: var(--bg-raised); border: 1px solid var(--border);
+          min-height: 44px; border-radius: 3px; position: relative;
+          font-size: 10px; color: var(--fg-muted); padding: 2px 4px;
+          overflow-wrap: anywhere; min-width: 0; }
+  .machine { background: #1e3a4c; border-color: var(--primary); color: var(--fg);
+             display: flex; align-items: center; justify-content: center;
+             text-align: center; font-size: 11px; }
+  .extractor { background: #2d2433; border-color: var(--mk6); }
+  .gen { background: #213326; border-color: var(--success); }
+  .belt { display: flex; align-items: center; justify-content: center;
+          font-size: 10px; font-weight: 600; }
+  .belt.mk1 { color: var(--mk1); border-color: var(--mk1); }
+  .split { background: #3a2f1e; border-color: var(--warning); }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px;
+            color: var(--fg-muted); margin: 6px 0 18px; }
+  .legend span::before { content: "■ "; }
+  .ok { color: var(--success); } .warn { color: var(--warning); } .bad { color: var(--danger); }
+  footer { margin-top: 28px; font-size: 11px; color: var(--fg-muted); }
+</style>
+</head>
+<body>
+<h1>Iron Works — Tier 0</h1>
+<p class="meta">
+  Run: <a href="../index.html">2026-07-26-tier0-rerun</a> ·
+  Grass Fields, around 1.5–1.9 km W · 0.5–1.2 km N ·
+  Claims: Iron Pure #1 (1.5 km W · 0.5 km N) Miner Mk.1 @ 50% = 60/min, Iron Normal #6 (1.9 km W · 1.2 km N) Miner Mk.1 @ 100% = 60/min ·
+  Power: +30 MW gen / −24 MW draw = +6 MW
+</p>
+
+<h2>Purpose</h2>
+<p>The starter iron line. Feeds the Tier 0 milestone costs directly — Iron Plate
+20/min, Iron Rod 20/min and Screws 40/min, all consumed on site or by hand.
+Nothing is exported: at Tier 0 both factories are self-contained, so there are
+no logistics links. Reinforced Iron Plate is deliberately absent — it needs an
+Assembler, which is Tier 2.</p>
+
+<p>Only one of the two claimed nodes is actually drawn on: the plan needs
+60 iron ore/min and each node supplies 60/min. The second node is claimed
+headroom for the Tier 1–2 expansion, which is why the app reports
+"120/min claimed" against a 60/min draw.</p>
+
+<h2>The belt-cap choice</h2>
+<p>A Pure iron node on a Miner Mk.1 at 100% yields 120/min, which is double what
+a Mk1 belt carries. Both fixes the tier page names are used here, one per node,
+so the layout shows the trade rather than hiding it:</p>
+<ul>
+  <li><strong>Underclock</strong> — Iron Pure #1 runs at 50%, giving exactly 60/min
+      onto a single Mk1 belt. No splitter, no second belt, and the miner draws
+      less power.</li>
+  <li><strong>Claim a Normal node</strong> — Iron Normal #6 yields exactly 60/min at
+      100% with no clock fiddling at all.</li>
+</ul>
+<p>Splitting a 120/min Pure node across two parallel Mk1 belts was the third
+option and was rejected: it doubles the belt run and needs a merger back at
+the smelter bank for ore this factory does not consume.</p>
+
+<h2>Foundation layout (8×8 m per cell)</h2>
+<div class="legend">
+  <span style="color: var(--primary)">machine</span>
+  <span style="color: var(--mk6)">extractor</span>
+  <span style="color: var(--success)">generator</span>
+  <span style="color: var(--warning)">splitter/merger</span>
+  <span style="color: var(--mk1)">belt Mk1 60</span>
+</div>
+<div class="grid" style="--cols: 8">
+  <!-- row 1: extraction to smelter bank -->
+  <div class="cell extractor">Miner Mk.1<br/>Iron Pure #1 @ 50%<br/>60/min</div>
+  <div class="cell belt mk1">Mk1 →<br/>60/min ore</div>
+  <div class="cell machine" style="grid-row: span 2">Smelter ×2<br/>@ 100%<br/>Iron Ingot 60/min<br/>8.0 MW</div>
+  <div class="cell belt mk1">Mk1 →<br/>60/min ingot</div>
+  <div class="cell split">Splitter<br/>30 + 30</div>
+  <div class="cell belt mk1">Mk1 →<br/>30/min ingot</div>
+  <div class="cell machine">Constructor ×1<br/>Iron Plate 20/min<br/>4.0 MW</div>
+  <div class="cell">out: Plate<br/>20/min</div>
+
+  <!-- row 2: rod and screw branch -->
+  <div class="cell gen">Biomass Burner ×1<br/>30 MW<br/>Biomass 4.00/min</div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell belt mk1">Mk1 →<br/>30/min ingot</div>
+  <div class="cell machine">Constructor ×2<br/>Iron Rod 30/min<br/>8.0 MW</div>
+  <div class="cell split">Splitter<br/>20 out + 10</div>
+  <div class="cell machine">Constructor ×1<br/>Screws 40/min<br/>4.0 MW</div>
+  <div class="cell">out: Rod 20/min<br/>Screws 40/min</div>
+
+  <!-- row 3: spare node, unused this tier -->
+  <div class="cell extractor">Miner Mk.1<br/>Iron Normal #6 @ 100%<br/>60/min — spare</div>
+  <div class="cell">reserved for<br/>Tier 1–2</div>
+  <div class="cell"></div><div class="cell"></div>
+  <div class="cell"></div><div class="cell"></div>
+  <div class="cell"></div><div class="cell"></div>
+</div>
+
+<h2>Belt audit</h2>
+<table>
+  <tr><th>Segment</th><th>Mark</th><th>Carrying</th><th>Cap</th><th>Status</th></tr>
+  <tr><td>Miner (Pure #1 @ 50%) → Smelter bank</td><td>Mk1</td><td>60/min iron ore</td><td>60/min</td><td class="ok">at cap</td></tr>
+  <tr><td>Smelter bank → splitter</td><td>Mk1</td><td>60/min iron ingot</td><td>60/min</td><td class="ok">at cap</td></tr>
+  <tr><td>Splitter → Iron Plate constructor</td><td>Mk1</td><td>30/min iron ingot</td><td>60/min</td><td class="ok">50%</td></tr>
+  <tr><td>Splitter → Iron Rod constructors</td><td>Mk1</td><td>30/min iron ingot</td><td>60/min</td><td class="ok">50%</td></tr>
+  <tr><td>Iron Rod → Screws constructor</td><td>Mk1</td><td>10/min iron rod</td><td>60/min</td><td class="ok">17%</td></tr>
+</table>
+<p>No segment exceeds the Mk1 60/min cap. The two segments sitting exactly at
+60/min are the reason the Pure node is underclocked rather than run flat out.</p>
+
+<h2>Machines and power</h2>
+<table>
+  <tr><th>Machine</th><th>Count</th><th>Clock</th><th>Making</th><th>Draw</th></tr>
+  <tr><td>Smelter</td><td>2</td><td>100%</td><td>Iron Ingot 60/min</td><td>8.0 MW</td></tr>
+  <tr><td>Constructor</td><td>1</td><td>100%</td><td>Iron Plate 20/min</td><td>4.0 MW</td></tr>
+  <tr><td>Constructor</td><td>2</td><td>100%</td><td>Iron Rod 30/min</td><td>8.0 MW</td></tr>
+  <tr><td>Constructor</td><td>1</td><td>100%</td><td>Screws 40/min</td><td>4.0 MW</td></tr>
+  <tr><td>Biomass Burner</td><td>1</td><td>100%</td><td>30 MW on Biomass 4.00/min</td><td class="ok">+30 MW</td></tr>
+  <tr><th>Net</th><td colspan="3">6 production machines</td><th class="ok">+6.0 MW</th></tr>
+</table>
+<p>The burner is hand-fed, so 4.00 Biomass/min is a chore rate, not an automated
+line — normal for Tier 0 and the reason this factory is kept small.</p>
+
+<h2>Imports / exports</h2>
+<table>
+  <tr><th>Direction</th><th>Item</th><th>Rate</th><th>Partner factory</th><th>Transport</th></tr>
+  <tr><td colspan="5">None. Self-contained at Tier 0 — no logistics links exist in this playthrough.</td></tr>
+</table>
+
+<footer>SPECS full-playthrough run artifact · Tier 0 · run 2026-07-26-tier0-rerun</footer>
+</body>
+</html>
