@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::shared::db::app_db::AppDb;
 use crate::shared::db::playthrough_db::PlaythroughDb;
 use crate::shared::error::{AppError, AppResult};
+use crate::shared::gamedata::GameData;
 use crate::shared::paths::{ensure_dir, playthroughs_dir};
 
 use super::dto::{
@@ -47,11 +48,71 @@ fn validate_tier(tier: u8) -> AppResult<i64> {
     Ok(tier as i64)
 }
 
+/// Plain-data fields for a new playthrough, grouped so
+/// `create_playthrough_impl` stays under clippy's argument-count lint.
+struct NewPlaythrough {
+    id: String,
+    display_name: String,
+    starting_tier: i64,
+    created_at: String,
+}
+
+/// Populate a freshly-opened playthrough DB and register it, stamping
+/// `game_version` from the loaded dataset rather than a literal so the two
+/// can never drift apart again. Split out from `create_playthrough` so it
+/// can be unit-tested without a real `AppHandle` (the command wrapper only
+/// adds path/dir setup, which needs one).
+fn create_playthrough_impl(
+    app_db: &AppDb,
+    active: &ActivePlaythrough,
+    game_data: &GameData,
+    pt_db: PlaythroughDb,
+    file_path_str: &str,
+    new: NewPlaythrough,
+) -> AppResult<PlaythroughDetail> {
+    let NewPlaythrough {
+        id,
+        display_name,
+        starting_tier,
+        created_at: now,
+    } = new;
+
+    pt_db.with(|c| -> AppResult<()> {
+        repo::meta_set(c, "name", &display_name).map_err(AppError::from)?;
+        repo::meta_set(c, "game_version", game_data.game_version()).map_err(AppError::from)?;
+        repo::meta_set(c, "created_at", &now).map_err(AppError::from)?;
+        repo::meta_set(c, "schema_version", &SCHEMA_VERSION.to_string())
+            .map_err(AppError::from)?;
+        repo::progress_init(c, starting_tier).map_err(AppError::from)?;
+        Ok(())
+    })?;
+
+    // Register in App DB.
+    app_db.with(|c| -> AppResult<()> {
+        repo::registry_insert(c, &id, &display_name, file_path_str, SCHEMA_VERSION, &now)
+            .map_err(AppError::from)?;
+        Ok(())
+    })?;
+
+    // Set as active.
+    active.set(id.clone(), pt_db);
+
+    Ok(PlaythroughDetail {
+        id,
+        display_name,
+        game_version: game_data.game_version().to_string(),
+        created_at: now,
+        current_tier: starting_tier,
+        current_milestone_progress: 0,
+    })
+}
+
 #[tauri::command]
 pub fn create_playthrough(
     handle: AppHandle,
     app_db: State<AppDb>,
     active: State<ActivePlaythrough>,
+    game_data: State<GameData>,
     input: CreatePlaythroughInput,
 ) -> AppResult<PlaythroughDetail> {
     validate_name(&input.display_name)?;
@@ -67,41 +128,20 @@ pub fn create_playthrough(
 
     // Open the new playthrough DB (creates the file + applies migrations).
     let pt_db = PlaythroughDb::open(&file_path).map_err(AppError::from)?;
-    pt_db.with(|c| -> AppResult<()> {
-        repo::meta_set(c, "name", &display_name).map_err(AppError::from)?;
-        repo::meta_set(c, "game_version", "1.1").map_err(AppError::from)?;
-        repo::meta_set(c, "created_at", &now).map_err(AppError::from)?;
-        repo::meta_set(c, "schema_version", &SCHEMA_VERSION.to_string())
-            .map_err(AppError::from)?;
-        repo::progress_init(c, starting_tier).map_err(AppError::from)?;
-        Ok(())
-    })?;
 
-    // Register in App DB.
-    app_db.with(|c| -> AppResult<()> {
-        repo::registry_insert(
-            c,
-            &id,
-            &display_name,
-            &file_path_str,
-            SCHEMA_VERSION,
-            &now,
-        )
-        .map_err(AppError::from)?;
-        Ok(())
-    })?;
-
-    // Set as active.
-    active.set(id.clone(), pt_db.clone());
-
-    Ok(PlaythroughDetail {
-        id,
-        display_name,
-        game_version: "1.1".to_string(),
-        created_at: now,
-        current_tier: starting_tier,
-        current_milestone_progress: 0,
-    })
+    create_playthrough_impl(
+        &app_db,
+        &active,
+        &game_data,
+        pt_db,
+        &file_path_str,
+        NewPlaythrough {
+            id,
+            display_name,
+            starting_tier,
+            created_at: now,
+        },
+    )
 }
 
 #[tauri::command]
@@ -429,5 +469,32 @@ mod tests {
         let msg = format!("{err:?}");
         assert!(msg.contains("tier must be 0"), "got: {msg}");
         assert!(!msg.contains("starting"), "got: {msg}");
+    }
+
+    #[test]
+    fn create_playthrough_stamps_game_version_from_dataset() {
+        let app_db = AppDb::open_in_memory().expect("open in-memory app db");
+        let active = ActivePlaythrough::empty();
+        let game_data = GameData::from_bundled().expect("load bundled game data");
+        let pt_db = PlaythroughDb::open_in_memory().expect("open in-memory playthrough db");
+
+        let detail = create_playthrough_impl(
+            &app_db,
+            &active,
+            &game_data,
+            pt_db,
+            ":memory:",
+            NewPlaythrough {
+                id: "test-id".to_string(),
+                display_name: "Iron Run".to_string(),
+                starting_tier: 0,
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+            },
+        )
+        .expect("create playthrough");
+
+        // Asserting against the loaded dataset's own version — not the literal
+        // "1.2" — is the point: a future dataset bump can't reintroduce the drift.
+        assert_eq!(detail.game_version, game_data.game_version());
     }
 }
