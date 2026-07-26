@@ -636,8 +636,9 @@ mod tests {
         // are strict subsets. No unlock rows involved anywhere.
         let all_alts = gd.recipes().iter().filter(|r| r.is_alt).count();
         assert_eq!(t9.len(), all_alts);
-        assert!(t0.len() < t9.len());
-        assert!(t0.iter().all(|id| gd.recipe(id).is_some_and(|r| r.unlock_tier == 0)));
+        // Tier 0 reaches no alts — the game has none at tier 0 — so the
+        // dataset must never produce a tier-0 alt for this to reach at all.
+        assert!(t0.is_empty());
     }
 
     fn save_input(factory_id: &str, targets: Vec<PlanTargetSpec>, imports: Vec<PlanImportSpec>) -> SavePlanInput {

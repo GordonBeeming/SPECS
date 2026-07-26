@@ -18,13 +18,20 @@
  * milestones).
  *
  * Recipe unlock tiers: milestone schematics in the dump carry a `tier` and
- * the recipes they unlock, which covers every standard recipe. MAM research
- * and alternate-blueprint schematics carry no tier (and no resolvable
- * requirement chain), so those fall back to hand pins, then tiers carried
- * by recipe id from the old SatisfactoryTools-derived dataset
- * (`scripts/fixtures/recipe-tiers-v1.1.json` — its EST_Alternate scan tiers
- * are still the best signal for alts), then the building's unlock tier —
- * a recipe can't run before its machine exists.
+ * the recipes they unlock, which covers every standard recipe. Alternates
+ * are gated by Hard Drives and MAM research instead, so they carry no
+ * `tier`, but each alt schematic's own `requirements` array names the
+ * progression schematic (`Schematic_<tier>-<milestone>_C`) that gates it —
+ * occasionally indirectly, via another alt schematic's requirements. That
+ * chain resolves all but a handful of alts (the ones gated purely by a MAM
+ * research node, which the dump doesn't tier at all). Anything still
+ * unresolved falls back to hand pins, then tiers carried by recipe id from
+ * the old SatisfactoryTools-derived dataset (`scripts/fixtures/recipe-tiers-
+ * v1.1.json` — its EST_Alternate scan tiers are still the best signal for
+ * the remaining alts, except a carried tier of exactly 0, which is
+ * known-impossible for an alt and is treated as stale rather than trusted),
+ * then the building's unlock tier — a recipe can't run before its machine
+ * exists.
  *
  * Re-run with `bun run scripts/convert-game-data.ts`. The fixture under
  * `scripts/fixtures/satisfactory-calculator-gamedata-1.2.json` is checked
@@ -76,6 +83,8 @@ type ScSchematic = {
   tier?: number;
   /** Full asset paths of the recipes this schematic unlocks. */
   recipes?: string[];
+  /** Full asset paths of the schematics that must be unlocked first. */
+  requirements?: string[];
 };
 type ScData = {
   branch: string;
@@ -281,6 +290,52 @@ const HAND_TIERS: Record<string, number> = {
   Recipe_SAMFluctuator_C: 8,
 };
 
+const schematicsById = new Map<string, ScSchematic>();
+for (const schem of Object.values(sc.schematicsData)) schematicsById.set(classId(schem.className), schem);
+
+/** `.../Schematic_5-1.Schematic_5-1_C` → 5. Regexed off the raw path — the
+ * numeric ids contain a hyphen `classId()` doesn't treat as part of a class
+ * name, so it can't round-trip through that helper. */
+function tierFromRequirementPath(path: string): number | undefined {
+  const m = path.match(/Schematic_(\d+)-\d+/);
+  return m ? Number(m[1]) : undefined;
+}
+
+// Alt schematics occasionally gate on another alt schematic instead of a
+// progression schematic directly (Alternate: Gunpowder requires Alternate:
+// Compacted Coal) — resolve one level of indirection recursively. `seen`
+// guards against a cycle hanging the converter if the dump ever grows one;
+// nothing in the 1.2 dump chains more than a single hop.
+function resolveSchematicTier(schematicId: string, seen: Set<string>): number | undefined {
+  if (seen.has(schematicId)) return undefined;
+  seen.add(schematicId);
+  const schem = schematicsById.get(schematicId);
+  if (!schem) return undefined;
+  let best: number | undefined;
+  for (const reqPath of schem.requirements ?? []) {
+    const resolved = tierFromRequirementPath(reqPath) ?? resolveSchematicTier(classId(reqPath), seen);
+    if (resolved !== undefined && (best === undefined || resolved < best)) best = resolved;
+  }
+  return best;
+}
+
+// Recipe id -> earliest tier reachable through the schematic(s) that unlock
+// it. MAM research schematics carry neither a `tier` nor a `requirements`
+// chain the dump can resolve, so alts gated purely by a research node (no
+// progression schematic anywhere in the chain) are absent here and fall
+// through to the next signal below.
+const altUnlockTiers = new Map<string, number>();
+for (const schem of Object.values(sc.schematicsData)) {
+  if (!/\/Alternate\//.test(schem.className)) continue;
+  const tier = resolveSchematicTier(classId(schem.className), new Set());
+  if (tier === undefined) continue;
+  for (const recipePath of schem.recipes ?? []) {
+    const rid = classId(recipePath);
+    const prev = altUnlockTiers.get(rid);
+    if (prev === undefined || tier < prev) altUnlockTiers.set(rid, tier);
+  }
+}
+
 const recipes: SpecsRecipe[] = [];
 for (const r of Object.values(sc.recipesData)) {
   const id = classId(r.className);
@@ -305,8 +360,26 @@ for (const r of Object.values(sc.recipesData)) {
   // the name prefix is just as reliable and simpler.
   const isAlt = id.startsWith("Recipe_Alternate_") || r.name.startsWith("Alternate:");
 
-  const unlockTier =
-    milestoneTiers.get(id) ?? HAND_TIERS[id] ?? carriedTiers[id] ?? BUILDING_UNLOCK_TIER[buildingId] ?? 0;
+  // A carried (1.1-era) tier of exactly 0 for an alt is known-impossible —
+  // no alternate recipe unlocks at tier 0 — so it's stale rather than a real
+  // signal; skip it and let a later fallback (typically the building's own
+  // unlock tier) supply something trustworthy instead.
+  const carriedTier = carriedTiers[id];
+  const trustedCarriedTier = isAlt && carriedTier === 0 ? undefined : carriedTier;
+
+  const derivedTier =
+    milestoneTiers.get(id) ??
+    HAND_TIERS[id] ??
+    altUnlockTiers.get(id) ??
+    trustedCarriedTier ??
+    BUILDING_UNLOCK_TIER[buildingId] ??
+    0;
+  // A recipe can't be usable before its own machine exists, but the dump's
+  // tutorial-era schematics (HUB Upgrades 1-3, tier 0) teach several
+  // standard recipes — Reinforced Iron Plate among them — well ahead of the
+  // building those recipes actually run in. The building's own unlock tier
+  // is always a hard floor regardless of what an earlier schematic claims.
+  const unlockTier = Math.max(derivedTier, BUILDING_UNLOCK_TIER[buildingId] ?? 0);
 
   recipes.push({
     id,
@@ -623,6 +696,25 @@ for (const r of recipes) {
     if (!itemIds.has(io.itemId)) fail(`recipe ${r.id} references unknown item ${io.itemId}`);
   }
 }
+// A recipe can't be usable before its own machine exists — this is the
+// invariant that would have caught the tier-0-alt bug outright, since every
+// alt whose derivation and carried-tier fixture both came up empty used to
+// default straight to 0 instead of its building's real unlock tier.
+const belowBuildingTier = recipes.filter((r) => r.unlockTier < (BUILDING_UNLOCK_TIER[r.buildingId] ?? 0));
+if (belowBuildingTier.length > 0) {
+  fail(
+    `${belowBuildingTier.length} recipe(s) unlock before their building does: ${belowBuildingTier
+      .map((r) => `${r.id} (tier ${r.unlockTier} < ${r.buildingId} tier ${BUILDING_UNLOCK_TIER[r.buildingId] ?? 0})`)
+      .join(", ")}`,
+  );
+}
+// No alternate recipe unlocks at tier 0 in the game — a tier-0 alt means the
+// derivation chain fell all the way through without ever finding a real
+// signal.
+const zeroTierAlts = recipes.filter((r) => r.isAlt && r.unlockTier === 0);
+if (zeroTierAlts.length > 0) {
+  fail(`${zeroTierAlts.length} alt recipe(s) landed at tier 0: ${zeroTierAlts.map((r) => r.id).join(", ")}`);
+}
 if (spaceElevatorPhases.length !== 5) fail(`expected 5 Space Elevator phases, got ${spaceElevatorPhases.length}`);
 for (const ph of spaceElevatorPhases) {
   if (ph.parts.length === 0) fail(`Space Elevator phase ${ph.phase} has no parts`);
@@ -656,11 +748,25 @@ writeFileSync(OUT, JSON.stringify(output, null, 2) + "\n", "utf8");
 
 const altCount = recipes.filter((r) => r.isAlt).length;
 const tierFromMilestone = recipes.filter((r) => milestoneTiers.has(r.id)).length;
+const tierFromAltSchematic = recipes.filter((r) => !milestoneTiers.has(r.id) && altUnlockTiers.has(r.id)).length;
 const tierDefaulted = recipes.filter(
-  (r) => !milestoneTiers.has(r.id) && HAND_TIERS[r.id] === undefined && carriedTiers[r.id] === undefined,
+  (r) =>
+    !milestoneTiers.has(r.id) &&
+    HAND_TIERS[r.id] === undefined &&
+    !altUnlockTiers.has(r.id) &&
+    (carriedTiers[r.id] === undefined || (r.isAlt && carriedTiers[r.id] === 0)),
 ).length;
+const altTierHistogram = recipes
+  .filter((r) => r.isAlt)
+  .reduce<Record<number, number>>((hist, r) => {
+    hist[r.unlockTier] = (hist[r.unlockTier] ?? 0) + 1;
+    return hist;
+  }, {});
 console.log(
-  `wrote ${OUT}\n  items: ${items.length} (${synthesised.length} synthesised: ${synthesised.join(", ") || "none"})\n  buildings: ${buildings.length}\n  recipes: ${recipes.length} (${altCount} alts, ${samRecipes.length} SAM-consuming, ${tierFromMilestone} tiers from milestones, ${tierDefaulted} defaulted to building tier)\n  milestones: ${milestones.length}\n  generators: ${generators.length}\n  miners: ${miners.length}\n  transportVehicles: ${transportVehicles.length}`,
+  `wrote ${OUT}\n  items: ${items.length} (${synthesised.length} synthesised: ${synthesised.join(", ") || "none"})\n  buildings: ${buildings.length}\n  recipes: ${recipes.length} (${altCount} alts, ${samRecipes.length} SAM-consuming, ${tierFromMilestone} tiers from milestones, ${tierFromAltSchematic} alt tiers from schematic requirements, ${tierDefaulted} defaulted to building tier)\n  alt tier distribution: ${Object.entries(altTierHistogram)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([tier, count]) => `T${tier}:${count}`)
+    .join(" ")}\n  milestones: ${milestones.length}\n  generators: ${generators.length}\n  miners: ${miners.length}\n  transportVehicles: ${transportVehicles.length}`,
 );
 
 function round2(n: number): number {
