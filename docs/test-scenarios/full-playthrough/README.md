@@ -32,8 +32,11 @@ as GitHub issues. The protocol below is what it follows.
 ## Run protocol
 
 1. **Boot + connect.** `./run.sh`, then Tauri MCP `driver_session` start.
-2. **Fresh playthrough.** Create one through the UI, starting tier 0. Name it
-   after the run folder (`<YYYY-MM-DD>-<label>`).
+2. **Resume, or start fresh.** A run spans several invocations, one tier group
+   each, so read the run ledger (`runs/<run>/RUN.md`) first and carry on with
+   the playthrough it names. Only create a playthrough when no run is open:
+   through the UI, starting tier 0, named after the run folder
+   (`<YYYY-MM-DD>-<label>`).
 3. **Per tier group, in order:**
    1. Set the playthrough tier to the group's top tier (through the UI).
    2. Unlock every alternate recipe with `unlock_tier <=` the current tier on
