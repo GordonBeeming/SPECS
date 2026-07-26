@@ -42,8 +42,9 @@ Keep this as you go, in the run folder's `hesitations.md`. One entry per hesitat
   **Expected:** the panel to list ingot sources I'd already claimed
   **Got:** empty list, no message explaining why
   **Shot:** 2026-07-25-iron-giant-t0-sources-panel-empty.png
-  **Severity:** blocking-flow
 ```
+
+**No severity at capture.** Recording one here would be the judgement call the ranking pass exists to make — and a first occurrence almost always reads milder than the same problem does after it's cost you three times. Write what happened; decide what it's worth later.
 
 Screenshot at the moment of friction — the state that confused you, not the state after you worked it out. A screenshot taken three steps later shows a problem that no longer exists.
 
