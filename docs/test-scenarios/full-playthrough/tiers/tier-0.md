@@ -8,8 +8,10 @@ close to their nodes.
 
 - **Buildings:** Smelter, Constructor, Miner Mk.1
 - **Belts:** Mk1 — 60/min. No pipes, no fluids yet.
-- **Recipes:** Iron Ingot, Iron Plate, Iron Rod, Screws, Reinforced Iron
-  Plate, Copper Ingot, Wire, Cable, Concrete, Biomass (Leaves/Wood)
+- **Recipes:** Iron Ingot, Iron Plate, Iron Rod, Screws, Copper Ingot, Wire,
+  Cable, Concrete, Biomass (Leaves/Wood). Reinforced Iron Plate is *not* here
+  — it needs an Assembler, which is Tier 2, so a Tier 0 factory can't automate
+  it however much iron you have.
 - **Power:** biomass burners only (manual feed — note generator counts but
   don't over-engineer)
 
@@ -19,8 +21,8 @@ Two starter factories in the Grass Fields area, each on its own claimed
 nodes:
 
 1. **Iron Works** — claim 2 iron nodes (Mk.1, 100%). Lines: Iron Ingot →
-   Iron Plate (20/min), Iron Rod (20/min), Screws (40/min), Reinforced Iron
-   Plate (5/min).
+   Iron Plate (20/min), Iron Rod (20/min), Screws (40/min). Reinforced Iron
+   Plate waits for the Assembler in Tiers 1–2.
 2. **Copper Works** — claim 1 copper node + 1 limestone node. Lines: Wire
    (30/min), Cable (15/min), Concrete (15/min).
 
