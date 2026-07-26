@@ -21,7 +21,9 @@ A named group past `tier-0` requires every earlier group to already be `done` in
 
 - The dev app is up: `./run.sh` (Vite + Tauri with the MCP bridge).
 - Connected over Tauri MCP — `driver_session` start, then the `webview_*` tools.
-- The `assets` release exists on `GordonBeeming/SPECS`. See [`references/pbi-filing.md`](./references/pbi-filing.md) for creating it, including the release-workflow guard that has to be on `main` first.
+- The `assets` release exists on `GordonBeeming/SPECS`. See [`do-some-testing/references/filing.md`](../do-some-testing/references/filing.md) for creating it, including the release-workflow guard that has to be on `main` first.
+
+**How to test is the `do-some-testing` skill's job, not this one's.** It owns driving the UI, the UX lens, capture and ranking, and the filing mechanics. This page owns what to build and what "done" means for each tier group.
 
 ## The ledger
 
@@ -44,9 +46,9 @@ Each run owns `docs/test-scenarios/full-playthrough/runs/<YYYY-MM-DD>-<label>/RU
 1. **Connect and orient.** Start the driver session. Read the ledger if a run is open; otherwise create the run folder and a fresh playthrough through the UI, named after the run folder.
 2. **Open the tier.** Set the playthrough to the group's top tier, then unlock every alternate recipe with `unlock_tier` at or below it on the Alts screen. The run assumes the pioneer sweeps every reachable hard drive the moment a tier opens.
 3. **Build what the tier page asks.** Claim nodes, place extractors, create factories, set up plans and machines, wire power and logistics. **Drive the UI for all of it** — `ipc_execute_command` and backend-state reads are for asserting what the UI did, never for shortcutting a flow the UI owns. A flow you can't complete through the UI is itself a finding.
-4. **Critique while you build.** Every hesitation gets logged to the run folder's `hesitations.md` and screenshotted the moment it happens, not reconstructed afterwards. [`references/ux-critique.md`](./references/ux-critique.md) carries the lens and the capture format.
+4. **Critique while you build.** Every hesitation gets logged to the run folder's `hesitations.md` and screenshotted the moment it happens, not reconstructed afterwards. [`do-some-testing/references/ux-critique.md`](../do-some-testing/references/ux-critique.md) carries the lens and the capture format.
 5. **Checkpoint.** Work the tier page's checklist, and run the header's **Validate** button until it comes back clean — warnings included, since supply gaps and per-factory power deficits report as warnings. A finding you genuinely can't clear becomes an issue with an explanation, not a shrug.
-6. **Rank, then file.** Now sort the captured hesitations by severity and file them, then clear the filed entries from `hesitations.md` — a checkpoint always ends with that file empty, so the next tier group starts from a blank log. [`references/pbi-filing.md`](./references/pbi-filing.md) has the mechanics.
+6. **Rank, then file.** Now sort the captured hesitations by severity and file them, then clear the filed entries from `hesitations.md` — a checkpoint always ends with that file empty, so the next tier group starts from a blank log. [`do-some-testing/references/filing.md`](../do-some-testing/references/filing.md) has the mechanics.
 7. **Write the artifacts.** Factory layout pages for anything built or changed this group, checkpoint screenshots, the run index, and the ledger row.
 8. **Report back.** What you built, what worked, the issues filed with their numbers, and the verdict for the group.
 

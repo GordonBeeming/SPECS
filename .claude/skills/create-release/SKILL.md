@@ -18,7 +18,7 @@ trigger — no separate tag push needed.
    ```bash
    gh release list --repo GordonBeeming/SPECS --limit 5 --exclude-pre-releases
    ```
-   `--exclude-pre-releases` matters here: the repo carries an `assets` release (a prerelease used as an image bucket for issue attachments, not a product build — see `.claude/skills/playthrough-test/references/pbi-filing.md`). Without the flag it can sort ahead of the real latest tag and get read as the current version.
+   `--exclude-pre-releases` matters here: the repo carries an `assets` release (a prerelease used as an image bucket for issue attachments, not a product build — see `.claude/skills/do-some-testing/references/filing.md`). Without the flag it can sort ahead of the real latest tag and get read as the current version.
 3. Bump the **minor** version. Tags are `v{major}.{minor}` — never include a patch number in the tag itself (CI stamps the build number).
 4. Gather changes since the last release:
    ```bash

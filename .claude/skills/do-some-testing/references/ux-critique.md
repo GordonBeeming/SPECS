@@ -34,7 +34,7 @@ Run these against every screen you land on. They're prompts for attention, not a
 
 ## The hesitation log
 
-Keep this as you go, in the run folder's `hesitations.md`. One entry per hesitation, written at the moment it happens:
+Keep this as you go, in whichever findings log the caller named — a scenario supplies its own path (the full-playthrough one uses `hesitations.md` in the run folder). One entry per hesitation, written at the moment it happens:
 
 ```
 - **Screen:** plan designer → sources panel
@@ -48,7 +48,7 @@ Keep this as you go, in the run folder's `hesitations.md`. One entry per hesitat
 
 Screenshot at the moment of friction — the state that confused you, not the state after you worked it out. A screenshot taken three steps later shows a problem that no longer exists.
 
-A checkpoint always ends with `hesitations.md` empty — clear each entry once it's filed, so the next tier group starts from a blank log instead of re-processing or mixing in the last group's findings.
+A session always ends with the log empty — clear each entry once it's been reported, so the next session starts blank instead of re-processing or mixing in the last one's findings.
 
 ## Severity
 
@@ -60,6 +60,6 @@ A checkpoint always ends with `hesitations.md` empty — clear each entry once i
 | `friction` | The flow works but costs more clicks, backtracking, or guessing than it should. |
 | `polish` | Wording, alignment, iconography, empty-state copy. |
 
-`wrong-data` findings aren't UX — they're the app's library data disagreeing with Satisfactory. Per the scenario rulebook, you still plan with the app's numbers and file the discrepancy; the plan stays internally consistent and the gap gets tracked. Say what the game's value is and where you know it from.
+`wrong-data` findings aren't UX — they're the app's library data disagreeing with Satisfactory. You still work with the app's numbers and record the discrepancy, so what you produce stays internally consistent and the gap gets tracked anyway. Say what the game's value is and where you know it from.
 
-Severity is assigned during the ranking pass, once the whole tier group is done. Something that looked like `friction` the first time often reads as `blocking-flow` after it's cost you three times, and a `polish` nit that shows up on five screens is a pattern worth one real issue.
+Severity is assigned during the ranking pass, once the session is done. Something that looked like `friction` the first time often reads as `blocking-flow` after it's cost you three times, and a `polish` nit that shows up on five screens is a pattern worth one real issue.

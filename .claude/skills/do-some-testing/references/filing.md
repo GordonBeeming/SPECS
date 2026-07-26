@@ -32,7 +32,7 @@ Because it's a prerelease, `create-release/SKILL.md` has to filter it out of its
 
 ## Screenshots
 
-Asset names are unique across the whole release, so prefix every one with the run's `<YYYY-MM-DD>-<label>` (the same folder name as the ledger) before the tier and what it shows — two different runs hitting the same rough edge must not collide on the same filename:
+Asset names are unique across the whole release, so prefix every one with the session's `<YYYY-MM-DD>-<label>` before what it shows — two sessions hitting the same rough edge must not collide on the same filename. A scenario run uses its run-folder name as the label:
 
 ```
 2026-07-25-iron-giant-t0-sources-panel-empty.png
@@ -89,7 +89,7 @@ gh issue list --repo GordonBeeming/SPECS --state open --search "sources panel"
 ![<alt>](https://github.com/GordonBeeming/SPECS/releases/download/assets/<file>.png)
 
 ---
-Found in playthrough test run `<YYYY-MM-DD>-<label>`, tier group `<group>`.
+Found while testing `<what was being tested>` — session `<YYYY-MM-DD>-<label>`.
 ```
 
 Keep it tight. Enough for someone to reproduce it cold, and nothing else — no summary of the summary, no section left in with "N/A" under it. Drop `Repro` entirely if the title and `What happened` already say it.
@@ -122,4 +122,4 @@ gh label create playthrough --repo GordonBeeming/SPECS --color 5319E7 --descript
 
 ## After filing
 
-Record the issue numbers in the run ledger's row for that tier group, and link them from the run index. The ledger is what the next invocation reads, so an unrecorded issue is one a later run will file again.
+Hand the issue numbers back to the session that found them. Where the session keeps a ledger — a scenario run does — record them there and link them from its index, because the ledger is what the next invocation reads and an unrecorded issue is one a later run will file all over again.
