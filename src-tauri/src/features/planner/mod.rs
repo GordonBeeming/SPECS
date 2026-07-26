@@ -11,5 +11,7 @@
 pub mod commands;
 pub mod domain;
 pub mod dto;
+#[cfg(test)]
+pub(crate) mod matrix;
 pub mod repo;
 pub mod solver;
