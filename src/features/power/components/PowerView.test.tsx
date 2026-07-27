@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { PowerView } from "./PowerView";
@@ -61,9 +62,6 @@ describe("<PowerView />", () => {
       },
     ]);
     vi.spyOn(powerApi, "list").mockResolvedValue([]);
-    // PowerView now filters the sidebar to factories that already
-    // have at least one generator row, so the active-factory panel
-    // doesn't render until listAll reports something for this id.
     vi.spyOn(powerApi, "listAll").mockResolvedValue([
       {
         id: "g1",
@@ -86,10 +84,343 @@ describe("<PowerView />", () => {
         { itemId: "Desc_Coal_C", itemName: "Coal", isFluid: false, perMinute: 60 },
       ],
     });
+    vi.spyOn(powerApi, "listBalances").mockResolvedValue([
+      { factoryId: "f1", generatedMw: 300, consumedMw: 60, netMw: 240, fuelFlows: [] },
+    ]);
     renderWithProviders(<PowerView />);
     await waitFor(() => {
       expect(screen.getByText(/300.0 MW/i)).toBeInTheDocument();
       expect(screen.getByText(/240.0 MW/i)).toBeInTheDocument();
+    });
+  });
+
+  it("lists a factory with no generators instead of hiding it, and flags it prominently", async () => {
+    // The bug this regresses: a factory that draws power but never
+    // built a generator used to be absent from the sidebar entirely,
+    // and the header could read a healthy green net while a third of
+    // the grid's draw was invisible.
+    vi.spyOn(playthroughApi, "current").mockResolvedValue({
+      id: "p",
+      displayName: "Run",
+      gameVersion: "1.1",
+      createdAt: "2026-05-10T00:00:00Z",
+      currentTier: 0,
+      currentMilestoneProgress: 0,
+    });
+    vi.spyOn(factoryApi, "list").mockResolvedValue([
+      {
+        id: "iron",
+        name: "Iron Works",
+        worldX: 0,
+        worldY: 0,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+        machineCount: 6,
+      },
+      {
+        id: "copper",
+        name: "Copper Works",
+        worldX: 0,
+        worldY: 0,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+        machineCount: 5,
+      },
+    ]);
+    vi.spyOn(powerApi, "list").mockResolvedValue([]);
+    // Only Copper Works has a generator row.
+    vi.spyOn(powerApi, "listAll").mockResolvedValue([
+      {
+        id: "g1",
+        factoryId: "copper",
+        generatorId: "Build_GeneratorCoal_C",
+        fuelItemId: "Desc_Coal_C",
+        count: 1,
+        clockPct: 100,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+      },
+    ]);
+    vi.spyOn(powerApi, "balance").mockResolvedValue({
+      factoryId: "copper",
+      generatedMw: 75,
+      consumedMw: 17.6,
+      netMw: 57.4,
+      fuelFlows: [],
+    });
+    // Iron Works draws 24 MW and has zero generators — the exact
+    // shape from the recorded playthrough run this fix targets.
+    vi.spyOn(powerApi, "listBalances").mockResolvedValue([
+      { factoryId: "iron", generatedMw: 0, consumedMw: 24, netMw: -24, fuelFlows: [] },
+      { factoryId: "copper", generatedMw: 75, consumedMw: 17.6, netMw: 57.4, fuelFlows: [] },
+    ]);
+    renderWithProviders(<PowerView />);
+
+    // Iron Works now appears in the sidebar (it used to be hidden)
+    // and is flagged "No power", sorted ahead of the healthy factory.
+    await waitFor(() => {
+      expect(screen.getByText("Iron Works")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/No power/i)).toBeInTheDocument();
+
+    // The grid-wide total reflects both factories and reads as a
+    // deficit (0 + 75 generated vs 24 + 17.6 consumed = 33.4 net).
+    await waitFor(() => {
+      expect(screen.getByText(/33.4 MW/i)).toBeInTheDocument();
+    });
+  });
+
+  it("badges the generator count summed across rows, not the row count", async () => {
+    // The bug this regresses: 8 Biomass Burners split across two rows
+    // (e.g. differing notes) read "2" in the sidebar badge — a count
+    // of rows presented as a count of generators.
+    vi.spyOn(playthroughApi, "current").mockResolvedValue({
+      id: "p",
+      displayName: "Run",
+      gameVersion: "1.1",
+      createdAt: "2026-05-10T00:00:00Z",
+      currentTier: 0,
+      currentMilestoneProgress: 0,
+    });
+    vi.spyOn(factoryApi, "list").mockResolvedValue([
+      {
+        id: "iron",
+        name: "Iron Works",
+        worldX: 0,
+        worldY: 0,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+        machineCount: 6,
+      },
+    ]);
+    vi.spyOn(powerApi, "list").mockResolvedValue([]);
+    vi.spyOn(powerApi, "listAll").mockResolvedValue([
+      {
+        id: "g1",
+        factoryId: "iron",
+        generatorId: "Build_GeneratorBiomass_C",
+        fuelItemId: "Desc_Leaves_C",
+        count: 4,
+        clockPct: 100,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+      },
+      {
+        id: "g2",
+        factoryId: "iron",
+        generatorId: "Build_GeneratorBiomass_C",
+        fuelItemId: "Desc_Leaves_C",
+        count: 4,
+        clockPct: 100,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+      },
+    ]);
+    vi.spyOn(powerApi, "balance").mockResolvedValue({
+      factoryId: "iron",
+      generatedMw: 40,
+      consumedMw: 24,
+      netMw: 16,
+      fuelFlows: [],
+    });
+    vi.spyOn(powerApi, "listBalances").mockResolvedValue([
+      { factoryId: "iron", generatedMw: 40, consumedMw: 24, netMw: 16, fuelFlows: [] },
+    ]);
+    renderWithProviders(<PowerView />);
+
+    expect(
+      await screen.findByTitle("8 generators"),
+    ).toBeInTheDocument();
+  });
+
+  it("gates the fuel picker by each fuel item's own tier, not the generator's", async () => {
+    // Regresses: the Fuel Generator unlocks well before Rocket Fuel and
+    // Ionized Fuel do, so gating the fuel list on the generator's own
+    // unlockTier let both leak in at Tier 6 — years ahead of the T8/T9
+    // recipes that actually produce them. The generator picker beside it
+    // was already correctly gated, which is what made this stand out.
+    const user = userEvent.setup();
+    vi.spyOn(playthroughApi, "current").mockResolvedValue({
+      id: "p",
+      displayName: "Run",
+      gameVersion: "1.1",
+      createdAt: "2026-05-10T00:00:00Z",
+      currentTier: 6,
+      currentMilestoneProgress: 0,
+    });
+    vi.spyOn(factoryApi, "list").mockResolvedValue([
+      {
+        id: "f1",
+        name: "Fuel Plant",
+        worldX: 0,
+        worldY: 0,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+        machineCount: 0,
+      },
+    ]);
+    vi.spyOn(libraryApi, "generators").mockResolvedValue([
+      {
+        id: "Build_GeneratorFuel_C",
+        name: "Fuel Generator",
+        category: "fluid",
+        powerMw: 250,
+        unlockTier: 4,
+        fuels: [
+          { fuelItemId: "Desc_LiquidFuel_C", fuelPerMinute: 20 },
+          { fuelItemId: "Desc_RocketFuel_C", fuelPerMinute: 10 },
+        ],
+      },
+    ]);
+    vi.spyOn(libraryApi, "items").mockResolvedValue([
+      { id: "Desc_LiquidFuel_C", name: "Fuel", category: "fluid", stackSize: 0, isFluid: true },
+      { id: "Desc_RocketFuel_C", name: "Rocket Fuel", category: "fluid", stackSize: 0, isFluid: true },
+    ]);
+    vi.spyOn(libraryApi, "recipes").mockResolvedValue([
+      {
+        id: "Recipe_LiquidFuel_C",
+        name: "Fuel",
+        buildingId: "Build_OilRefinery_C",
+        isAlt: false,
+        unlockTier: 4,
+        cycleSeconds: 6,
+        inputs: [],
+        outputs: [{ itemId: "Desc_LiquidFuel_C", perMinute: 40 }],
+      },
+      {
+        id: "Recipe_RocketFuel_C",
+        name: "Rocket Fuel",
+        buildingId: "Build_OilRefinery_C",
+        isAlt: false,
+        unlockTier: 8,
+        cycleSeconds: 6,
+        inputs: [],
+        outputs: [{ itemId: "Desc_RocketFuel_C", perMinute: 20 }],
+      },
+    ]);
+    vi.spyOn(powerApi, "list").mockResolvedValue([]);
+    vi.spyOn(powerApi, "listAll").mockResolvedValue([]);
+    vi.spyOn(powerApi, "balance").mockResolvedValue({
+      factoryId: "f1",
+      generatedMw: 0,
+      consumedMw: 0,
+      netMw: 0,
+      fuelFlows: [],
+    });
+    vi.spyOn(powerApi, "listBalances").mockResolvedValue([
+      { factoryId: "f1", generatedMw: 0, consumedMw: 0, netMw: 0, fuelFlows: [] },
+    ]);
+
+    renderWithProviders(<PowerView />);
+    await user.click(await screen.findByRole("button", { name: /add generator/i }));
+
+    const generatorCombobox = screen.getByRole("combobox", { name: /^generator$/i });
+    await user.click(generatorCombobox);
+    await user.click(await screen.findByRole("option", { name: /fuel generator/i }));
+
+    const fuelCombobox = screen.getByRole("combobox", { name: /^fuel$/i });
+    await user.click(fuelCombobox);
+    await user.keyboard("{ArrowDown}");
+    // The eligible fuel's option reads "Fuel <rate> /min" (label + hint);
+    // matched loosely so it isn't confused with "Rocket Fuel".
+    expect(await screen.findByRole("option", { name: /^fuel\b/i })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /rocket fuel/i })).not.toBeInTheDocument();
+  });
+
+  it("labels fuel demand with the unit the rows actually use instead of a hardcoded one", async () => {
+    // Regresses: the header always read "FUEL DEMAND (ITEMS / MIN)" even
+    // when every row underneath was a fluid shown in m³/min.
+    vi.spyOn(playthroughApi, "current").mockResolvedValue({
+      id: "p",
+      displayName: "Run",
+      gameVersion: "1.1",
+      createdAt: "2026-05-10T00:00:00Z",
+      currentTier: 6,
+      currentMilestoneProgress: 0,
+    });
+    vi.spyOn(factoryApi, "list").mockResolvedValue([
+      {
+        id: "f1",
+        name: "Oil Power Plant",
+        worldX: 0,
+        worldY: 0,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+        machineCount: 0,
+      },
+    ]);
+    vi.spyOn(powerApi, "list").mockResolvedValue([]);
+    vi.spyOn(powerApi, "listAll").mockResolvedValue([]);
+    vi.spyOn(powerApi, "balance").mockResolvedValue({
+      factoryId: "f1",
+      generatedMw: 250,
+      consumedMw: 0,
+      netMw: 250,
+      fuelFlows: [
+        { itemId: "Desc_LiquidFuel_C", itemName: "Fuel", isFluid: true, perMinute: 64.96 },
+      ],
+    });
+    vi.spyOn(powerApi, "listBalances").mockResolvedValue([
+      { factoryId: "f1", generatedMw: 250, consumedMw: 0, netMw: 250, fuelFlows: [] },
+    ]);
+
+    renderWithProviders(<PowerView />);
+    expect(await screen.findByText("64.96 m³/min")).toBeInTheDocument();
+    expect(screen.getByText(/fuel demand \(m³ \/ min\)/i)).toBeInTheDocument();
+  });
+
+  it("closes the edit-generator modal on Escape, matching every other modal", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(playthroughApi, "current").mockResolvedValue({
+      id: "p",
+      displayName: "Run",
+      gameVersion: "1.1",
+      createdAt: "2026-05-10T00:00:00Z",
+      currentTier: 5,
+      currentMilestoneProgress: 0,
+    });
+    vi.spyOn(factoryApi, "list").mockResolvedValue([
+      {
+        id: "f1",
+        name: "Coal Power Plant",
+        worldX: 0,
+        worldY: 0,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+        machineCount: 0,
+      },
+    ]);
+    vi.spyOn(powerApi, "list").mockResolvedValue([
+      {
+        id: "g1",
+        factoryId: "f1",
+        generatorId: "Build_GeneratorCoal_C",
+        fuelItemId: "Desc_Coal_C",
+        count: 4,
+        clockPct: 100,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+      },
+    ]);
+    vi.spyOn(powerApi, "listAll").mockResolvedValue([]);
+    vi.spyOn(powerApi, "balance").mockResolvedValue({
+      factoryId: "f1",
+      generatedMw: 300,
+      consumedMw: 0,
+      netMw: 300,
+      fuelFlows: [],
+    });
+    vi.spyOn(powerApi, "listBalances").mockResolvedValue([
+      { factoryId: "f1", generatedMw: 300, consumedMw: 0, netMw: 300, fuelFlows: [] },
+    ]);
+
+    renderWithProviders(<PowerView />);
+    await user.click(await screen.findByRole("button", { name: /edit generator/i }));
+    expect(await screen.findByText(/edit generator/i, { selector: "h2" })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByText(/edit generator/i, { selector: "h2" })).not.toBeInTheDocument();
     });
   });
 });

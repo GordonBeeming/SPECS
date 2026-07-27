@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 
 import { Button } from "@/shared/ui/Button";
@@ -32,6 +32,15 @@ export function EditPowerGenModal({
   const [clockPct, setClockPct] = useState(gen.clockPct);
   const [fuelItemId, setFuelItemId] = useState(gen.fuelItemId);
   const [error, setError] = useState<string | null>(null);
+
+  // Uniform with every other modal in the app — Escape closes.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();

@@ -3,16 +3,33 @@ import { Check, Pencil, Plus, X } from "lucide-react";
 
 import { Button } from "@/shared/ui/Button";
 import { ClockInput } from "@/shared/ui/ClockInput";
+import { FilterSelect } from "@/shared/ui/FilterSelect";
+import { factoryPickerOptions, type FactoryPickerCandidate } from "@/features/map/transform";
+import { floorClockPct } from "@/features/validation/clock";
+import type { Finding } from "@/features/validation/types";
 
-import { claimDefaultExtractor, nodeDisplayLabel } from "../display";
+import { claimDefaultExtractor, extractorOptionLabel, nodeDisplayLabel, nodeKindLabel } from "../display";
 import { useClearNodeClaim, useSetNodeClaim } from "../hooks/useResources";
 import type { ResourceNodeRow } from "../types";
 
+/** The one `Finding` variant a resource-node row can flag inline —
+ * everything else in `Finding` belongs to other screens. */
+export type PortCapacityFinding = Extract<Finding, { kind: "claimOverPortCapacity" }>;
+
 interface NodeRowProps {
   row: ResourceNodeRow;
-  factories: { id: string; name: string }[];
+  factories: FactoryPickerCandidate[];
   /** Position within the (resource, purity) bucket for a friendly `#N` label. */
   index: number;
+  /** The map's "Placing" loadout mark, already clamped to this tier's
+   * unlocked options — what the quick-claim `+` should default to
+   * instead of always falling back to a node's first allowed
+   * extractor (Mk1). `null` before the loadout/nodes have loaded. */
+  preferredMinerId: string | null;
+  /** Validate's port-capacity finding for this node, if any — same
+   * check, surfaced at the row where the clock was actually set
+   * instead of only two screens away. */
+  portWarning?: PortCapacityFinding;
 }
 
 /**
@@ -21,9 +38,10 @@ interface NodeRowProps {
  * still letting the user tweak miner mark + clock + bound factory
  * without a popover.
  */
-export function NodeRow({ row, factories, index }: NodeRowProps) {
+export function NodeRow({ row, factories, index, preferredMinerId, portWarning }: NodeRowProps) {
   const [editing, setEditing] = useState(false);
   const label = nodeDisplayLabel(row, index);
+  const kindLabel = nodeKindLabel(row);
 
   return (
     <li className="flex flex-col gap-2 px-5 py-2 text-sm">
@@ -35,13 +53,23 @@ export function NodeRow({ row, factories, index }: NodeRowProps) {
           >
             {label}
           </span>
+          {kindLabel && (
+            <span className="shrink-0 rounded-full border border-border bg-bg px-2 py-0.5 text-[10px] text-fg-muted">
+              {kindLabel}
+            </span>
+          )}
           {row.claim ? (
-            <ClaimChip row={row} factories={factories} />
+            <ClaimChip row={row} factories={factories} portWarning={portWarning} />
           ) : (
             <span className="text-xs text-fg-muted">unclaimed</span>
           )}
         </div>
-        <ClaimButton row={row} editing={editing} setEditing={setEditing} />
+        <ClaimButton
+          row={row}
+          editing={editing}
+          setEditing={setEditing}
+          preferredMinerId={preferredMinerId}
+        />
       </div>
       {editing && (
         <ClaimEditor
@@ -57,9 +85,11 @@ export function NodeRow({ row, factories, index }: NodeRowProps) {
 function ClaimChip({
   row,
   factories,
+  portWarning,
 }: {
   row: ResourceNodeRow;
-  factories: { id: string; name: string }[];
+  factories: FactoryPickerCandidate[];
+  portWarning?: PortCapacityFinding;
 }) {
   const factory = row.claim?.factoryId
     ? factories.find((f) => f.id === row.claim?.factoryId)
@@ -81,6 +111,14 @@ function ClaimChip({
           wrong extractor
         </span>
       )}
+      {portWarning && (
+        <span
+          className="rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-warning"
+          title={`Outputs ${portWarning.outputIpm.toFixed(1)}${portWarning.isFluid ? " m³/min" : "/min"} — its port caps at ${portWarning.capacityIpm.toFixed(1)}${portWarning.isFluid ? " m³/min" : "/min"} (Mk.${portWarning.capacityMark} ${portWarning.isFluid ? "pipe" : "belt"}), clock to ${floorClockPct(portWarning.maxFittingClockPct)}% to fit`}
+        >
+          over port cap
+        </span>
+      )}
       <span className="rounded-full border border-border bg-bg px-2 py-0.5 text-fg-muted">
         {(row.claim?.clockPct ?? 100).toFixed(0)}%
       </span>
@@ -100,10 +138,12 @@ function ClaimButton({
   row,
   editing,
   setEditing,
+  preferredMinerId,
 }: {
   row: ResourceNodeRow;
   editing: boolean;
   setEditing: (b: boolean) => void;
+  preferredMinerId: string | null;
 }) {
   const setClaim = useSetNodeClaim();
   const clearClaim = useClearNodeClaim();
@@ -127,13 +167,15 @@ function ClaimButton({
       <Button
         variant="primary"
         onClick={() => {
-          // One-click claim with sensible defaults: the node's first
+          // One-click claim with sensible defaults: the map's current
+          // Placing mark when this node accepts it (same preference
+          // the map's own quick-claim uses), else the node's first
           // allowed extractor (Mk1 for ore, the only choice for
-          // oil/wells), 100% clock, no factory. The user can refine via
-          // the editor afterwards.
+          // oil/wells); 100% clock, no factory. The user can refine
+          // via the editor afterwards.
           void setClaim.mutate({
             nodeId: row.id,
-            minerId: claimDefaultExtractor(row),
+            minerId: claimDefaultExtractor(row, preferredMinerId),
             clockPct: 100,
             factoryId: null,
             notes: null,
@@ -174,7 +216,7 @@ function ClaimEditor({
   onDone,
 }: {
   row: ResourceNodeRow;
-  factories: { id: string; name: string }[];
+  factories: FactoryPickerCandidate[];
   onDone: () => void;
 }) {
   const setClaim = useSetNodeClaim();
@@ -185,9 +227,7 @@ function ClaimEditor({
     claimDefaultExtractor(row, row.claim?.minerId) ?? "",
   );
   const [clockPct, setClockPct] = useState<number>(row.claim?.clockPct ?? 100);
-  const [factoryId, setFactoryId] = useState<string>(
-    row.claim?.factoryId ?? "",
-  );
+  const [factoryId, setFactoryId] = useState<string | null>(row.claim?.factoryId ?? null);
 
   // The server says which buildings this node accepts — the same list
   // `set_node_claim` validates against. Geysers come back empty (they
@@ -206,7 +246,7 @@ function ClaimEditor({
           >
             {minerOptions.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.name}
+                {extractorOptionLabel(m)}
               </option>
             ))}
           </select>
@@ -218,18 +258,14 @@ function ClaimEditor({
       </label>
       <label className="flex flex-col gap-1 text-xs">
         <span className="text-fg-muted">Factory</span>
-        <select
+        <FilterSelect
+          compact
+          ariaLabel="Factory"
+          placeholder="— none —"
+          options={factoryPickerOptions(row, factories)}
           value={factoryId}
-          onChange={(e) => setFactoryId(e.target.value)}
-          className="h-8 rounded-md border border-border bg-bg px-2 text-sm text-fg outline-none focus:border-primary"
-        >
-          <option value="">— none —</option>
-          {factories.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.name}
-            </option>
-          ))}
-        </select>
+          onChange={setFactoryId}
+        />
       </label>
       <div className="flex items-end gap-2">
         <Button
@@ -239,7 +275,7 @@ function ClaimEditor({
                 nodeId: row.id,
                 minerId: minerId === "" ? null : minerId,
                 clockPct,
-                factoryId: factoryId.trim() === "" ? null : factoryId,
+                factoryId,
                 notes: null,
               },
               { onSuccess: onDone },

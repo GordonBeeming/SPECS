@@ -1,9 +1,10 @@
 import { Handle, Position } from "@xyflow/react";
-import { CircleAlert, Share2, SlidersHorizontal, TriangleAlert } from "lucide-react";
+import { CircleAlert, Recycle, Share2, SlidersHorizontal, TriangleAlert } from "lucide-react";
 
 import { Icon } from "@/shared/ui/Icon";
 import { FilterSelect, type FilterOption } from "@/shared/ui/FilterSelect";
 import type { PlanNode } from "@/features/planner/types";
+import { RateInput } from "./RateInput";
 
 export const PLAN_NODE_WIDTH = 250;
 
@@ -24,6 +25,16 @@ export function planNodeHeight(node: PlanNode): number {
 
 function rate(n: number): string {
   return `${n % 1 === 0 ? n.toFixed(0) : n.toFixed(1)}/min`;
+}
+
+/**
+ * The rate to prefill an export field with. Satisfactory ratios are
+ * exact and routinely fractional — a Motor line running 2.5/min must
+ * not offer 3 — so this only trims the float dust an f32 round-trip
+ * leaves behind, never the fraction itself.
+ */
+function exportPrefill(outputIpm: number): number {
+  return Number(outputIpm.toFixed(3));
 }
 
 /** Invisible-but-functional connection points; the graph is read-only
@@ -123,19 +134,13 @@ export function RecipeStepNodeCard({
           <label className="flex items-center gap-1 text-[11px] text-fg-muted">
             <Share2 className="h-3 w-3 text-accent" />
             Export
-            <input
-              type="number"
-              min={0}
-              step={1}
+            <RateInput
               value={exportIpm}
-              aria-label={`Export rate for ${node.itemName}`}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                if (Number.isFinite(v) && v >= 0) onSetExport(node.itemId, v);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              }}
+              // 0 is a real answer for an export slice: "listed, but
+              // offering nothing right now".
+              allowZero
+              onCommit={(next) => onSetExport(node.itemId, next)}
+              ariaLabel={`Export rate for ${node.itemName}`}
               className="h-6 w-16 rounded-md border border-border bg-bg px-1.5 tabular-nums text-fg outline-none focus:border-primary"
             />
             /min
@@ -145,8 +150,8 @@ export function RecipeStepNodeCard({
             type="button"
             onClick={() =>
               node.isTarget
-                ? onSetExport(node.itemId, Math.round(node.outputIpm))
-                : onStartExport(node.itemId, Math.round(node.outputIpm))
+                ? onSetExport(node.itemId, exportPrefill(node.outputIpm))
+                : onStartExport(node.itemId, exportPrefill(node.outputIpm))
             }
             title="Offer this item to other factories"
             className="flex items-center gap-1 rounded border border-dashed border-border px-2 py-1 text-[11px] text-fg-muted hover:border-accent hover:text-fg"
@@ -288,10 +293,15 @@ export function RawInputNodeCard({ node }: { node: Extract<PlanNode, { kind: "ra
 export function ByproductNodeCard({ node }: { node: Extract<PlanNode, { kind: "byproduct" }> }) {
   // A solid surplus goes to the AWESOME sink; a fluid surplus has no
   // sink and stalls the line — same data, very different urgency.
+  //
+  // Neither is a quiet node. Sunk output is throughput a refinery is
+  // paying for and throwing away — a Tier 5-6 oil plan sinking 145/min
+  // of Petroleum Coke needs to be legible at a glance, not the dimmest
+  // card on the canvas.
   return (
     <div
-      className={`rounded-md border border-dashed p-3 text-xs shadow-sm ${
-        node.isFluid ? "border-danger/60 bg-danger/5" : "border-border bg-bg-raised/60"
+      className={`rounded-md border-2 border-dashed p-3 text-xs shadow-sm ${
+        node.isFluid ? "border-danger/70 bg-danger/10" : "border-warning/70 bg-warning/10"
       }`}
       style={{ width: PLAN_NODE_WIDTH }}
     >
@@ -300,17 +310,24 @@ export function ByproductNodeCard({ node }: { node: Extract<PlanNode, { kind: "b
         <div className="flex min-w-0 items-center gap-2">
           <Icon itemId={node.itemId} alt="" className="h-5 w-5 shrink-0" />
           <div className="min-w-0">
-            <div className="truncate text-fg-muted">{node.itemName}</div>
+            <div className="truncate font-medium text-fg">{node.itemName}</div>
             <div
-              className={`text-[10px] uppercase tracking-wide ${
-                node.isFluid ? "text-danger" : "text-fg-muted"
+              className={`flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide ${
+                node.isFluid ? "text-danger" : "text-warning"
               }`}
             >
+              {node.isFluid ? (
+                <TriangleAlert className="h-3 w-3 shrink-0" />
+              ) : (
+                <Recycle className="h-3 w-3 shrink-0" />
+              )}
               {node.isFluid ? "Fluid surplus — will stall" : "Byproduct → sink"}
             </div>
           </div>
         </div>
-        <span className="tabular-nums text-fg-muted">{rate(node.surplusIpm)}</span>
+        <span className={`tabular-nums font-semibold ${node.isFluid ? "text-danger" : "text-fg"}`}>
+          {rate(node.surplusIpm)}
+        </span>
       </div>
     </div>
   );

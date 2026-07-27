@@ -3,7 +3,9 @@ import { CircleAlert, FlaskConical, RefreshCw, ShieldCheck, TriangleAlert, X } f
 import { Button } from "@/shared/ui/Button";
 import { openPlanDesigner, useNavStore } from "@/shared/nav-store";
 import type { PlanWarning } from "@/features/planner/types";
+import { coordChip } from "@/features/resources/display";
 
+import { floorClockPct } from "../clock";
 import { useValidation } from "../hooks/useValidation";
 import type { Category, Finding, ValidationReport } from "../types";
 
@@ -16,9 +18,16 @@ const CATEGORY_LABELS: Record<Category, string> = {
   lockedAlts: "Alts you haven't collected",
   flow: "Cross-factory flows",
   supplyPower: "Supply & power",
+  capacity: "Belt & pipe capacity",
 };
 
-const CATEGORY_ORDER: Category[] = ["tierGating", "flow", "supplyPower", "lockedAlts"];
+const CATEGORY_ORDER: Category[] = [
+  "tierGating",
+  "capacity",
+  "flow",
+  "supplyPower",
+  "lockedAlts",
+];
 
 /**
  * Right-hand slide-over behind the header's Validate button. The sweep
@@ -180,14 +189,24 @@ function findingTarget(f: Finding): (() => void) | null {
     }
     case "claimExtractorAboveTier":
     case "claimInvalidExtractor":
+    case "claimOverPortCapacity":
       return () => nav.goTo("resources");
+    case "unlockedAltAboveTier":
+      return () => nav.goTo("alts");
     case "linkTransportAboveTier":
     case "linkOverdraw":
     case "linkSourceMissingProduct":
       return () => nav.goTo("logistics");
     case "powerDeficit":
     case "gridDeficit":
+    case "generatorFuelShort":
       return () => nav.goTo("power");
+    case "segmentOverBeltCapacity":
+    case "segmentOverPipeCapacity":
+    case "fluidSegmentNoPipeAtTier": {
+      const id = f.factoryId;
+      return () => openPlanDesigner(id);
+    }
     case "checkFailed":
       return null;
   }
@@ -207,6 +226,14 @@ function findingText(f: Finding): string {
       return `${f.resourceItemName} node claimed with ${f.extractorName} (unlocks T${f.unlockTier})`;
     case "claimInvalidExtractor":
       return `${f.resourceItemName} node claimed with ${f.extractorId} — this node takes ${f.allowedNames.join(" / ")}`;
+    case "claimOverPortCapacity": {
+      const unit = f.isFluid ? " m³/min" : "/min";
+      const carrier = f.isFluid ? "pipe" : "belt";
+      const label = `#${f.nodeIndex + 1} · ${coordChip(f.nodeX, f.nodeY)}`;
+      return `${f.resourceItemName} node ${label}: ${f.extractorName} outputs ${f.outputIpm.toFixed(1)}${unit} — its port caps at ${f.capacityIpm.toFixed(1)}${unit} (Mk.${f.capacityMark} ${carrier}), clock to ${floorClockPct(f.maxFittingClockPct)}% to fit`;
+    }
+    case "unlockedAltAboveTier":
+      return `${f.recipeName} is ticked unlocked but unlocks at T${f.unlockTier}`;
     case "linkTransportAboveTier":
       return `${f.fromFactoryName} → ${f.toFactoryName} (${f.itemName}) needs T${f.minUnlockTier} ${f.transportKind}`;
     case "lockedAltInUse":
@@ -223,6 +250,14 @@ function findingText(f: Finding): string {
       return `${f.factoryName} draws ${(-f.netMw).toFixed(1)} MW more than it generates`;
     case "gridDeficit":
       return `Grid short: ${f.consumedMw.toFixed(0)} MW drawn vs ${f.generatedMw.toFixed(0)} MW generated`;
+    case "generatorFuelShort":
+      return `${f.factoryName}: generators need ${f.demandIpm.toFixed(1)}/min of ${f.itemName}, claims cover ${f.claimedIpm.toFixed(1)}`;
+    case "segmentOverBeltCapacity":
+      return `${f.factoryName}: ${f.itemName} segment runs ${f.ipm.toFixed(1)}/min — needs ${f.beltsNeeded}× Mk.${f.beltMark} belts (${f.beltCapacityIpm}/min each) or an underclock`;
+    case "segmentOverPipeCapacity":
+      return `${f.factoryName}: ${f.itemName} segment runs ${f.ipm.toFixed(1)} m³/min — needs ${f.pipesNeeded}× Mk.${f.pipeMark} pipe headers (${f.pipeCapacityIpm} m³/min each) or an underclock`;
+    case "fluidSegmentNoPipeAtTier":
+      return `${f.factoryName}: ${f.itemName} segment runs ${f.ipm.toFixed(1)} m³/min — no pipe is unlocked yet to move it`;
     case "checkFailed":
       return `${f.factoryName ? `${f.factoryName}: ` : ""}${f.area} check couldn't run — ${f.reason}`;
   }
@@ -240,6 +275,10 @@ function planWarningText(w: PlanWarning): string {
       return `${w.ipm.toFixed(1)}/min of ${w.itemName} fluid surplus will stall`;
     case "optimizerFellBack":
       return `optimizer fell back: ${w.reason}`;
+    case "aboveTier":
+      return `needs T${w.requiredTier} — ${w.itemNames.join(", ")} out of reach at T${w.currentTier}`;
+    case "targetUnplannable":
+      return `${w.itemName} can't be planned — ${w.reason}`;
   }
 }
 

@@ -6,6 +6,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::features::factory::domain::machine_power_mw_amp;
 use crate::shared::gamedata::GameData;
 use crate::shared::gamedata::types::Recipe;
 
@@ -14,6 +15,15 @@ use super::dto::{
     PlanNode, PlanTargetSpec, PlanWarning, PlannerError, RecipeFlow,
 };
 use super::solver;
+use super::tier;
+
+/// The smallest gap worth telling the user about. Rates render to one
+/// decimal place everywhere, so anything under half of that prints as
+/// "0.0/min" — "needs 0.0/min more" on a plan that balances is a
+/// warning about nothing, and it costs the reader a trip to go and
+/// check. Flow arithmetic keeps its own tighter tolerance; this is the
+/// reporting threshold only.
+pub const REPORTABLE_IPM: f32 = 0.05;
 
 /// Per-machine ipm of `item_id` for this recipe at 100% clock with no
 /// amplification.
@@ -33,21 +43,38 @@ fn recipe_output_rate(recipe: &Recipe, item_id: &str) -> Option<f32> {
 /// it, then recurses into the Packaged form, whose only recipe needs
 /// the original liquid back. Filtered out wholesale here for the same
 /// reason `PlannerView` (the cross-factory picker) hides them.
-fn is_inverse_recipe(recipe_id: &str) -> bool {
+pub(crate) fn is_inverse_recipe(recipe_id: &str) -> bool {
     recipe_id.starts_with("Recipe_Unpackage")
 }
 
+/// Candidate recipes for one item. `tier_allowed` is the whole-chain
+/// tier gate (`planner::tier`): a recipe stamped Tier 5 whose inputs
+/// only ground out at Tier 7 is not a Tier 5 recipe, and the greedy
+/// chain must not reach for it while something buildable exists.
+///
+/// When the gate leaves an item with no candidates at all, its
+/// above-tier ones come back. This path is the fallback the optimizer
+/// hands off to, and a chain that stops dead mid-recursion is a hard
+/// error — worse than a rendered plan carrying the above-tier warning
+/// that names exactly which steps are out of reach.
 fn chain_candidates<'a>(
     item_id: &str,
     unlocked: &HashSet<String>,
+    tier_allowed: Option<&HashSet<String>>,
     game_data: &'a GameData,
 ) -> Vec<&'a Recipe> {
-    game_data
+    let all: Vec<&Recipe> = game_data
         .recipes_producing(item_id)
         .into_iter()
         .filter(|r| !is_inverse_recipe(&r.id))
         .filter(|r| !r.is_alt || unlocked.contains(&r.id))
-        .collect()
+        .collect();
+    let Some(allowed) = tier_allowed else {
+        return all;
+    };
+    let within_tier: Vec<&Recipe> =
+        all.iter().copied().filter(|r| allowed.contains(&r.id)).collect();
+    if within_tier.is_empty() { all } else { within_tier }
 }
 
 /// Pick the "best" candidate recipe for an item. The greedy rule is:
@@ -87,6 +114,7 @@ fn pick_recipe<'a>(
 fn supply_viable_for_item(
     item_id: &str,
     unlocked: &HashSet<String>,
+    tier_allowed: Option<&HashSet<String>>,
     available_supply: &HashMap<String, f32>,
     cut_items: &HashSet<String>,
     game_data: &GameData,
@@ -112,7 +140,7 @@ fn supply_viable_for_item(
         return ok;
     }
 
-    let candidates = chain_candidates(item_id, unlocked, game_data);
+    let candidates = chain_candidates(item_id, unlocked, tier_allowed, game_data);
     if candidates.is_empty() {
         visiting.remove(item_id);
         cache.insert(item_id.to_string(), false);
@@ -124,6 +152,7 @@ fn supply_viable_for_item(
             supply_viable_for_item(
                 &inp.item_id,
                 unlocked,
+                tier_allowed,
                 available_supply,
                 cut_items,
                 game_data,
@@ -144,9 +173,11 @@ fn supply_viable_for_item(
 /// exactly which raw is short — yielding a precise `Insufficient`
 /// error instead of a vague "no recipe" one. Cut items short-circuit
 /// to viable here too.
+#[allow(clippy::too_many_arguments)]
 fn structurally_viable_for_item(
     item_id: &str,
     unlocked: &HashSet<String>,
+    tier_allowed: Option<&HashSet<String>>,
     cut_items: &HashSet<String>,
     game_data: &GameData,
     cache: &mut HashMap<String, bool>,
@@ -170,7 +201,7 @@ fn structurally_viable_for_item(
         return true;
     }
 
-    let candidates = chain_candidates(item_id, unlocked, game_data);
+    let candidates = chain_candidates(item_id, unlocked, tier_allowed, game_data);
     if candidates.is_empty() {
         visiting.remove(item_id);
         cache.insert(item_id.to_string(), false);
@@ -179,7 +210,15 @@ fn structurally_viable_for_item(
 
     let any = candidates.into_iter().any(|r| {
         r.inputs.iter().all(|inp| {
-            structurally_viable_for_item(&inp.item_id, unlocked, cut_items, game_data, cache, visiting)
+            structurally_viable_for_item(
+                &inp.item_id,
+                unlocked,
+                tier_allowed,
+                cut_items,
+                game_data,
+                cache,
+                visiting,
+            )
         })
     });
     visiting.remove(item_id);
@@ -202,6 +241,7 @@ fn collect_demands(
     item_id: &str,
     demand_ipm: f32,
     unlocked: &HashSet<String>,
+    tier_allowed: Option<&HashSet<String>>,
     available_supply: &HashMap<String, f32>,
     cut_items: &HashSet<String>,
     game_data: &GameData,
@@ -244,7 +284,7 @@ fn collect_demands(
     // between alts on different paths.
     let picked_recipe_id = item_recipes.get(item_id).cloned();
 
-    let all_unlocked = chain_candidates(item_id, unlocked, game_data);
+    let all_unlocked = chain_candidates(item_id, unlocked, tier_allowed, game_data);
 
     // Prefer recipes whose every input is supply-viable. If none are,
     // fall back to structurally viable so the chain still builds; the
@@ -258,6 +298,7 @@ fn collect_demands(
                 supply_viable_for_item(
                     &inp.item_id,
                     unlocked,
+                    tier_allowed,
                     available_supply,
                     cut_items,
                     game_data,
@@ -278,6 +319,7 @@ fn collect_demands(
                     structurally_viable_for_item(
                         &inp.item_id,
                         unlocked,
+                        tier_allowed,
                         cut_items,
                         game_data,
                         struct_cache,
@@ -326,6 +368,7 @@ fn collect_demands(
             &input_item,
             input_ipm,
             unlocked,
+            tier_allowed,
             available_supply,
             cut_items,
             game_data,
@@ -391,9 +434,13 @@ fn build_stage(
         .building(&recipe.building_id)
         .map(|b| b.name.clone())
         .unwrap_or_else(|| recipe.building_id.clone());
+    // Planner doesn't track Somersloop slot fill (that's a per-machine
+    // factory-side property set after the plan is built), so amp is
+    // always 0/0 here — `machine_power_mw_amp` collapses that to the
+    // plain overclock curve.
     let power_mw = game_data
         .building(&recipe.building_id)
-        .map(|b| b.power_mw * machine_count as f32 * (clock / 100.0).powi(2))
+        .map(|b| machine_power_mw_amp(b.power_mw, machine_count, clock, 0, 0))
         .unwrap_or(0.0);
 
     ChainStage {
@@ -447,6 +494,62 @@ fn item_name(item_id: &str, game_data: &GameData) -> String {
         .item(item_id)
         .map(|i| i.name.clone())
         .unwrap_or_else(|| item_id.to_string())
+}
+
+const REASON_UNKNOWN_ITEM: &str = "this item is no longer in the game dataset";
+const REASON_RAW_TARGET: &str = "raw resources come from claimed nodes, not plans";
+const REASON_UNREACHABLE_CHAIN: &str =
+    "its recipe chain needs an ingredient with no way to produce it";
+
+/// Split targets into ones with a real shot at a recipe and warnings for
+/// the ones that don't — a raw resource, or an id the current dataset no
+/// longer has an entry for. Both used to hard-fail the whole compute;
+/// now they're excluded and flagged instead, same as every other planner
+/// shortfall (warn, don't block, always). This matters beyond typos: game
+/// data moves (a tier re-shuffle can retire an item id), and a saved
+/// plan referencing something now-gone must stay openable so the user
+/// can actually remove the stale target — a hard fail here would put
+/// the fix behind the very thing that's broken.
+fn partition_structurally_plannable(
+    targets: &[PlanTargetSpec],
+    game_data: &GameData,
+) -> (Vec<PlanTargetSpec>, Vec<PlanWarning>) {
+    let mut plannable = Vec::with_capacity(targets.len());
+    let mut warnings = Vec::new();
+    for t in targets {
+        let reason = if game_data.item(&t.item_id).is_none() {
+            Some(REASON_UNKNOWN_ITEM)
+        } else if game_data.is_extracted_resource(&t.item_id)
+            || game_data.recipes_producing(&t.item_id).is_empty()
+        {
+            Some(REASON_RAW_TARGET)
+        } else {
+            None
+        };
+        match reason {
+            Some(reason) => warnings.push(PlanWarning::TargetUnplannable {
+                item_id: t.item_id.clone(),
+                item_name: item_name(&t.item_id, game_data),
+                reason: reason.to_string(),
+            }),
+            None => plannable.push(t.clone()),
+        }
+    }
+    (plannable, warnings)
+}
+
+/// An empty-target-list graph, reused by both the empty-input fast path
+/// and every "every target turned out unplannable" fallback.
+fn empty_plan_graph(warnings: Vec<PlanWarning>) -> PlanGraph {
+    PlanGraph {
+        nodes: vec![],
+        edges: vec![],
+        total_machines: 0,
+        total_power_mw: 0.0,
+        raw_demand: HashMap::new(),
+        warnings,
+        ..PlanGraph::default()
+    }
 }
 
 /// What a sourced spec can actually pull. An explicit cap is the
@@ -505,8 +608,80 @@ fn allocate_import_specs(
         });
         remaining -= take;
     }
-    let unassigned = if remaining > 1e-3 { remaining } else { 0.0 };
+    let unassigned = if remaining > REPORTABLE_IPM { remaining } else { 0.0 };
     (allocations, unassigned, has_unsourced_spec)
+}
+
+/// The recipes this compute may draw on, given the playthrough's tier.
+///
+/// `None` lifts the gate entirely. That happens when there's no tier to
+/// gate on, or when a target is itself above tier — planning the
+/// endgame backwards is a supported thing to do here, and gating a
+/// Tier 7 product at Tier 6 would turn a plan-ahead into a hard "no
+/// recipe" failure instead of a plan carrying an above-tier warning.
+///
+/// Alts are counted as reachable at their own unlock tier, matching
+/// `tier_reachable_alts` — the planner plans with alts it hasn't
+/// collected yet and validation raises the "unlock these" shopping
+/// list, so a stricter rule here would contradict that model.
+fn tier_gate(
+    targets: &[PlanTargetSpec],
+    tier_table: &tier::TierTable,
+    current_tier: u8,
+    game_data: &GameData,
+) -> Option<HashSet<String>> {
+    // A target with no tier at all (raw, unknown id, chain that never
+    // grounds out) is dropped and warned about further down, so it has
+    // no say in whether the rest of the plan is gated.
+    let every_target_within = targets
+        .iter()
+        .filter_map(|t| tier_table.get(&t.item_id).copied().flatten())
+        .all(|needed| needed <= current_tier);
+    every_target_within.then(|| tier::recipes_reachable_at(game_data, tier_table, current_tier))
+}
+
+/// Flag steps whose chain needs a tier the playthrough hasn't reached.
+/// Runs on the assembled graph so it covers the optimizer, the greedy
+/// fallback and a user's pinned recipe alike — including the deliberate
+/// plan-ahead case where `tier_gate` lifted the gate on purpose.
+///
+/// One aggregated warning rather than one per step: an above-tier
+/// product drags its whole chain with it, and fifteen amber lines would
+/// bury every other warning in the banner.
+fn warn_above_tier(
+    graph: &mut PlanGraph,
+    tier_table: &tier::TierTable,
+    current_tier: u8,
+    game_data: &GameData,
+) {
+    let mut required_tier = current_tier;
+    let mut item_names: Vec<String> = Vec::new();
+    for node in &graph.nodes {
+        let PlanNode::Recipe { recipe_id, item_name, .. } = node else {
+            continue;
+        };
+        let Some(recipe) = game_data.recipe(recipe_id) else {
+            continue;
+        };
+        // A recipe with no reachable chain at all isn't an above-tier
+        // finding — `TargetUnplannable` already owns that case.
+        if let Some(needed) = tier::recipe_chain_tier(game_data, tier_table, recipe) {
+            if needed > current_tier {
+                required_tier = required_tier.max(needed);
+                item_names.push(item_name.clone());
+            }
+        }
+    }
+    if item_names.is_empty() {
+        return;
+    }
+    item_names.sort();
+    item_names.dedup();
+    graph.warnings.push(PlanWarning::AboveTier {
+        current_tier,
+        required_tier,
+        item_names,
+    });
 }
 
 /// Compute the production graph: optimizer first, greedy fallback.
@@ -516,11 +691,17 @@ fn allocate_import_specs(
 /// demand. If it can't (solver error, budget overrun), the greedy
 /// chain below still renders a standard tree instantly, plus an
 /// `OptimizerFellBack` warning — warn, don't block, always.
+///
+/// `current_tier` is the playthrough's tier. `None` plans with no tier
+/// gate at all, which is what a caller with no playthrough context
+/// wants; every real plan passes the tier so a Tier 6 factory can't be
+/// handed a Tier 7 chain without being told.
 #[allow(clippy::too_many_arguments)]
 pub fn compute_plan_graph(
     factory_id: &str,
     targets: &[PlanTargetSpec],
     unlocked_alts: &HashSet<String>,
+    current_tier: Option<u8>,
     available_supply: &HashMap<String, f32>,
     imports: &[PlanImportSpec],
     recipe_overrides: &HashMap<String, String>,
@@ -528,10 +709,19 @@ pub fn compute_plan_graph(
     options: &PlanComputeOptions,
     game_data: &GameData,
 ) -> Result<PlanGraph, PlannerError> {
-    match compute_plan_graph_solved(
+    // One table per compute, shared by the candidate gate and the
+    // after-the-fact warning pass.
+    let tier_context =
+        current_tier.map(|t| (t, tier::item_tier_table(game_data, tier::AltMode::On)));
+    let gate = tier_context
+        .as_ref()
+        .and_then(|(t, table)| tier_gate(targets, table, *t, game_data));
+
+    let mut graph = match compute_plan_graph_solved(
         factory_id,
         targets,
         unlocked_alts,
+        gate.as_ref(),
         available_supply,
         imports,
         recipe_overrides,
@@ -539,13 +729,14 @@ pub fn compute_plan_graph(
         options,
         game_data,
     ) {
-        Ok(graph) => Ok(graph),
-        Err(SolvedComputeError::Structural(e)) => Err(e),
+        Ok(graph) => graph,
+        Err(SolvedComputeError::Structural(e)) => return Err(e),
         Err(SolvedComputeError::Solver(reason)) => {
             let mut graph = compute_plan_graph_greedy(
                 factory_id,
                 targets,
                 unlocked_alts,
+                gate.as_ref(),
                 available_supply,
                 imports,
                 recipe_overrides,
@@ -553,9 +744,14 @@ pub fn compute_plan_graph(
                 game_data,
             )?;
             graph.warnings.push(PlanWarning::OptimizerFellBack { reason });
-            Ok(graph)
+            graph
         }
+    };
+
+    if let Some((t, table)) = &tier_context {
+        warn_above_tier(&mut graph, table, *t, game_data);
     }
+    Ok(graph)
 }
 
 enum SolvedComputeError {
@@ -565,6 +761,37 @@ enum SolvedComputeError {
     Solver(String),
 }
 
+/// Solve, and if the tier gate is what made a target unreachable, solve
+/// again without it.
+///
+/// `tier_gate` already lifts the gate for an above-tier target, but a
+/// pinned recipe can still leave a within-tier target with no gated
+/// route (the pin excludes every other producer of that item). A hard
+/// "no recipe" failure there would be the worst of both worlds — the
+/// user can't see the plan they pinned, and the pin is only editable
+/// from the graph the failure just hid. The relaxed solve renders it
+/// instead, carrying the above-tier warning.
+fn solve_with_gate_relaxation(
+    game_data: &GameData,
+    input: &solver::SolveInput,
+    weights: &HashMap<String, f64>,
+    budget_ms: u64,
+) -> Result<solver::PlanSolution, SolvedComputeError> {
+    let to_compute_error = |e: solver::SolveError| match e {
+        solver::SolveError::Unreachable { item_id } => {
+            SolvedComputeError::Structural(PlannerError::NoRecipeForTarget { item_id })
+        }
+        solver::SolveError::Failed(reason) => SolvedComputeError::Solver(reason),
+    };
+    match solver::solve(game_data, input, weights, budget_ms) {
+        Err(solver::SolveError::Unreachable { .. }) if input.tier_allowed.is_some() => {
+            let ungated = solver::SolveInput { tier_allowed: None, ..*input };
+            solver::solve(game_data, &ungated, weights, budget_ms).map_err(to_compute_error)
+        }
+        other => other.map_err(to_compute_error),
+    }
+}
+
 /// The optimizer path: shared validation, mixed-import share passes,
 /// LP solve, then graph assembly from the chosen recipe mix.
 #[allow(clippy::too_many_arguments)]
@@ -572,6 +799,7 @@ fn compute_plan_graph_solved(
     factory_id: &str,
     targets: &[PlanTargetSpec],
     unlocked_alts: &HashSet<String>,
+    tier_allowed: Option<&HashSet<String>>,
     available_supply: &HashMap<String, f32>,
     imports: &[PlanImportSpec],
     recipe_overrides: &HashMap<String, String>,
@@ -580,42 +808,25 @@ fn compute_plan_graph_solved(
     game_data: &GameData,
 ) -> Result<PlanGraph, SolvedComputeError> {
     if targets.is_empty() {
-        return Ok(PlanGraph {
-            nodes: vec![],
-            edges: vec![],
-            total_machines: 0,
-            total_power_mw: 0.0,
-            raw_demand: HashMap::new(),
-            warnings: vec![],
-            sam_forced: false,
-        });
+        return Ok(empty_plan_graph(vec![]));
     }
-    for t in targets {
-        if game_data.item(&t.item_id).is_none() {
-            return Err(SolvedComputeError::Structural(PlannerError::UnknownTarget {
-                item_id: t.item_id.clone(),
-            }));
-        }
-        // Raw resources come from claimed nodes, not plans — even though
-        // 1.2's Converter can technically craft ores, a plan that just
-        // "makes ore" is the claims model wearing a costume.
-        if game_data.is_extracted_resource(&t.item_id)
-            || game_data.recipes_producing(&t.item_id).is_empty()
-        {
-            return Err(SolvedComputeError::Structural(PlannerError::NoRecipeForTarget {
-                item_id: t.item_id.clone(),
-            }));
-        }
+    // Raw resources come from claimed nodes, not plans — even though
+    // 1.2's Converter can technically craft ores, a plan that just
+    // "makes ore" is the claims model wearing a costume.
+    let (structural_targets, mut warnings_prefilter) =
+        partition_structurally_plannable(targets, game_data);
+    if structural_targets.is_empty() {
+        return Ok(empty_plan_graph(warnings_prefilter));
     }
 
-    let target_ipms: HashMap<&str, f32> =
-        targets.iter().map(|t| (t.item_id.as_str(), t.ipm)).collect();
+    let target_ipms_all: HashMap<&str, f32> =
+        structural_targets.iter().map(|t| (t.item_id.as_str(), t.ipm)).collect();
 
     // Same import bookkeeping as the greedy path: target items are
     // never cut, self rows mark mixed items, the rest are full cuts.
     let cut_all: HashSet<String> = imports
         .iter()
-        .filter(|s| !target_ipms.contains_key(s.item_id.as_str()))
+        .filter(|s| !target_ipms_all.contains_key(s.item_id.as_str()))
         .map(|s| s.item_id.clone())
         .collect();
     let self_items: HashSet<String> = imports
@@ -658,12 +869,49 @@ fn compute_plan_graph_solved(
     // A SAM-locked target forces the toggle on for this compute; the
     // UI renders the switch on + disabled. One fixpoint covers every
     // target.
-    let producible_without_sam = solver::producible_items(game_data, unlocked_alts, false);
-    let sam_forced = targets
+    // Ungated on purpose: this asks whether SAM is the blocker, and a
+    // tier gate would answer "not producible" for a mix of reasons.
+    let producible_without_sam = solver::producible_items(game_data, unlocked_alts, false, None);
+    let sam_forced = structural_targets
         .iter()
         .any(|t| solver::requires_sam_with(&producible_without_sam, &t.item_id, game_data));
     let include_sam = options.include_sam || sam_forced;
 
+    // A second filter: a target can have a real recipe (passing the check
+    // above) and still be impossible — Solid Biofuel needs Biomass, which
+    // has neither a recipe nor an extracted-resource entry, so it never
+    // enters the producible fixpoint. `producible_items(.., true)` is the
+    // same fixpoint `solver::solve` computes internally before raising
+    // `Unreachable`; checking it here, per target, means a broken chain
+    // loses just that target instead of the whole compute. Always computed
+    // with SAM allowed — `sam_forced` above already forces `include_sam`
+    // on for this compute whenever any surviving target needs it, so this
+    // is the reachable set the actual solve will use either way.
+    let reachable = solver::producible_items(game_data, unlocked_alts, true, tier_allowed);
+    let targets: Vec<PlanTargetSpec> = structural_targets
+        .into_iter()
+        .filter(|t| {
+            // `full_cuts` can't actually contain a target's item id (cut_all
+            // above is built by excluding target items), but the check
+            // mirrors solve()'s own "exogenous" exemption for parity.
+            if full_cuts.contains(&t.item_id) || reachable.contains(&t.item_id) {
+                true
+            } else {
+                warnings_prefilter.push(PlanWarning::TargetUnplannable {
+                    item_id: t.item_id.clone(),
+                    item_name: item_name(&t.item_id, game_data),
+                    reason: REASON_UNREACHABLE_CHAIN.to_string(),
+                });
+                false
+            }
+        })
+        .collect();
+    if targets.is_empty() {
+        return Ok(empty_plan_graph(warnings_prefilter));
+    }
+
+    let target_ipms: HashMap<&str, f32> =
+        targets.iter().map(|t| (t.item_id.as_str(), t.ipm)).collect();
     let weights = solver::rarity_weights(game_data);
     let demands: HashMap<String, f32> =
         targets.iter().map(|t| (t.item_id.clone(), t.ipm)).collect();
@@ -682,14 +930,9 @@ fn compute_plan_graph_solved(
             recipe_overrides: &overrides,
             unlocked_alts,
             include_sam,
+            tier_allowed,
         };
-        let sol = solver::solve(game_data, &input, &weights, options.solver_budget_ms)
-            .map_err(|e| match e {
-                solver::SolveError::Unreachable { item_id } => {
-                    SolvedComputeError::Structural(PlannerError::NoRecipeForTarget { item_id })
-                }
-                solver::SolveError::Failed(reason) => SolvedComputeError::Solver(reason),
-            })?;
+        let sol = solve_with_gate_relaxation(game_data, &input, &weights, options.solver_budget_ms)?;
 
         let mut next: HashMap<String, f32> = HashMap::new();
         for item in &mixed {
@@ -738,7 +981,7 @@ fn compute_plan_graph_solved(
     }
     let sol = solution.expect("loop always sets a solution");
 
-    Ok(assemble_solved_graph(
+    let mut graph = assemble_solved_graph(
         &sol,
         &target_ipms,
         &ext_supply,
@@ -747,7 +990,9 @@ fn compute_plan_graph_solved(
         export_capacity,
         sam_forced,
         game_data,
-    ))
+    );
+    graph.warnings.extend(warnings_prefilter);
+    Ok(graph)
 }
 
 /// Turn the optimizer's recipe mix into the renderable graph: stages,
@@ -974,7 +1219,7 @@ fn assemble_solved_graph(
             ipm,
             claimed_supply_ipm: claimed,
         });
-        if ipm > claimed + 1e-3 {
+        if ipm > claimed + REPORTABLE_IPM {
             warnings.push(PlanWarning::RawShort {
                 item_id: (*item).clone(),
                 item_name: item_name(item, game_data),
@@ -1027,7 +1272,7 @@ fn assemble_solved_graph(
             surplus_ipm: ipm,
             is_fluid,
         });
-        if is_fluid {
+        if is_fluid && ipm > REPORTABLE_IPM {
             warnings.push(PlanWarning::FluidSurplus {
                 item_id: (*item).clone(),
                 item_name: item_name(item, game_data),
@@ -1059,6 +1304,7 @@ fn assemble_solved_graph(
         raw_demand,
         warnings,
         sam_forced,
+        ..PlanGraph::default()
     }
 }
 
@@ -1074,6 +1320,7 @@ pub fn compute_plan_graph_greedy(
     factory_id: &str,
     targets: &[PlanTargetSpec],
     unlocked_alts: &HashSet<String>,
+    tier_allowed: Option<&HashSet<String>>,
     available_supply: &HashMap<String, f32>,
     imports: &[PlanImportSpec],
     recipe_overrides: &HashMap<String, String>,
@@ -1084,40 +1331,68 @@ pub fn compute_plan_graph_greedy(
     game_data: &GameData,
 ) -> Result<PlanGraph, PlannerError> {
     if targets.is_empty() {
-        return Ok(PlanGraph {
-            nodes: vec![],
-            edges: vec![],
-            total_machines: 0,
-            total_power_mw: 0.0,
-            raw_demand: HashMap::new(),
-            warnings: vec![],
-            sam_forced: false,
-        });
+        return Ok(empty_plan_graph(vec![]));
     }
 
-    let target_ipms: HashMap<&str, f32> =
-        targets.iter().map(|t| (t.item_id.as_str(), t.ipm)).collect();
-
-    for t in targets {
-        if game_data.item(&t.item_id).is_none() {
-            return Err(PlannerError::UnknownTarget { item_id: t.item_id.clone() });
-        }
-        // Raws come from claimed nodes, not plans (see the solved path).
-        if game_data.is_extracted_resource(&t.item_id)
-            || game_data.recipes_producing(&t.item_id).is_empty()
-        {
-            return Err(PlannerError::NoRecipeForTarget { item_id: t.item_id.clone() });
-        }
+    // Raws come from claimed nodes, not plans (see the solved path).
+    // Same treatment as there: excluded + flagged, not a hard fail.
+    let (structural_targets, mut warnings_prefilter) =
+        partition_structurally_plannable(targets, game_data);
+    if structural_targets.is_empty() {
+        return Ok(empty_plan_graph(warnings_prefilter));
     }
+
+    let target_ipms_all: HashMap<&str, f32> =
+        structural_targets.iter().map(|t| (t.item_id.as_str(), t.ipm)).collect();
 
     // A target is, by definition, built in this factory — an import
     // spec for the same item would cut the target itself out of the
     // graph, so target items never enter the cut set.
     let cut_items: HashSet<String> = imports
         .iter()
-        .filter(|s| !target_ipms.contains_key(s.item_id.as_str()))
+        .filter(|s| !target_ipms_all.contains_key(s.item_id.as_str()))
         .map(|s| s.item_id.clone())
         .collect();
+
+    // A second filter: a target can have a real recipe (passing the check
+    // above) and still be impossible — its chain can bottom out on an
+    // ingredient with no recipe and no extraction. `structurally_viable_for_item`
+    // is the same recursive walk `collect_demands` below falls back to when
+    // picking a candidate; checking it here means a broken chain is isolated
+    // to just that target, instead of aborting mid-recursion after this
+    // function has already mutated the shared demand accumulators for
+    // targets earlier in the list.
+    let mut struct_cache: HashMap<String, bool> = HashMap::new();
+    let targets: Vec<PlanTargetSpec> = structural_targets
+        .into_iter()
+        .filter(|t| {
+            if cut_items.contains(&t.item_id)
+                || structurally_viable_for_item(
+                    &t.item_id,
+                    unlocked_alts,
+                    tier_allowed,
+                    &cut_items,
+                    game_data,
+                    &mut struct_cache,
+                    &mut HashSet::new(),
+                )
+            {
+                true
+            } else {
+                warnings_prefilter.push(PlanWarning::TargetUnplannable {
+                    item_id: t.item_id.clone(),
+                    item_name: item_name(&t.item_id, game_data),
+                    reason: REASON_UNREACHABLE_CHAIN.to_string(),
+                });
+                false
+            }
+        })
+        .collect();
+    if targets.is_empty() {
+        return Ok(empty_plan_graph(warnings_prefilter));
+    }
+    let target_ipms: HashMap<&str, f32> =
+        targets.iter().map(|t| (t.item_id.as_str(), t.ipm)).collect();
 
     // A source row pointing at THIS factory means "also build it
     // here": external sources absorb up to their caps and the local
@@ -1167,11 +1442,12 @@ pub fn compute_plan_graph_greedy(
     let mut supply_cache: HashMap<String, bool> = HashMap::new();
     let mut struct_cache: HashMap<String, bool> = HashMap::new();
     let mut visiting: HashSet<String> = HashSet::new();
-    for t in targets {
+    for t in &targets {
         collect_demands(
             &t.item_id,
             t.ipm,
             unlocked_alts,
+            tier_allowed,
             available_supply,
             &cut_items,
             game_data,
@@ -1236,6 +1512,7 @@ pub fn compute_plan_graph_greedy(
                         item,
                         delta,
                         unlocked_alts,
+                        tier_allowed,
                         available_supply,
                         &cut_without,
                         game_data,
@@ -1385,7 +1662,7 @@ pub fn compute_plan_graph_greedy(
             ipm: *demand,
             claimed_supply_ipm: claimed,
         });
-        if *demand > claimed + 1e-3 {
+        if *demand > claimed + REPORTABLE_IPM {
             warnings.push(PlanWarning::RawShort {
                 item_id: item_id.clone(),
                 item_name: item_name(item_id, game_data),
@@ -1437,7 +1714,7 @@ pub fn compute_plan_graph_greedy(
         let is_fluid = game_data.item(&item_id).map(|i| i.is_fluid).unwrap_or(false);
         // Same contract as the optimizer path: a stranded liquid is a
         // stall risk and must reach the banner, not just the node.
-        if is_fluid && surplus > 1e-3 {
+        if is_fluid && surplus > REPORTABLE_IPM {
             warnings.push(PlanWarning::FluidSurplus {
                 item_id: item_id.clone(),
                 item_name: item_name(&item_id, game_data),
@@ -1468,6 +1745,7 @@ pub fn compute_plan_graph_greedy(
         })
         .sum();
 
+    warnings.extend(warnings_prefilter);
     Ok(PlanGraph {
         nodes,
         edges,
@@ -1477,11 +1755,12 @@ pub fn compute_plan_graph_greedy(
         warnings,
         sam_forced: {
             let producible_without_sam =
-                solver::producible_items(game_data, unlocked_alts, false);
+                solver::producible_items(game_data, unlocked_alts, false, None);
             targets.iter().any(|t| {
                 solver::requires_sam_with(&producible_without_sam, &t.item_id, game_data)
             })
         },
+        ..PlanGraph::default()
     })
 }
 
@@ -1506,6 +1785,25 @@ mod tests {
         let json = serde_json::to_string(&err).expect("serialise");
         assert!(json.contains("\"itemId\":\"Desc_AluminaSolution_C\""), "got {json}");
         assert!(json.contains("\"kind\":\"cycleDetected\""), "got {json}");
+    }
+
+    #[test]
+    fn build_stage_power_uses_the_1_321928_curve_not_clock_squared() {
+        // A 4 MW Constructor at 50% clock is 1.6 MW under Satisfactory's
+        // real curve (0.5^1.321928 ≈ 0.4). The old `(clock/100).powi(2)`
+        // formula gave 1.0 MW instead — this pins the plan graph to the
+        // same number the Power view and Validate already agree on.
+        let gd = GameData::from_bundled().unwrap();
+        let recipe = gd.recipe("Recipe_Cable_C").expect("dataset ships standard Cable recipe");
+        // 15 ipm against a 30 ipm/machine recipe sizes to 1 machine @ 50%.
+        let stage = build_stage("Desc_Cable_C", 15.0, recipe, &gd);
+        assert_eq!(stage.machine_count, 1);
+        assert!((stage.clock_pct - 50.0).abs() < 0.01, "got {}", stage.clock_pct);
+        assert!(
+            (stage.power_mw - 1.6).abs() < 0.01,
+            "expected 1.6 MW, got {}",
+            stage.power_mw
+        );
     }
 
     // ---------- compute_plan_graph tests ----------
@@ -1533,13 +1831,121 @@ mod tests {
             .collect()
     }
 
+    /// Alts the planner may reach at `tier` — same rule as
+    /// `commands::tier_reachable_alts`, which the tier tests need in
+    /// order to plan the way the app does.
+    fn alts_at(tier: u8, gd: &GameData) -> HashSet<String> {
+        gd.recipes()
+            .iter()
+            .filter(|r| r.is_alt && r.unlock_tier <= tier)
+            .map(|r| r.id.clone())
+            .collect()
+    }
+
+    fn chosen_recipes(graph: &PlanGraph) -> Vec<&str> {
+        graph
+            .nodes
+            .iter()
+            .filter_map(|n| match n {
+                PlanNode::Recipe { recipe_id, .. } => Some(recipe_id.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
     #[test]
-    fn raw_and_unknown_targets_are_structural_errors() {
+    fn a_tier_6_plan_never_reaches_for_a_tier_7_chain() {
+        // The playthrough case: a plain Computer Plant at Tier 6. The
+        // Supercomputer chain is Tier 7 top to bottom, and no step of a
+        // Tier 6 plan may come from it — however a recipe's own
+        // `unlock_tier` is stamped.
+        let gd = GameData::from_bundled().unwrap();
+        let table = tier::item_tier_table(&gd, tier::AltMode::On);
+        let graph = compute_plan_graph(
+            "fac-self",
+            &[target("Desc_Computer_C", 5.0)],
+            &alts_at(6, &gd),
+            Some(6),
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            &HashMap::new(),
+            &PlanComputeOptions::default(),
+            &gd,
+        )
+        .expect("a Tier 6 product plans at Tier 6");
+
+        for recipe_id in chosen_recipes(&graph) {
+            let recipe = gd.recipe(recipe_id).expect("chosen recipe is in the dataset");
+            assert!(
+                tier::recipe_chain_tier(&gd, &table, recipe).is_some_and(|t| t <= 6),
+                "{recipe_id} needs a tier above 6"
+            );
+        }
+        assert!(
+            !graph.warnings.iter().any(|w| matches!(w, PlanWarning::AboveTier { .. })),
+            "a fully within-tier plan must not warn: {:?}",
+            graph.warnings
+        );
+    }
+
+    #[test]
+    fn an_above_tier_product_still_plans_but_says_what_it_needs() {
+        // Planning the endgame backwards is supported, so a Tier 7
+        // product at Tier 6 must render — with the tier it needs named,
+        // rather than quietly reading as buildable today.
+        let gd = GameData::from_bundled().unwrap();
+        let graph = compute_plan_graph(
+            "fac-self",
+            &[target("Desc_ComputerSuper_C", 2.0)],
+            &alts_at(6, &gd),
+            Some(6),
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            &HashMap::new(),
+            &PlanComputeOptions::default(),
+            &gd,
+        )
+        .expect("planning ahead is a valid state, not a failure");
+        assert!(!graph.nodes.is_empty(), "the plan still renders");
+
+        let above = graph
+            .warnings
+            .iter()
+            .find_map(|w| match w {
+                PlanWarning::AboveTier { current_tier, required_tier, item_names } => {
+                    Some((*current_tier, *required_tier, item_names.clone()))
+                }
+                _ => None,
+            })
+            .expect("an above-tier plan must warn");
+        assert_eq!(above.0, 6);
+        assert_eq!(above.1, 7, "Supercomputer's chain needs Tier 7");
+        assert!(
+            above.2.iter().any(|n| n == "Supercomputer"),
+            "the warning names the steps that are out of reach: {:?}",
+            above.2
+        );
+    }
+
+    #[test]
+    fn raw_and_unknown_targets_are_flagged_not_fatal() {
+        // Previously both cases hard-failed the whole compute
+        // (`unwrap_err()` + a `PlannerError` variant). That's the bug
+        // #66 reported: one bad target — even the only target — took
+        // down the entire graph and left no way to fix it from inside
+        // the factory. Both now warn and exclude, same treatment the
+        // supply banner already gives every other shortfall. Unknown
+        // targets get this too: a dataset update (a tier re-shuffle
+        // retiring an item id) must never permanently brick a saved
+        // plan that referenced it — the factory has to stay openable.
         let gd = GameData::from_bundled().unwrap();
         let raw = compute_plan_graph(
             "fac-self",
             &[target("Desc_OreIron_C", 30.0)],
             &unlocked(),
+            None,
             &HashMap::new(),
             &[],
             &HashMap::new(),
@@ -1547,13 +1953,18 @@ mod tests {
             &PlanComputeOptions::default(),
             &gd,
         )
-        .unwrap_err();
-        assert!(matches!(raw, PlannerError::NoRecipeForTarget { .. }));
+        .expect("a raw target warns instead of failing the compute");
+        assert!(raw.nodes.is_empty());
+        assert!(matches!(
+            raw.warnings.as_slice(),
+            [PlanWarning::TargetUnplannable { item_id, .. }] if item_id == "Desc_OreIron_C"
+        ));
 
         let unknown = compute_plan_graph(
             "fac-self",
             &[target("Desc_DefinitelyNotAThing_C", 30.0)],
             &unlocked(),
+            None,
             &HashMap::new(),
             &[],
             &HashMap::new(),
@@ -1561,8 +1972,74 @@ mod tests {
             &PlanComputeOptions::default(),
             &gd,
         )
-        .unwrap_err();
-        assert!(matches!(unknown, PlannerError::UnknownTarget { .. }));
+        .expect("an unknown target warns instead of failing the compute");
+        assert!(unknown.nodes.is_empty());
+        assert!(matches!(
+            unknown.warnings.as_slice(),
+            [PlanWarning::TargetUnplannable { item_id, .. }] if item_id == "Desc_DefinitelyNotAThing_C"
+        ));
+    }
+
+    #[test]
+    fn unreachable_target_is_flagged_but_the_rest_of_the_plan_still_computes() {
+        // The exact #66 repro: Solid Biofuel has a real recipe
+        // (`Recipe_Biofuel_C`), so it clears the raw/unknown check
+        // above, but every path to its Biomass input bottoms out on a
+        // foraged item (Leaves/Wood/Mycelia/Alien Protein) with no
+        // recipe and no extracted-resource entry — the chain is
+        // genuinely impossible, just not for the "no recipe at all"
+        // reason. Adding it alongside a normal target used to wipe the
+        // whole graph; it should now only cost Biofuel its node.
+        let gd = GameData::from_bundled().unwrap();
+        let graph = compute_plan_graph(
+            "fac-self",
+            &[target("Desc_Cable_C", 60.0), target("Desc_Biofuel_C", 60.0)],
+            &unlocked(),
+            None,
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            &HashMap::new(),
+            &PlanComputeOptions::default(),
+            &gd,
+        )
+        .expect("one unreachable target must not fail the whole compute");
+        assert!(
+            recipe_keys(&graph).contains(&recipe_node_key("Desc_Cable_C").as_str()),
+            "the still-plannable target must keep rendering: {graph:?}"
+        );
+        assert!(graph.warnings.iter().any(|w| matches!(
+            w,
+            PlanWarning::TargetUnplannable { item_id, .. } if item_id == "Desc_Biofuel_C"
+        )));
+    }
+
+    #[test]
+    fn greedy_unreachable_target_is_flagged_but_the_rest_of_the_plan_still_computes() {
+        // Same contract, pinned directly against the greedy fallback —
+        // it has its own copy of this validation (used whenever the LP
+        // solver itself fails/times out), so it needs the same fix.
+        let gd = GameData::from_bundled().unwrap();
+        let graph = compute_plan_graph_greedy(
+            "fac-self",
+            &[target("Desc_Cable_C", 60.0), target("Desc_Biofuel_C", 60.0)],
+            &unlocked(),
+            None,
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            &HashMap::new(),
+            &gd,
+        )
+        .expect("one unreachable target must not fail the whole greedy compute");
+        assert!(
+            recipe_keys(&graph).contains(&recipe_node_key("Desc_Cable_C").as_str()),
+            "the still-plannable target must keep rendering: {graph:?}"
+        );
+        assert!(graph.warnings.iter().any(|w| matches!(
+            w,
+            PlanWarning::TargetUnplannable { item_id, .. } if item_id == "Desc_Biofuel_C"
+        )));
     }
 
     #[test]
@@ -1590,6 +2067,7 @@ mod tests {
                 "fac-self",
                 &[target("Desc_IronIngot_C", 60.0)],
                 &alts,
+                None,
                 supply,
                 &[],
                 &HashMap::new(),
@@ -1632,6 +2110,7 @@ mod tests {
             "fac-self",
             &[target("Desc_IronIngot_C", 60.0)],
             &unlocked(),
+            None,
             &supply,
             &[],
             &overrides,
@@ -1661,6 +2140,7 @@ mod tests {
             "fac-self",
             &[target("Desc_AluminumPlate_C", 60.0)],
             &unlocked(),
+            None,
             &HashMap::new(),
             &[],
             &HashMap::new(),
@@ -1691,6 +2171,7 @@ mod tests {
             "fac-self",
             &[target("Desc_Cable_C", 60.0)],
             &unlocked(),
+            None,
             &supply,
             &[
                 import_spec("Desc_Wire_C", Some("fac-A"), Some(50.0)),
@@ -1730,6 +2211,7 @@ mod tests {
             "fac-self",
             &[target("Desc_IronPlateReinforced_C", 10.0)],
             &unlocked(),
+            None,
             &supply,
             &[],
             &HashMap::new(),
@@ -1761,6 +2243,7 @@ mod tests {
             "fac-self",
             &[target("Desc_Cable_C", 60.0)],
             &unlocked(),
+            None,
             &supply,
             &[
                 import_spec("Desc_Wire_C", Some("fac-wire"), Some(50.0)),
@@ -1827,6 +2310,7 @@ mod tests {
             "fac-self",
             &[target("Desc_Cable_C", 60.0)],
             &unlocked(),
+            None,
             &supply,
             &[
                 import_spec("Desc_Wire_C", Some("fac-smelter"), None),
@@ -1873,6 +2357,7 @@ mod tests {
             "fac-self",
             &[target("Desc_Cable_C", 60.0)],
             &unlocked(),
+            None,
             &supply,
             &[
                 import_spec("Desc_Wire_C", Some("fac-wire"), None),
@@ -1920,6 +2405,7 @@ mod tests {
             "fac-self",
             &[target("Desc_PolymerResin_C", 60.0)],
             &unlocked(),
+            None,
             &HashMap::new(),
             &[],
             &HashMap::new(),
@@ -1952,6 +2438,7 @@ mod tests {
             "fac-self",
             &[target("Desc_AluminumIngot_C", 60.0)],
             &unlocked(),
+            None,
             &HashMap::new(),
             &[],
             &HashMap::new(),
@@ -1983,6 +2470,7 @@ mod tests {
             "fac-self",
             &[target("Desc_Cable_C", 60.0)],
             &unlocked(),
+            None,
             &HashMap::new(),
             &[import_spec("Desc_Wire_C", Some("fac-wire"), None)],
             &HashMap::new(),
@@ -2004,6 +2492,7 @@ mod tests {
             "fac-self",
             &[],
             &unlocked(),
+            None,
             &HashMap::new(),
             &[],
             &HashMap::new(),
@@ -2024,6 +2513,7 @@ mod tests {
             "fac-self",
             &[target("Desc_Cable_C", 60.0)],
             &unlocked(),
+            None,
             &supply,
             &[],
             &HashMap::new(),
@@ -2078,6 +2568,7 @@ mod tests {
             "fac-self",
             &[target("Desc_Cable_C", 60.0), target("Desc_Wire_C", 30.0)],
             &unlocked(),
+            None,
             &supply,
             &[],
             &HashMap::new(),
@@ -2116,6 +2607,7 @@ mod tests {
             "fac-self",
             &[target("Desc_Cable_C", 60.0)],
             &unlocked(),
+            None,
             &supply,
             &[import_spec("Desc_CopperIngot_C", None, None)],
             &HashMap::new(),
@@ -2167,6 +2659,7 @@ mod tests {
             "fac-self",
             &[target("Desc_Cable_C", 60.0)],
             &unlocked(),
+            None,
             &supply,
             &[import_spec("Desc_Wire_C", Some("fac-wire"), Some(50.0))],
             &HashMap::new(),
@@ -2193,6 +2686,49 @@ mod tests {
     }
 
     #[test]
+    fn a_gap_too_small_to_print_is_not_reported_as_a_gap() {
+        let gd = GameData::from_bundled().unwrap();
+        let mut supply = HashMap::new();
+        supply.insert("Desc_OreCopper_C".into(), 100000.0);
+        // Cable @60 needs 120 Wire/min; the source caps a hundredth
+        // short of that. A successful raise lands on numbers like this,
+        // and "needs 0.0/min more · Raise target" on a plan that
+        // balances is a warning about nothing.
+        let graph = compute_plan_graph(
+            "fac-self",
+            &[target("Desc_Cable_C", 60.0)],
+            &unlocked(),
+            None,
+            &supply,
+            &[import_spec("Desc_Wire_C", Some("fac-wire"), Some(119.99))],
+            &HashMap::new(),
+            &HashMap::new(),
+            &PlanComputeOptions::default(),
+            &gd,
+        )
+        .unwrap();
+        let unassigned = graph
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                PlanNode::Import { item_id, unassigned_ipm, .. } if item_id == "Desc_Wire_C" => {
+                    Some(*unassigned_ipm)
+                }
+                _ => None,
+            })
+            .expect("wire import node");
+        assert_eq!(unassigned, 0.0, "a hundredth of an item per minute isn't a shortfall");
+        assert!(
+            !graph
+                .warnings
+                .iter()
+                .any(|w| matches!(w, PlanWarning::ImportShort { .. })),
+            "got {:?}",
+            graph.warnings
+        );
+    }
+
+    #[test]
     fn raw_gap_warns_but_still_computes() {
         let gd = GameData::from_bundled().unwrap();
         // Zero supply — legacy path would error Insufficient; the plan
@@ -2201,6 +2737,7 @@ mod tests {
             "fac-self",
             &[target("Desc_IronIngot_C", 60.0)],
             &unlocked(),
+            None,
             &HashMap::new(),
             &[],
             &HashMap::new(),
@@ -2227,6 +2764,7 @@ mod tests {
             "fac-self",
             &[target("Desc_IronIngot_C", 60.0)],
             &unlocked(),
+            None,
             &supply,
             &[],
             &HashMap::new(),
@@ -2253,6 +2791,7 @@ mod tests {
             "fac-self",
             &[target("Desc_IronIngot_C", 60.0)],
             &alts,
+            None,
             &supply,
             &[],
             &overrides,
@@ -2296,6 +2835,7 @@ mod tests {
             "fac-self",
             &[target("Desc_Cable_C", 60.0)],
             &unlocked(),
+            None,
             &supply,
             &[import_spec("Desc_Cable_C", Some("fac-other"), None)],
             &HashMap::new(),
@@ -2320,6 +2860,7 @@ mod tests {
             "fac-self",
             &[target("Desc_Plastic_C", 60.0)],
             &unlocked(),
+            None,
             &HashMap::new(),
             &[],
             &HashMap::new(),

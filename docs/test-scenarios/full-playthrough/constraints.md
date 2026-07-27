@@ -18,7 +18,14 @@ report — the run exists to find exactly those gaps.
   Mk4 480 at T5, Mk5 780 at T7, Mk6 1200 at T9.
 - Needing more than one belt's worth is normal — run parallel belts and merge.
   Moving 120/min at Tier 1 means two Mk1 belts into a merger, not one
-  imaginary fast belt. Layouts must show the split/merge points.
+  imaginary fast belt. Layouts must show the split/merge points. Aggregate
+  flows are limited by how many belts you're willing to build, nothing else.
+- **The exception is an extractor's output port, which is a single belt.**
+  Whatever a miner is clocked to, only one belt's worth per minute can leave
+  it, and a splitter placed after the port can only divide what already got
+  through. A Miner Mk.1 on a Pure node at 250% is 300/min on paper and 60/min
+  in reality at Tier 1. Clock extractors to fit the belt they're feeding, or
+  claim another node — "split it onto two belts" isn't available here.
 - Pipes follow the same rule once unlocked (Mk1 300 m³/min at T3, Mk2 600 at
   T6 per library data). Fluids never ride belts.
 - Cross-factory transfers use logistics links with a transport plan the app

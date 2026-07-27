@@ -507,8 +507,8 @@ const spaceElevatorPhases = [
     name: "Construction Dock",
     unlocksTiers: [5, 6],
     parts: [
-      { itemId: "Desc_SpaceElevatorPart_1_C", quantity: 1000 },
-      { itemId: "Desc_SpaceElevatorPart_2_C", quantity: 1000 },
+      { itemId: "Desc_SpaceElevatorPart_1_C", quantity: 500 },
+      { itemId: "Desc_SpaceElevatorPart_2_C", quantity: 500 },
       { itemId: "Desc_SpaceElevatorPart_3_C", quantity: 100 },
     ],
   },
@@ -721,6 +721,22 @@ for (const ph of spaceElevatorPhases) {
   for (const p of ph.parts) {
     if (!itemIds.has(p.itemId)) fail(`Space Elevator phase ${ph.phase} references unknown item ${p.itemId}`);
     if (!(p.quantity > 0)) fail(`Space Elevator phase ${ph.phase} part ${p.itemId} has non-positive quantity`);
+  }
+}
+// The dump has no per-phase delivery data (see the hand-authored comment
+// above), so a transcription slip here has no other signal to catch it.
+// Pin the wiki-sourced quantities directly.
+const SPACE_ELEVATOR_PART_PINS: Record<number, Record<string, number>> = {
+  2: { Desc_SpaceElevatorPart_1_C: 500, Desc_SpaceElevatorPart_2_C: 500, Desc_SpaceElevatorPart_3_C: 100 },
+};
+for (const [phase, wantQuantities] of Object.entries(SPACE_ELEVATOR_PART_PINS)) {
+  const ph = spaceElevatorPhases.find((p) => p.phase === Number(phase));
+  if (!ph) fail(`Space Elevator phase ${phase} missing for pinned-quantity check`);
+  else {
+    for (const [itemId, want] of Object.entries(wantQuantities)) {
+      const got = ph.parts.find((p) => p.itemId === itemId)?.quantity;
+      if (got !== want) fail(`Space Elevator phase ${phase} ${itemId} quantity ${got} != ${want}`);
+    }
   }
 }
 

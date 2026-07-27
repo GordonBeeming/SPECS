@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import { Icon } from "@/shared/ui/Icon";
@@ -60,6 +60,19 @@ export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalPro
   };
 
   const serverError = create.error instanceof Error ? create.error.message : null;
+
+  // Escape closes the innermost open layer first — the icon picker, if
+  // it's expanded — then the modal itself, matching how a nested popover
+  // is expected to unwind rather than jumping straight out.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (showIconPicker) setShowIconPicker(false);
+      else onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showIconPicker, onClose]);
 
   return (
     <div

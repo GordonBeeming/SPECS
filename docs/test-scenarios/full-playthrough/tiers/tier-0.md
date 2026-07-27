@@ -26,10 +26,10 @@ nodes:
 2. **Copper Works** — claim 1 copper node + 1 limestone node. Lines: Wire
    (30/min), Cable (15/min), Concrete (15/min).
 
-Watch the belt math: a Pure iron node on a Mk.1 at 100% already saturates a
-Mk1 belt (120/min > 60/min cap). Either underclock, split the output onto
-two belts at the miner, or claim Normal nodes. The layout must show the
-choice.
+Watch the belt math: a Pure iron node on a Mk.1 at 100% produces 120/min, but
+a miner feeds one belt, so only 60/min can leave it at Mk1. A splitter doesn't
+rescue this — it can only divide what already came through the port. Either
+underclock to 50% or claim Normal nodes. The layout must show the choice.
 
 ## Logistics notes
 

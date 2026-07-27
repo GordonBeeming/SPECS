@@ -6,4 +6,4 @@ blank.
 
 ## Open
 
-_(empty: Tier 0's entries were reported and cleared)_
+_(empty: Tier 7–8's fourteen entries were reported and cleared)_

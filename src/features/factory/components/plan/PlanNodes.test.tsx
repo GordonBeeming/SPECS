@@ -94,6 +94,22 @@ describe("RecipeStepNodeCard", () => {
     expect(onStartExport).toHaveBeenCalledWith("Desc_Cable_C", 60);
   });
 
+  it("prefills a fractional production rate without rounding it", async () => {
+    // A Motor line runs 2.5/min; the prefill used to round to 3 and
+    // offer more than the factory makes.
+    const user = userEvent.setup();
+    const onStartExport = vi.fn();
+    render(
+      <RecipeStepNodeCard
+        node={{ ...recipeNode, isTarget: false, targetIpm: null, outputIpm: 2.5 }}
+        {...recipeCardProps}
+        onStartExport={onStartExport}
+      />,
+    );
+    await user.click(screen.getByText("Export"));
+    expect(onStartExport).toHaveBeenCalledWith("Desc_Cable_C", 2.5);
+  });
+
   it("edits the export slice inline on exporting targets", () => {
     const onSetExport = vi.fn();
     render(
@@ -108,6 +124,24 @@ describe("RecipeStepNodeCard", () => {
       target: { value: "45" },
     });
     expect(onSetExport).toHaveBeenCalledWith("Desc_Cable_C", 45);
+  });
+
+  it("accepts a fractional export slice", () => {
+    // 2.5/min Computers is an ordinary rate in this game; the field
+    // used to mark it invalid on a whole-number step.
+    const onSetExport = vi.fn();
+    render(
+      <RecipeStepNodeCard
+        node={recipeNode}
+        {...recipeCardProps}
+        exportIpm={30}
+        onSetExport={onSetExport}
+      />,
+    );
+    const field = screen.getByLabelText("Export rate for Cable");
+    fireEvent.change(field, { target: { value: "2.5" } });
+    expect(field).toBeValid();
+    expect(onSetExport).toHaveBeenCalledWith("Desc_Cable_C", 2.5);
   });
 
   it("swaps the recipe through the picker", async () => {
@@ -241,5 +275,27 @@ describe("ByproductNodeCard", () => {
       />,
     );
     expect(screen.getByText(/Byproduct → sink/i)).toBeInTheDocument();
+  });
+
+  it("gives the sink node contrast rather than muting it", () => {
+    // What's being thrown away is a number the player has to be able
+    // to see: the sink node was the dimmest card on the canvas and a
+    // refinery sinking 145/min went unnoticed.
+    const { container } = render(
+      <ByproductNodeCard
+        node={{
+          kind: "byproduct",
+          nodeKey: "byproduct:Desc_PetroleumCoke_C",
+          itemId: "Desc_PetroleumCoke_C",
+          itemName: "Petroleum Coke",
+          surplusIpm: 145.5,
+          isFluid: false,
+        }}
+      />,
+    );
+    const card = container.firstElementChild;
+    expect(card?.className).toContain("border-warning/70");
+    expect(card?.className).not.toContain("bg-bg-raised/60");
+    expect(screen.getByText("145.5/min")).toBeInTheDocument();
   });
 });

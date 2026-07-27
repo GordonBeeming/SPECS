@@ -16,6 +16,8 @@ use super::dto::{
 use super::domain::{machine_power_mw_amp, recipe_io_flows_amp};
 use super::repo;
 use crate::features::playthrough::state::ActivePlaythrough;
+use crate::features::resource_nodes::domain as nodes_domain;
+use crate::features::resource_nodes::repo::{ClaimRow, WaterGroupRow};
 
 fn now_iso() -> String {
     OffsetDateTime::now_utc()
@@ -414,12 +416,11 @@ pub fn factory_ledger(
     let water_groups = db.with(|c| {
         crate::features::resource_nodes::repo::water_groups_all(c).map_err(AppError::from)
     })?;
-    let supply = crate::features::resource_nodes::domain::supply_for_factory(
-        &claims, &water_groups, &factory_id, &game_data,
-    );
     let link_supply =
         db.with(|c| incoming_link_supply(c, &factory_id).map_err(AppError::from))?;
-    Ok(compose_ledger_with_supply(&factory_id, &machines, &game_data, &supply, &link_supply))
+    Ok(compose_ledger_with_supply(
+        &factory_id, &machines, &game_data, &claims, &water_groups, &link_supply,
+    ))
 }
 
 #[tauri::command]
@@ -439,11 +440,10 @@ pub fn get_factory_detail(
     let water_groups = db.with(|c| {
         crate::features::resource_nodes::repo::water_groups_all(c).map_err(AppError::from)
     })?;
-    let supply = crate::features::resource_nodes::domain::supply_for_factory(
-        &claims, &water_groups, &id, &game_data,
-    );
     let link_supply = db.with(|c| incoming_link_supply(c, &id).map_err(AppError::from))?;
-    let ledger = compose_ledger_with_supply(&id, &machines, &game_data, &supply, &link_supply);
+    let ledger = compose_ledger_with_supply(
+        &id, &machines, &game_data, &claims, &water_groups, &link_supply,
+    );
     Ok(FactoryDetail {
         factory,
         machines,
@@ -492,8 +492,13 @@ fn amp_slots_for_building(building_id: &str) -> u8 {
     .unwrap_or(1)
 }
 
-/// Aggregate ledger across all machines in a factory. Pure given the inputs;
-/// no DB or Tauri State touched here so it can be unit-tested directly.
+/// Aggregate ledger across all machines in a factory, machine power only.
+/// Pure given the inputs; no DB or Tauri State touched here so it can be
+/// unit-tested directly. Any caller building a real per-factory total
+/// (Power view, map card, plan header, Validate) needs
+/// `compose_ledger_with_supply` instead — extractors are claimed against
+/// map nodes, not added as machines, so this alone always understates a
+/// factory with any miners or water/oil pumps bound to it.
 pub fn compose_ledger(
     factory_id: &str,
     machines: &[FactoryMachine],
@@ -504,24 +509,34 @@ pub fn compose_ledger(
         machines,
         game_data,
         &std::collections::HashMap::new(),
+        &[],
         &std::collections::HashMap::new(),
     )
 }
 
-/// Same as `compose_ledger` but also annotates each `ItemFlow` with the
-/// ipm available from resource nodes bound to this factory. The
-/// power slice + tests stay on `compose_ledger` and get the zero-supply
-/// behaviour by default.
+/// Same as `compose_ledger` but also folds in everything a factory's
+/// bound resource-node claims and water extractor groups contribute:
+/// each `ItemFlow`'s `from_nodes_per_minute`, and — just as importantly —
+/// their draw added onto `power_mw`. Extractors never appear as
+/// `FactoryMachine` rows (they're claimed against a node, not built into
+/// a factory), so a caller that skipped this step would silently miss
+/// their power the same way `get_factory_detail` once did. Folding it in
+/// here rather than leaving it to each caller to remember means every
+/// consumer of a real `FactoryLedger` gets the true total by
+/// construction; `claims`/`water_groups` empty (as `compose_ledger`
+/// passes) is the only way to get the machine-only figure back.
 pub fn compose_ledger_with_supply(
     factory_id: &str,
     machines: &[FactoryMachine],
     game_data: &GameData,
-    node_supply: &std::collections::HashMap<String, f32>,
+    claims: &std::collections::HashMap<String, ClaimRow>,
+    water_groups: &[WaterGroupRow],
     link_supply: &std::collections::HashMap<String, f32>,
 ) -> FactoryLedger {
+    let node_supply = nodes_domain::supply_for_factory(claims, water_groups, factory_id, game_data);
     let mut produced: BTreeMap<String, f32> = BTreeMap::new();
     let mut consumed: BTreeMap<String, f32> = BTreeMap::new();
-    let mut power_mw = 0.0_f32;
+    let mut power_mw = nodes_domain::power_for_factory(claims, water_groups, factory_id, game_data);
 
     for m in machines {
         // Phase 8: amplification is opt-in. When `use_somersloop` is
@@ -752,11 +767,64 @@ mod tests {
             &machines,
             &gd(),
             &std::collections::HashMap::new(),
+            &[],
             &link_supply,
         );
         let wire = ledger.flows.iter().find(|f| f.item_id == "Desc_Wire_C").unwrap();
         assert!((wire.from_links_per_minute - 120.0).abs() < 0.001);
         assert!(wire.net_per_minute < 0.0, "machines alone still show the deficit");
+    }
+
+    #[test]
+    fn ledger_with_supply_folds_bound_extractor_power_onto_machine_power() {
+        // The bug this regresses: `get_factory_detail`/`factory_ledger`
+        // (the map card's source) built their ledger by pre-aggregating
+        // `supply_for_factory` into an item-flow map and never touched
+        // `power_for_factory` at all, so the card read machine-only
+        // power while Power view and Validate — which separately added
+        // extractor draw — reported the true, higher total for the same
+        // factory. `compose_ledger_with_supply` now takes the raw
+        // claims/water groups and folds both the item-flow supply *and*
+        // the extractor power in itself, so any caller passing them
+        // through gets the correct total by construction.
+        let gd = gd();
+        let iron = gd
+            .nodes()
+            .iter()
+            .find(|n| n.resource_item_id == "Desc_OreIron_C")
+            .unwrap();
+        let mut claims = std::collections::HashMap::new();
+        claims.insert(
+            iron.id.clone(),
+            ClaimRow {
+                node_id: iron.id.clone(),
+                miner_id: Some("Build_MinerMk1_C".into()),
+                clock_pct: 100.0,
+                factory_id: Some("f1".into()),
+                notes: None,
+                created_at: "n".into(),
+                updated_at: "n".into(),
+            },
+        );
+        let machines = vec![
+            machine("m1", "Build_SmelterMk1_C", "Recipe_IngotIron_C", 1, 100.0),
+        ];
+        let machine_only_mw = compose_ledger("f1", &machines, &gd).power_mw;
+        let with_extractor_mw = compose_ledger_with_supply(
+            "f1",
+            &machines,
+            &gd,
+            &claims,
+            &[],
+            &std::collections::HashMap::new(),
+        )
+        .power_mw;
+        // A Mk1 miner draws a fixed 5 MW regardless of the node it sits
+        // on — pinned the same way `power_for_factory`'s own tests do.
+        assert!(
+            (with_extractor_mw - (machine_only_mw + 5.0)).abs() < 0.01,
+            "expected machine power ({machine_only_mw}) + one Mk1 miner (5.0), got {with_extractor_mw}",
+        );
     }
 
     #[test]

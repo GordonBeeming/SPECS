@@ -8663,11 +8663,11 @@
       "parts": [
         {
           "itemId": "Desc_SpaceElevatorPart_1_C",
-          "quantity": 1000
+          "quantity": 500
         },
         {
           "itemId": "Desc_SpaceElevatorPart_2_C",
-          "quantity": 1000
+          "quantity": 500
         },
         {
           "itemId": "Desc_SpaceElevatorPart_3_C",

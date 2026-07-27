@@ -122,4 +122,183 @@ describe("<ValidationPanel />", () => {
     renderWithProviders(<ValidationPanel onClose={() => {}} />);
     expect(await screen.findByRole("alert")).toHaveTextContent(/no active playthrough/);
   });
+
+  it("shows an above-tier unlocked alt as a warning and deep-links to the Alts screen", async () => {
+    // Regression for #47: ticking a T7 alt at T0 must not read as clean.
+    const report: ValidationReport = {
+      ...cleanReport,
+      findings: [
+        {
+          severity: "warning",
+          category: "tierGating",
+          kind: "unlockedAltAboveTier",
+          recipeId: "Recipe_Alternate_AlcladCasing_C",
+          recipeName: "Alternate: Alclad Casing",
+          unlockTier: 7,
+        },
+      ],
+    };
+    vi.spyOn(validationApi, "validate").mockResolvedValue(report);
+    const onClose = vi.fn();
+    renderWithProviders(<ValidationPanel onClose={onClose} />);
+    expect(await screen.findByText("1 warning")).toBeInTheDocument();
+    const row = screen.getByText(
+      /Alternate: Alclad Casing is ticked unlocked but unlocks at T7/,
+    );
+    expect(row).toBeInTheDocument();
+    fireEvent.click(row.closest("button")!);
+    await waitFor(() => {
+      expect(useNavStore.getState().pendingRoute).toBe("alts");
+      expect(onClose).toHaveBeenCalled();
+    });
+  });
+
+  it("shows a generator fuel shortfall and deep-links to Power", async () => {
+    // Regression: a coal generator bank's fuel/water draw never got
+    // checked against claimed supply — this is the wired-up finding.
+    const report: ValidationReport = {
+      ...cleanReport,
+      findings: [
+        {
+          severity: "warning",
+          category: "supplyPower",
+          kind: "generatorFuelShort",
+          factoryId: "f1",
+          factoryName: "Coal Power",
+          itemId: "Desc_Coal_C",
+          itemName: "Coal",
+          demandIpm: 210,
+          claimedIpm: 180,
+        },
+      ],
+    };
+    vi.spyOn(validationApi, "validate").mockResolvedValue(report);
+    const onClose = vi.fn();
+    renderWithProviders(<ValidationPanel onClose={onClose} />);
+    const row = await screen.findByText(
+      /Coal Power: generators need 210\.0\/min of Coal, claims cover 180\.0/,
+    );
+    fireEvent.click(row.closest("button")!);
+    await waitFor(() => {
+      expect(useNavStore.getState().pendingRoute).toBe("power");
+      expect(onClose).toHaveBeenCalled();
+    });
+  });
+
+  it("shows a belt-capacity and a no-pipe-yet segment under a dedicated category", async () => {
+    // Regression for #48/#76: a plan-graph segment over the best
+    // unlocked belt/pipe tier used to render identically to a
+    // compliant one.
+    const report: ValidationReport = {
+      ...cleanReport,
+      findings: [
+        {
+          severity: "warning",
+          category: "capacity",
+          kind: "segmentOverBeltCapacity",
+          factoryId: "f1",
+          factoryName: "Ingot Works",
+          itemId: "Desc_OreIron_C",
+          itemName: "Iron Ore",
+          ipm: 90,
+          beltMark: 1,
+          beltCapacityIpm: 60,
+          beltsNeeded: 2,
+        },
+        {
+          severity: "warning",
+          category: "capacity",
+          kind: "fluidSegmentNoPipeAtTier",
+          factoryId: "f1",
+          factoryName: "Ingot Works",
+          itemId: "Desc_Water_C",
+          itemName: "Water",
+          ipm: 30,
+        },
+      ],
+    };
+    vi.spyOn(validationApi, "validate").mockResolvedValue(report);
+    renderWithProviders(<ValidationPanel onClose={() => {}} />);
+    expect(await screen.findByText("Belt & pipe capacity")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Ingot Works: Iron Ore segment runs 90\.0\/min — needs 2× Mk\.1 belts \(60\/min each\) or an underclock/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Ingot Works: Water segment runs 30\.0 m³\/min — no pipe is unlocked yet/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a port-over-capacity claim with the fitting clock, the node label, and deep-links to Resources", async () => {
+    // Regression for #93: this finding used to render as a blank row —
+    // no TS union member, no findingText case.
+    const report: ValidationReport = {
+      ...cleanReport,
+      findings: [
+        {
+          severity: "warning",
+          category: "capacity",
+          kind: "claimOverPortCapacity",
+          nodeId: "n1",
+          resourceItemName: "Pure Iron Ore",
+          nodeIndex: 5,
+          nodeX: -170000,
+          nodeY: -150000,
+          extractorName: "Miner Mk.2",
+          outputIpm: 240,
+          capacityIpm: 60,
+          isFluid: false,
+          capacityMark: 1,
+          maxFittingClockPct: 25,
+        },
+      ],
+    };
+    vi.spyOn(validationApi, "validate").mockResolvedValue(report);
+    const onClose = vi.fn();
+    renderWithProviders(<ValidationPanel onClose={onClose} />);
+    const row = await screen.findByText(
+      /Pure Iron Ore node #6 · 1\.7km W · 1\.5km N: Miner Mk\.2 outputs 240\.0\/min — its port caps at 60\.0\/min \(Mk\.1 belt\), clock to 25% to fit/,
+    );
+    fireEvent.click(row.closest("button")!);
+    await waitFor(() => {
+      expect(useNavStore.getState().pendingRoute).toBe("resources");
+      expect(onClose).toHaveBeenCalled();
+    });
+  });
+
+  it("floors the advised clock instead of rounding it up (#101)", async () => {
+    // The reported loop: a Miner Mk.3 on Pure Raw Quartz at 250% needs
+    // 780/1200 × 250% = 162.5% to fit exactly. `toFixed(0)` used to
+    // round that to 163%, which still overshoots the port (782.4/min)
+    // and repeats the identical warning — the Tier 1 case above (25%)
+    // divides evenly and would pass either way, so it never caught this.
+    const report: ValidationReport = {
+      ...cleanReport,
+      findings: [
+        {
+          severity: "warning",
+          category: "capacity",
+          kind: "claimOverPortCapacity",
+          nodeId: "n2",
+          resourceItemName: "Pure Raw Quartz",
+          nodeIndex: 0,
+          nodeX: 37926,
+          nodeY: 120939,
+          extractorName: "Miner Mk.3",
+          outputIpm: 1200,
+          capacityIpm: 780,
+          isFluid: false,
+          capacityMark: 5,
+          maxFittingClockPct: 162.5,
+        },
+      ],
+    };
+    vi.spyOn(validationApi, "validate").mockResolvedValue(report);
+    renderWithProviders(<ValidationPanel onClose={() => {}} />);
+    expect(
+      await screen.findByText(/clock to 162% to fit/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/clock to 163% to fit/)).not.toBeInTheDocument();
+  });
 });

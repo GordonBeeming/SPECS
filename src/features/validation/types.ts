@@ -2,7 +2,7 @@ import type { PlanWarning } from "@/features/planner/types";
 
 export type Severity = "error" | "warning";
 
-export type Category = "tierGating" | "lockedAlts" | "flow" | "supplyPower";
+export type Category = "tierGating" | "lockedAlts" | "flow" | "supplyPower" | "capacity";
 
 /** Mirrors the Rust `FindingKind` tagged enum (`kind` discriminator). */
 export type FindingKind =
@@ -50,6 +50,12 @@ export type FindingKind =
       resourceItemName: string;
       extractorId: string;
       allowedNames: string[];
+    }
+  | {
+      kind: "unlockedAltAboveTier";
+      recipeId: string;
+      recipeName: string;
+      unlockTier: number;
     }
   | {
       kind: "linkTransportAboveTier";
@@ -100,6 +106,62 @@ export type FindingKind =
       netMw: number;
     }
   | { kind: "gridDeficit"; generatedMw: number; consumedMw: number }
+  | {
+      kind: "generatorFuelShort";
+      factoryId: string;
+      factoryName: string;
+      itemId: string;
+      itemName: string;
+      demandIpm: number;
+      claimedIpm: number;
+    }
+  | {
+      kind: "segmentOverBeltCapacity";
+      factoryId: string;
+      factoryName: string;
+      itemId: string;
+      itemName: string;
+      ipm: number;
+      beltMark: number;
+      beltCapacityIpm: number;
+      beltsNeeded: number;
+    }
+  | {
+      kind: "segmentOverPipeCapacity";
+      factoryId: string;
+      factoryName: string;
+      itemId: string;
+      itemName: string;
+      ipm: number;
+      pipeMark: number;
+      pipeCapacityIpm: number;
+      pipesNeeded: number;
+    }
+  | {
+      kind: "fluidSegmentNoPipeAtTier";
+      factoryId: string;
+      factoryName: string;
+      itemId: string;
+      itemName: string;
+      ipm: number;
+    }
+  | {
+      kind: "claimOverPortCapacity";
+      nodeId: string;
+      resourceItemName: string;
+      /** Position within this node's (resource, purity) bucket — pairs
+       * with `nodeX`/`nodeY` to reproduce the Resources screen's
+       * "#N · 1.7km W · 1.5km N" label. */
+      nodeIndex: number;
+      nodeX: number;
+      nodeY: number;
+      extractorName: string;
+      outputIpm: number;
+      capacityIpm: number;
+      isFluid: boolean;
+      capacityMark: number;
+      maxFittingClockPct: number;
+    }
   | {
       kind: "checkFailed";
       area: string;

@@ -15,3 +15,4 @@ pub mod dto;
 pub(crate) mod matrix;
 pub mod repo;
 pub mod solver;
+pub mod tier;

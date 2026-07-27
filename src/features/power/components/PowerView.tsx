@@ -1,16 +1,24 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Factory as FactoryGlyph, Pencil, Trash2, Zap } from "lucide-react";
+import {
+  CircleAlert,
+  Factory as FactoryGlyph,
+  Pencil,
+  Trash2,
+  TriangleAlert,
+  Zap,
+} from "lucide-react";
 import { Icon } from "@/shared/ui/Icon";
 import { useNavStore } from "@/shared/nav-store";
 import { EditPowerGenModal } from "./EditPowerGenModal";
-import { useAllPowerGens } from "../hooks/usePower";
-import type { PowerGen } from "../types";
+import { useAllPowerBalances, useAllPowerGens } from "../hooks/usePower";
+import type { FactoryPowerBalance, PowerGen } from "../types";
 import type { Factory } from "@/features/factory/types";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { FilterSelect } from "@/shared/ui/FilterSelect";
 import { useFactoryList } from "@/features/factory/hooks/useFactories";
-import { useGenerators, useItems } from "@/features/library/hooks/useLibrary";
+import { useGenerators, useItems, useRecipes } from "@/features/library/hooks/useLibrary";
+import { deriveItemUnlockTiers } from "@/features/library/tiers";
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import {
   useAddPowerGen,
@@ -18,12 +26,40 @@ import {
   usePowerGens,
   useRemovePowerGen,
 } from "../hooks/usePower";
-import type { CreatePowerGenInput } from "../types";
+import type { CreatePowerGenInput, PowerFuelFlow } from "../types";
+
+const DEFICIT_EPSILON = 0.001;
+
+/** The fuel demand card's header used to hardcode "items / min", which
+ * reads wrong the moment a fluid fuel (Fuel, Turbofuel, Water for a
+ * Nuclear Plant, …) shows up — each row already tags its own unit, so
+ * the header should follow suit instead of asserting one for all of
+ * them. */
+function fuelDemandUnitLabel(flows: PowerFuelFlow[]): string {
+  const hasFluid = flows.some((f) => f.isFluid);
+  const hasSolid = flows.some((f) => !f.isFluid);
+  if (hasFluid && hasSolid) return "items / min or m³ / min";
+  return hasFluid ? "m³ / min" : "items / min";
+}
+
+/** Rank used to sort the sidebar so a factory that needs attention is
+ * never buried below idle ones: unpowered draw first, then any other
+ * deficit, then everything else. Matches the severities the backend
+ * validation sweep already assigns (`PowerDeficit` = warning per
+ * factory, `GridDeficit` = error for the whole playthrough) so the
+ * ordering agrees with what Validate would flag. */
+function powerUrgencyRank(genCount: number, balance: FactoryPowerBalance | undefined): number {
+  if (!balance) return 2;
+  if (genCount === 0 && balance.consumedMw > DEFICIT_EPSILON) return 0;
+  if (balance.netMw < -DEFICIT_EPSILON) return 1;
+  return 2;
+}
 
 export function PowerView() {
   const playthrough = useCurrentPlaythrough();
   const factories = useFactoryList();
   const allGens = useAllPowerGens();
+  const balances = useAllPowerBalances();
   const takePendingFactoryId = useNavStore((s) => s.takePendingFactoryId);
   const [selectedFactoryId, setSelectedFactoryId] = useState<string | null>(null);
 
@@ -39,23 +75,43 @@ export function PowerView() {
   }, []);
   // Per-factory generator counts — hoisted above the early returns
   // so the hook order stays stable across renders (Rules of Hooks).
+  // Sum each row's `count` (physical generators of that type), not
+  // the number of rows: one row can represent many machines (e.g. 8
+  // Biomass Burners split across two rows for different fuel notes),
+  // and the badge is meant to answer "how many generators", not "how
+  // many rows".
   const genCountByFactory = useMemo(() => {
     const m = new Map<string, number>();
     for (const g of allGens.data ?? []) {
-      m.set(g.factoryId, (m.get(g.factoryId) ?? 0) + 1);
+      m.set(g.factoryId, (m.get(g.factoryId) ?? 0) + g.count);
     }
     return m;
   }, [allGens.data]);
-  // Filter the factory list before the early returns for the same
-  // reason — keeps the hook count constant across all render paths.
-  const factoryListFiltered = useMemo(() => {
+  const balanceByFactory = useMemo(() => {
+    const m = new Map<string, FactoryPowerBalance>();
+    for (const b of balances.data ?? []) {
+      m.set(b.factoryId, b);
+    }
+    return m;
+  }, [balances.data]);
+  const gridTotal = useMemo(() => {
+    const list = balances.data ?? [];
+    const generatedMw = list.reduce((sum, b) => sum + b.generatedMw, 0);
+    const consumedMw = list.reduce((sum, b) => sum + b.consumedMw, 0);
+    return { generatedMw, consumedMw, netMw: generatedMw - consumedMw };
+  }, [balances.data]);
+  // Every factory belongs on this screen now — an unpowered factory
+  // is exactly what a player comes here to find, so nothing gets
+  // filtered out of the list anymore. Sort by urgency instead so the
+  // factories that need attention aren't buried below idle ones.
+  const factoryListSorted = useMemo(() => {
     const all = factories.data ?? [];
-    return all.filter(
-      (f) =>
-        (genCountByFactory.get(f.id) ?? 0) > 0 ||
-        f.id === selectedFactoryId,
-    );
-  }, [factories.data, genCountByFactory, selectedFactoryId]);
+    return [...all].sort((a, b) => {
+      const rankA = powerUrgencyRank(genCountByFactory.get(a.id) ?? 0, balanceByFactory.get(a.id));
+      const rankB = powerUrgencyRank(genCountByFactory.get(b.id) ?? 0, balanceByFactory.get(b.id));
+      return rankA - rankB;
+    });
+  }, [factories.data, genCountByFactory, balanceByFactory]);
 
   if (!playthrough.data) {
     return (
@@ -69,10 +125,7 @@ export function PowerView() {
     );
   }
 
-  // Only surface factories that actually carry generators (or the
-  // one the user is currently editing) — pure item factories pad
-  // the sidebar without belonging here.
-  const factoryList = factoryListFiltered;
+  const factoryList = factoryListSorted;
   const activeId = selectedFactoryId ?? factoryList[0]?.id ?? null;
 
   if (factoryList.length === 0) {
@@ -80,50 +133,112 @@ export function PowerView() {
       <Card className="mx-auto max-w-2xl">
         <h1 className="text-xl font-semibold text-primary">Power</h1>
         <p className="mt-2 text-sm text-fg-muted">
-          No factories with power generators yet. Pop over to
-          Factories, open one, and hit <strong>Add power</strong> to
-          start building a power plant.
+          No factories in this playthrough yet. Create one in Factories,
+          then come back here to plan its power.
         </p>
       </Card>
     );
   }
 
   return (
-    <div className="grid h-full gap-4 lg:grid-cols-[20rem_1fr]">
-      <Card className="flex flex-col gap-3 overflow-hidden">
-        <div>
-          <h1 className="flex items-center gap-2 text-lg font-semibold text-primary">
-            <Zap className="h-4 w-4 text-warning" />
-            Power
-          </h1>
-          <p className="text-xs text-fg-muted">
-            {playthrough.data.displayName} · T{playthrough.data.currentTier}
-          </p>
-        </div>
-        <ul className="flex flex-1 flex-col gap-1 overflow-auto">
-          {factoryList.map((f) => (
-            <PowerFactoryRow
-              key={f.id}
-              factory={f}
-              active={activeId === f.id}
-              genCount={genCountByFactory.get(f.id) ?? 0}
-              onSelect={() => setSelectedFactoryId(f.id)}
-            />
-          ))}
-        </ul>
-      </Card>
-
-      <Card className="flex flex-col overflow-hidden">
-        {activeId ? (
-          <PowerFactoryPanel factoryId={activeId} />
-        ) : (
-          <div className="m-auto max-w-md text-center text-sm text-fg-muted">
-            Pick a factory on the left to add or edit its power
-            generators.
+    <div className="flex h-full flex-col gap-4">
+      <GridTotalBar total={gridTotal} loading={balances.isPending} />
+      <div className="grid flex-1 gap-4 overflow-hidden lg:grid-cols-[20rem_1fr]">
+        <Card className="flex flex-col gap-3 overflow-hidden">
+          <div>
+            <h1 className="flex items-center gap-2 text-lg font-semibold text-primary">
+              <Zap className="h-4 w-4 text-warning" />
+              Power
+            </h1>
+            <p className="text-xs text-fg-muted">
+              {playthrough.data.displayName} · T{playthrough.data.currentTier}
+            </p>
           </div>
-        )}
-      </Card>
+          <ul className="flex flex-1 flex-col gap-1 overflow-auto">
+            {factoryList.map((f) => (
+              <PowerFactoryRow
+                key={f.id}
+                factory={f}
+                active={activeId === f.id}
+                genCount={genCountByFactory.get(f.id) ?? 0}
+                balance={balanceByFactory.get(f.id)}
+                onSelect={() => setSelectedFactoryId(f.id)}
+              />
+            ))}
+          </ul>
+        </Card>
+
+        <Card className="flex flex-col overflow-hidden">
+          {activeId ? (
+            <PowerFactoryPanel factoryId={activeId} />
+          ) : (
+            <div className="m-auto max-w-md text-center text-sm text-fg-muted">
+              Pick a factory on the left to add or edit its power
+              generators.
+            </div>
+          )}
+        </Card>
+      </div>
     </div>
+  );
+}
+
+interface GridTotal {
+  generatedMw: number;
+  consumedMw: number;
+  netMw: number;
+}
+
+/** Playthrough-wide total — the number Validate already computes for
+ * its grid-deficit check, surfaced here too so Power stops being the
+ * one screen that can't answer "do I have enough power, overall?".
+ * Red (not amber) when the grid itself is short, matching Validate's
+ * `GridDeficit` being an error rather than a warning. */
+function GridTotalBar({ total, loading }: { total: GridTotal; loading: boolean }) {
+  const deficit = total.netMw < -DEFICIT_EPSILON;
+  return (
+    <Card
+      className={`flex flex-wrap items-center gap-x-6 gap-y-2 ${
+        deficit ? "border-danger/50 bg-danger/5" : ""
+      }`}
+    >
+      <div className="flex items-center gap-2 text-sm font-semibold text-fg">
+        {deficit ? (
+          <CircleAlert className="h-4 w-4 shrink-0 text-danger" />
+        ) : (
+          <Zap className="h-4 w-4 shrink-0 text-warning" />
+        )}
+        Grid
+      </div>
+      <div>
+        <div className="text-xs text-fg-muted">Generated</div>
+        <div className="text-base font-semibold tabular-nums">
+          {loading ? "—" : total.generatedMw.toFixed(1)} MW
+        </div>
+      </div>
+      <div>
+        <div className="text-xs text-fg-muted">Consumed</div>
+        <div className="text-base font-semibold tabular-nums">
+          {loading ? "—" : total.consumedMw.toFixed(1)} MW
+        </div>
+      </div>
+      <div>
+        <div className="text-xs text-fg-muted">Net</div>
+        <div
+          className={`text-base font-semibold tabular-nums ${
+            deficit ? "text-danger" : "text-success"
+          }`}
+        >
+          {loading ? "—" : total.netMw.toFixed(1)} MW
+        </div>
+      </div>
+      {deficit && !loading && (
+        <p className="text-xs text-danger">
+          The playthrough draws {Math.abs(total.netMw).toFixed(1)} MW more than
+          it generates — add generators to the factories below.
+        </p>
+      )}
+    </Card>
   );
 }
 
@@ -131,14 +246,24 @@ interface PowerFactoryRowProps {
   factory: Factory;
   active: boolean;
   genCount: number;
+  balance: FactoryPowerBalance | undefined;
   onSelect: () => void;
 }
 
-function PowerFactoryRow({ factory, active, genCount, onSelect }: PowerFactoryRowProps) {
+function PowerFactoryRow({ factory, active, genCount, balance, onSelect }: PowerFactoryRowProps) {
+  const urgency = powerUrgencyRank(genCount, balance);
+  const unpowered = urgency === 0;
+  const deficit = urgency === 1;
   return (
     <li
       className={`rounded-md transition-colors ${
-        active ? "bg-primary/10" : "hover:bg-border/40"
+        active
+          ? "bg-primary/10"
+          : unpowered
+            ? "bg-danger/10 hover:bg-danger/15"
+            : deficit
+              ? "bg-warning/10 hover:bg-warning/15"
+              : "hover:bg-border/40"
       }`}
     >
       <button
@@ -153,19 +278,37 @@ function PowerFactoryRow({ factory, active, genCount, onSelect }: PowerFactoryRo
           <FactoryGlyph className="h-4 w-4 shrink-0 text-fg-muted" />
         )}
         <span className="flex-1 truncate text-sm font-medium text-fg">{factory.name}</span>
-        {/* Surface what's on each factory at a glance: a ⚡ if it has
-            power, plus the machine count (so 'mixed-use' factories
-            read as both kinds). Avoids a hard 'power factory vs item
-            factory' classification while still making power-only
-            rows stand out. */}
-        {genCount > 0 && (
+        {/* An unpowered factory that's actually drawing power is what
+            this screen exists to surface, so it outranks every other
+            badge. A factory with generators that still can't keep up
+            is the next-most urgent. Everything else keeps the quieter
+            "has generators" chip it always had. */}
+        {unpowered ? (
           <span
-            className="inline-flex items-center gap-0.5 rounded-full bg-warning/15 px-1.5 text-[10px] font-medium text-warning"
-            title={`${genCount} generator${genCount === 1 ? "" : "s"}`}
+            className="inline-flex items-center gap-1 rounded-full bg-danger/15 px-1.5 text-[10px] font-medium text-danger"
+            title={`Draws ${balance?.consumedMw.toFixed(1)} MW with no generators`}
           >
-            <Zap className="h-3 w-3" />
-            {genCount}
+            <CircleAlert className="h-3 w-3" />
+            No power
           </span>
+        ) : deficit ? (
+          <span
+            className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-1.5 text-[10px] font-medium text-warning"
+            title="Generators here can't cover the draw"
+          >
+            <TriangleAlert className="h-3 w-3" />
+            {balance?.netMw.toFixed(1)} MW
+          </span>
+        ) : (
+          genCount > 0 && (
+            <span
+              className="inline-flex items-center gap-0.5 rounded-full bg-warning/15 px-1.5 text-[10px] font-medium text-warning"
+              title={`${genCount} generator${genCount === 1 ? "" : "s"}`}
+            >
+              <Zap className="h-3 w-3" />
+              {genCount}
+            </span>
+          )
         )}
         <span className="ml-1 text-xs text-fg-muted tabular-nums">
           {factory.machineCount}m
@@ -181,6 +324,7 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
   const remove = useRemovePowerGen(factoryId);
   const generators = useGenerators();
   const items = useItems();
+  const recipes = useRecipes();
   const playthrough = useCurrentPlaythrough();
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<PowerGen | null>(null);
@@ -213,6 +357,15 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
   const tierCap = playthrough.data?.currentTier ?? 9;
   const eligibleGenerators = (generators.data ?? []).filter(
     (g) => g.unlockTier <= tierCap,
+  );
+  // A generator can list fuels from across the whole game (e.g. the Fuel
+  // Generator takes Fuel through Ionized Fuel), so its own unlockTier
+  // isn't a stand-in for its fuels' tiers — each fuel item needs its own
+  // gate via `deriveItemUnlockTiers`, or a T8/T9 fuel leaks in at
+  // whatever tier the generator itself unlocks.
+  const itemTierById = useMemo(
+    () => deriveItemUnlockTiers(recipes.data ?? []),
+    [recipes.data],
   );
 
   return (
@@ -253,6 +406,8 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
           <AddPowerGenForm
             factoryId={factoryId}
             eligibleGenerators={eligibleGenerators}
+            itemTierById={itemTierById}
+            tierCap={tierCap}
             onSubmitted={() => setShowAdd(false)}
           />
         </Card>
@@ -357,10 +512,20 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
 
       {editing && (() => {
         const gen = generatorsById.get(editing.generatorId);
-        const fuelOptions = (gen?.fuels ?? []).map((f) => ({
-          id: f.fuelItemId,
-          name: itemsById.get(f.fuelItemId)?.name ?? f.fuelItemId,
-        }));
+        // Gate by the fuel item's own tier, not the generator's — but
+        // never drop the fuel already saved on this row, even if the
+        // player's tier cap somehow sits below it (an edit shouldn't
+        // silently reassign a choice the player already made).
+        const fuelOptions = (gen?.fuels ?? [])
+          .filter(
+            (f) =>
+              f.fuelItemId === editing.fuelItemId ||
+              (itemTierById.get(f.fuelItemId) ?? 0) <= tierCap,
+          )
+          .map((f) => ({
+            id: f.fuelItemId,
+            name: itemsById.get(f.fuelItemId)?.name ?? f.fuelItemId,
+          }));
         return (
           <EditPowerGenModal
             factoryId={factoryId}
@@ -375,7 +540,7 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
       {balance.data && balance.data.fuelFlows.length > 0 && (
         <Card>
           <h2 className="text-sm font-semibold text-fg-muted uppercase tracking-wide">
-            Fuel demand (items / min)
+            Fuel demand ({fuelDemandUnitLabel(balance.data.fuelFlows)})
           </h2>
           <ul className="mt-2 grid gap-1 sm:grid-cols-2">
             {balance.data.fuelFlows.map((f) => (
@@ -399,10 +564,14 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
 function AddPowerGenForm({
   factoryId,
   eligibleGenerators,
+  itemTierById,
+  tierCap,
   onSubmitted,
 }: {
   factoryId: string;
   eligibleGenerators: ReturnType<typeof useGenerators>["data"];
+  itemTierById: Map<string, number>;
+  tierCap: number;
   onSubmitted: () => void;
 }) {
   const items = useItems();
@@ -448,17 +617,23 @@ function AddPowerGenForm({
   };
 
   const fuelOptions =
-    generator?.fuels.map((f) => ({
-      value: f.fuelItemId,
-      label: itemsById.get(f.fuelItemId)?.name ?? f.fuelItemId,
-      hint: `${f.fuelPerMinute.toFixed(2)} /min` +
-        (f.supplementalItemId
-          ? ` + ${f.supplementalPerMinute?.toFixed(0) ?? "?"} ${
-              itemsById.get(f.supplementalItemId)?.name ?? f.supplementalItemId
-            }`
-          : ""),
-      iconId: f.fuelItemId,
-    })) ?? [];
+    generator?.fuels
+      // Fuel item tiers, not the generator's — the Fuel Generator alone
+      // spans Fuel through Ionized Fuel, so gating on its own unlockTier
+      // would let T8/T9 fuels through as soon as the generator itself is
+      // available.
+      .filter((f) => (itemTierById.get(f.fuelItemId) ?? 0) <= tierCap)
+      .map((f) => ({
+        value: f.fuelItemId,
+        label: itemsById.get(f.fuelItemId)?.name ?? f.fuelItemId,
+        hint: `${f.fuelPerMinute.toFixed(2)} /min` +
+          (f.supplementalItemId
+            ? ` + ${f.supplementalPerMinute?.toFixed(0) ?? "?"} ${
+                itemsById.get(f.supplementalItemId)?.name ?? f.supplementalItemId
+              }`
+            : ""),
+        iconId: f.fuelItemId,
+      })) ?? [];
 
   const serverError = add.error instanceof Error ? add.error.message : null;
 

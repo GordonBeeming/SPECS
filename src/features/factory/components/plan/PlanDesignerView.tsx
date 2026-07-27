@@ -6,6 +6,7 @@ import { Icon } from "@/shared/ui/Icon";
 import { IconPicker } from "@/shared/ui/IconPicker";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useNavStore } from "@/shared/nav-store";
+import type { ImportAllocation, RaiseExportTargetResult } from "@/features/planner/types";
 import { invoke } from "@/shared/tauri/invoke";
 import { AddMachineForm } from "../AddMachineForm";
 import { FactoryLedgerTable } from "../FactoryLedgerTable";
@@ -25,6 +26,8 @@ import {
 import { usePlanDesigner } from "../../hooks/usePlanDesigner";
 import { FirstProductModal } from "./FirstProductModal";
 import { PlanGraphCanvas } from "./PlanGraphCanvas";
+import { PlanSinkSummary } from "./PlanSinkSummary";
+import { PlanTotals } from "./PlanTotals";
 import { PlanTargetsBar } from "./PlanTargetsBar";
 import { errorLine, PlanWarningsBanner } from "./PlanWarningsBanner";
 import { SourcesPanel } from "./SourcesPanel";
@@ -60,6 +63,12 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
   const deleteFactory = useDeleteFactory();
 
   const [sourcesFor, setSourcesFor] = useState<string | null>(null);
+  // Every exporter raised while designing this factory, oldest first.
+  // Held here rather than in the Sources panel so the running cost of a
+  // re-scale survives closing the panel and moving to the next item;
+  // per-panel state would give five reports for five raises, each one
+  // replacing the last.
+  const [raiseLog, setRaiseLog] = useState<RaiseExportTargetResult[]>([]);
   // Left-side overlay panel: the per-item ledger and manual add-machine that
   // used to live in the (now removed) factory detail pane. Mutually exclusive
   // so they don't stack; independent of the right-hand SourcesPanel.
@@ -91,6 +100,8 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
         id: f.id,
         name: f.name,
         iconId: f.iconId ?? null,
+        worldX: f.worldX,
+        worldY: f.worldY,
       })),
     [factories.data],
   );
@@ -125,13 +136,16 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
     );
     return recipeNode && recipeNode.kind === "recipe" ? recipeNode.outputIpm : 0;
   };
-  const totalIpmFor = (itemId: string): number => {
-    const local = localIpmFor(itemId);
-    const importNode = graph?.nodes.find(
-      (n) => n.kind === "import" && n.itemId === itemId,
-    );
-    return local + (importNode && importNode.kind === "import" ? importNode.ipm : 0);
+  const importNodeFor = (itemId: string) => {
+    const node = graph?.nodes.find((n) => n.kind === "import" && n.itemId === itemId);
+    return node && node.kind === "import" ? node : null;
   };
+  const totalIpmFor = (itemId: string): number =>
+    localIpmFor(itemId) + (importNodeFor(itemId)?.ipm ?? 0);
+  const allocationsFor = (itemId: string): ImportAllocation[] =>
+    importNodeFor(itemId)?.allocations ?? [];
+  const unassignedIpmFor = (itemId: string): number =>
+    importNodeFor(itemId)?.unassignedIpm ?? 0;
 
   // Factories that draw from this one — the consequences list for the
   // delete confirmation.
@@ -293,11 +307,7 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
               SAM
             </button>
           )}
-          {graph && graph.nodes.length > 0 && (
-            <span>
-              {graph.totalMachines} machines · {graph.totalPowerMw.toFixed(1)} MW
-            </span>
-          )}
+          {graph && graph.nodes.length > 0 && <PlanTotals graph={graph} />}
           {designer.computing && <Loader2 className="h-4 w-4 animate-spin" aria-label="Computing" />}
           <span className="text-xs">
             {designer.saving ? "Saving…" : designer.dirty ? "Unsaved" : "Saved"}
@@ -457,6 +467,7 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
             {errorLine(computeError)}
           </div>
         )}
+        {graph && <PlanSinkSummary graph={graph} />}
         {graph && <PlanWarningsBanner warnings={graph.warnings} />}
       </div>
 
@@ -492,7 +503,9 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
           <div className="flex h-full items-center justify-center text-sm text-fg-muted">
             {designer.planQuery.isError
               ? "Couldn't load this factory's plan."
-              : "Computing the production graph…"}
+              : computeError
+                ? "This plan can't be computed right now — see the message above."
+                : "Computing the production graph…"}
           </div>
         )}
 
@@ -548,8 +561,19 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
               sources={working.imports.filter((i) => i.itemId === sourcesFor)}
               localIpm={localIpmFor(sourcesFor)}
               totalIpm={totalIpmFor(sourcesFor)}
+              allocations={allocationsFor(sourcesFor)}
+              unassignedIpm={unassignedIpmFor(sourcesFor)}
               factoryNames={factoryNames}
               allFactories={allFactories}
+              raiseLog={raiseLog}
+              onRaised={(result) => {
+                setRaiseLog((prev) => [...prev, result]);
+                // The raise moved another factory's export slice, which
+                // is an input to this plan's solve but not part of it —
+                // nothing here would trigger a re-solve on its own.
+                designer.recompute();
+              }}
+              onClearRaiseLog={() => setRaiseLog([])}
               onAddExternal={designer.addExternalSource}
               onRemoveSource={(itemId, indexWithinItem) => {
                 // SourcesPanel indexes within the item's rows.

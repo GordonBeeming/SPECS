@@ -3,13 +3,29 @@ import { ChevronDown, ChevronRight, MapPin } from "lucide-react";
 
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { useFactoryList } from "@/features/factory/hooks/useFactories";
+import type { FactoryPickerCandidate } from "@/features/map/transform";
+import { clampLoadoutMinerId, readLoadout } from "@/features/map/components/PlacementLoadout";
+import { useValidation } from "@/features/validation/hooks/useValidation";
+import type { Finding } from "@/features/validation/types";
 import { Card } from "@/shared/ui/Card";
 import { Icon } from "@/shared/ui/Icon";
 
 import { useResourceNodes } from "../hooks/useResources";
 import type { Purity, ResourceNodeRow } from "../types";
-import { NodeRow } from "./NodeRow";
+import { NodeRow, type PortCapacityFinding } from "./NodeRow";
 import { ResourceBudgetPanel } from "./ResourceBudgetPanel";
+
+/** Node-keyed lookup so a row can flag itself without re-deriving the
+ * belt/pipe-port math validation already ran — same source of truth
+ * the Validate panel reads, at the point where the clock is actually
+ * set instead of two screens away. */
+function portWarningsByNode(findings: Finding[]): Map<string, PortCapacityFinding> {
+  const map = new Map<string, PortCapacityFinding>();
+  for (const f of findings) {
+    if (f.kind === "claimOverPortCapacity") map.set(f.nodeId, f);
+  }
+  return map;
+}
 
 // Display order — broadly: solids first (alphabetical-ish by tier), then
 // fluids, then geysers last. Matches how the game introduces them in
@@ -82,11 +98,39 @@ export function ResourcesView() {
   const playthrough = useCurrentPlaythrough();
   const nodes = useResourceNodes();
   const factories = useFactoryList();
+  // Same sweep the Validate panel runs, reused here so the port-capacity
+  // flag reads from one source of truth instead of re-deriving the
+  // belt/pipe math. Gated on an active playthrough so Resources' empty
+  // state (below) doesn't trigger a sweep that has nothing to check.
+  const validation = useValidation(!!playthrough.data);
+  const portWarnings = useMemo(
+    () => portWarningsByNode(validation.data?.findings ?? []),
+    [validation.data],
+  );
   const [open, setOpen] = useState<Set<string>>(new Set(["Desc_OreIron_C"]));
 
   const groups = useMemo(
     () => (nodes.data ? groupNodes(nodes.data) : []),
     [nodes.data],
+  );
+
+  // Same "what the map is placing right now" preference the map's
+  // quick-claim (drag-to-bind) already honours — read once so the
+  // list's own quick-claim `+` defaults to it too, instead of always
+  // falling back to a node's first allowed extractor (Mk1). Clamped
+  // against this tier's unlocked marks the same way the map does, so
+  // a stale localStorage preference from a higher-tier playthrough
+  // can't produce an illegal claim here either.
+  const [loadout] = useState(readLoadout);
+  const minerMarkOptions = useMemo(() => {
+    const sample = (nodes.data ?? []).find((n) =>
+      n.allowedExtractors.some((e) => e.id.startsWith("Build_MinerMk")),
+    );
+    return sample?.allowedExtractors ?? [];
+  }, [nodes.data]);
+  const preferredMinerId = useMemo(
+    () => clampLoadoutMinerId(loadout, minerMarkOptions).minerId,
+    [loadout, minerMarkOptions],
   );
 
   if (!playthrough.data) {
@@ -205,6 +249,8 @@ export function ResourcesView() {
                       purity={purity}
                       rows={rows}
                       factories={factories.data ?? []}
+                      preferredMinerId={preferredMinerId}
+                      portWarnings={portWarnings}
                     />
                   ))}
                 </div>
@@ -219,10 +265,12 @@ export function ResourcesView() {
 interface PurityBucketProps {
   purity: Purity;
   rows: ResourceNodeRow[];
-  factories: { id: string; name: string }[];
+  factories: FactoryPickerCandidate[];
+  preferredMinerId: string | null;
+  portWarnings: Map<string, PortCapacityFinding>;
 }
 
-function PurityBucket({ purity, rows, factories }: PurityBucketProps) {
+function PurityBucket({ purity, rows, factories, preferredMinerId, portWarnings }: PurityBucketProps) {
   const claimed = rows.filter((r) => r.claim).length;
   return (
     <div className="border-b border-border last:border-b-0">
@@ -246,7 +294,14 @@ function PurityBucket({ purity, rows, factories }: PurityBucketProps) {
       </div>
       <ul className="flex flex-col divide-y divide-border">
         {rows.map((row, i) => (
-          <NodeRow key={row.id} row={row} factories={factories} index={i} />
+          <NodeRow
+            key={row.id}
+            row={row}
+            factories={factories}
+            index={i}
+            preferredMinerId={preferredMinerId}
+            portWarning={portWarnings.get(row.id)}
+          />
         ))}
       </ul>
     </div>

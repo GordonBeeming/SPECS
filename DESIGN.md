@@ -256,12 +256,26 @@ Layout, top to bottom:
 1. **Header bar** — back button, factory name, targets strip
    (chip per product: icon + name + inline ipm input + remove,
    plus "Add product" backed by the tier-grouped item
-   `FilterSelect`), totals (`N machines · X MW`), Save plan button
+   `FilterSelect`), totals, Save plan button
    (primary; dirty-state dot when unsaved edits exist).
-2. **Warnings banner** — amber strip listing supply gaps,
-   unsourced inputs and cap shortfalls. Warn, don't block: the
+   Totals read `N machines + M extractors · X MW`: the MW figure
+   includes the factory's bound extractors, so the count names them
+   too rather than letting the two numbers count different sets.
+   The extractor half only appears when there are any, and the
+   machine/extractor MW split sits in the tooltip.
+2. **Sink strip** — raised strip naming what the plan throws away
+   (`Sinking 145.5/min Petroleum Coke`), biggest first. In an oil
+   plan, how much is being sunk is the number that separates a
+   balanced refinery from one burning a third of its throughput, and
+   it must not require finding a node on the canvas. Neutral card
+   with an amber `Recycle` label, deliberately not the warnings
+   banner's amber wash — sinking surplus is a fact about the plan,
+   not a gap to close.
+3. **Warnings banner** — amber strip listing supply gaps,
+   unsourced inputs, cap shortfalls, and steps that need a tier the
+   playthrough hasn't reached. Warn, don't block: the
    plan still renders and still saves.
-3. **Canvas** — `@xyflow/react` + dagre (LR), one node per item.
+4. **Canvas** — `@xyflow/react` + dagre (LR), one node per item.
 
 Node cards (all 250 px wide, `tabular-nums` for rates):
 
@@ -292,12 +306,34 @@ Node cards (all 250 px wide, `tabular-nums` for rates):
 - **Sources panel** — docked right of the canvas per item: the
   local line ("Build it here", with a rate field that pins how much
   to build locally; empty = elastic remainder), external rows
-  (cap-editable, each with the source factory's icon), and a
-  searchable add-list in three named groups: factories whose
-  remaining export covers the whole need, factories exporting the
-  item but short, and everyone else ("plan it there later").
-  Remaining capacity = export − what others already draw; 0 stays
-  selectable. An uncapped source only delivers what its plan
+  (cap-editable, each with the source factory's icon and what the
+  last solve actually pulled from it), and a searchable add-list in
+  four named groups: factories whose remaining export covers the
+  whole need, factories that make it but haven't opened an export
+  slice, factories that make it but not enough, and everyone else
+  ("plan it there later"). Making the item is what earns a place in
+  the list, not declaring an export — a factory with the item fully
+  spare is a source you can have, and filing it under "plan it
+  there later" hides a working flow behind a screen nobody has a
+  reason to open. Remaining capacity = export − what others already
+  draw; 0 stays selectable.
+  Every row carries the way through with it. A factory that makes
+  enough and exports none offers **Export it**: one click opens the
+  slice and takes the source, no extra machines. One that would have
+  to build more offers **Raise target**. A source already in the list
+  gets the same affordance on its own row, asking for what it sends
+  now plus the whole uncovered gap (raising any one short source
+  closes it, so rows don't each ask for a share), and it lifts its
+  own cap when the cap is what's binding. Gaps under 0.05/min are
+  never mentioned, because they print as "0.0/min" and read as a
+  warning about nothing.
+  Each raise reports what it cost the exporter, wording a gap it
+  opened differently from one it merely widened, and a collapsed
+  tally holds the running cost of every raise in the session —
+  after five of them that total otherwise only exists on the
+  Validate screen. Accounting, never cascading edits: what closes an
+  upstream gap is the user's call.
+  An uncapped source only delivers what its plan
   actually offers — picking a factory that exports nothing leaves
   production local instead of tearing the local line to zero. An
   explicit cap is the user's override and wins regardless.
@@ -310,8 +346,13 @@ Node cards (all 250 px wide, `tabular-nums` for rates):
 - **Raw** (`raw:*`) — leaf card for mined/pumped items: demand vs
   claimed-node supply, success tone when covered, danger + icon
   when short.
-- **Byproduct** (`byproduct:*`) — muted sink card for surplus
-  outputs nobody consumes (no netting in v1; honesty over magic).
+- **Byproduct** (`byproduct:*`) — sink card for surplus outputs
+  nobody consumes (no netting in v1; honesty over magic). Warning
+  tone, heavier dashed border, `Recycle` glyph, full-strength item
+  name and rate: sunk output is throughput the factory is paying
+  for and discarding, so it's never the quietest card on the
+  canvas. A fluid surplus takes the danger tone instead — it can't
+  be sunk at all.
 
 The graph is computed by an **optimizer**, not a top-down recipe
 walk: a small linear program picks the recipe mix that minimises
@@ -329,6 +370,26 @@ the solver fails or blows its time budget (2 s, tunable via the
 `specs:solver:budget-ms` localStorage key until a settings page
 exists) the greedy single-recipe chain renders instead, with a
 banner line saying so.
+
+Tier gating follows the **whole input chain**, never a recipe's own
+`unlock_tier`: a recipe stamped Tier 5 whose ingredients don't ground
+out until Tier 7 is a Tier 7 recipe. The optimizer's candidates are
+gated on it, so a Tier 6 plan can't be handed a Tier 7 chain, and
+the product picker groups on it, so a product's heading is the tier
+it can really be made at (`Tier 7 — not unlocked yet` above the
+playthrough's tier, with an `above your tier` hint). Products above
+tier stay pickable (planning the endgame backwards is the point),
+and the plan then carries an above-tier warning naming the tier it
+needs and the steps that are out of reach. Alts count as available
+at their own unlock tier, matching how the planner already plans
+with alts before they're collected.
+
+Rate fields accept fractions (`step="any"`): 2.5/min Computers and
+37.5/min Screws are ordinary targets, and a whole-number step makes
+the browser cancel the submit before any handler runs — a dialog
+that silently refuses to close. Forms carrying a rate set
+`noValidate` and own the check themselves, so a rejected value
+always comes with a message.
 
 Each plan has a **SAM** toggle in the header
 (persisted in `factory_plan_option`): off by default, it removes

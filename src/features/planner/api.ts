@@ -4,6 +4,8 @@ import type {
   ExportOffer,
   ComputePlanResult,
   FactoryPlan,
+  ItemTier,
+  RaiseExportTargetResult,
   SavePlanInput,
   SavePlanResult,
   UnsourcedInput,
@@ -22,9 +24,27 @@ export const plannerApi = {
     invoke<UnsourcedInput[]>("list_unsourced_inputs"),
   listExportOffers: () =>
     invoke<ExportOffer[]>("list_export_offers"),
+  listItemTiers: () => invoke<ItemTier[]>("list_item_tiers"),
   assignImportSource: (importId: string, sourceFactoryId: string) =>
     invoke<SavePlanResult>("factory_plan_assign_import_source", {
       importId,
       sourceFactoryId,
+    }),
+  /** `neededIpm` is the spare the caller wants to exist for itself, not
+   * a delta — the backend recomputes the shortfall from current links
+   * and discounts `beneficiaryFactoryId`'s own draw, so a stale panel,
+   * a double click, or a top-up of a source you already import from
+   * can't stack raises. */
+  raiseExportTarget: (
+    factoryId: string,
+    itemId: string,
+    neededIpm: number,
+    beneficiaryFactoryId: string | null,
+  ) =>
+    invoke<RaiseExportTargetResult>("factory_plan_raise_export_target", {
+      factoryId,
+      itemId,
+      neededIpm,
+      beneficiaryFactoryId,
     }),
 };

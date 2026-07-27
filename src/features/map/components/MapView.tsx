@@ -48,6 +48,7 @@ import {
 
 import { MapLinksLayer } from "./MapLinksLayer";
 import {
+  clampLoadoutMinerId,
   PlacementLoadout,
   readLoadout,
   writeLoadout,
@@ -55,13 +56,17 @@ import {
 } from "./PlacementLoadout";
 import { WaterExtractorPin, WaterExtractorPopover } from "./WaterExtractors";
 import { ResourceBudgetPanel } from "@/features/resources/components/ResourceBudgetPanel";
+import type { PortCapacityFinding } from "@/features/resources/components/NodeRow";
+import { useValidation } from "@/features/validation/hooks/useValidation";
+import { floorClockPct } from "@/features/validation/clock";
 import { ClockInput } from "@/shared/ui/ClockInput";
 
 import mapAsset from "@/assets/map/satisfactory-map.webp";
 
-import { pctToWorld, worldToPct } from "../transform";
-import { claimDefaultExtractor } from "@/features/resources/display";
+import { factoryPickerOptions, pctToWorld, worldToPct, type FactoryPickerCandidate } from "../transform";
+import { claimDefaultExtractor, coordChip, extractorOptionLabel, nodeKindLabel } from "@/features/resources/display";
 import type { ResourceNodeRow, WaterExtractorGroup } from "@/features/resources/types";
+import { FilterSelect } from "@/shared/ui/FilterSelect";
 
 const PURITY_GLOW = {
   Pure: "0 0 0 2px rgba(250, 204, 21, 0.95), 0 0 12px 3px rgba(250, 204, 21, 0.55)",
@@ -79,6 +84,33 @@ const PURITY_GLOW = {
 function markerIconId(resourceItemId: string): string {
   if (resourceItemId === "Desc_Geyser_C") return "Build_GeneratorGeoThermal_C";
   return resourceItemId;
+}
+
+/**
+ * A node marker's tooltip/aria-label. A claimed node's marker is the
+ * map's only record of which factory that claim feeds — a bare
+ * "Iron Ore · Normal · 30 ipm" can't answer "which factory?" without
+ * opening the card, so a claimed node's tooltip names the factory and
+ * repeats the coordinates. Unclaimed nodes keep the plain bind hint;
+ * there's no claim to describe yet. Exported so a regression test can
+ * pin the exact string for a known node + claim.
+ */
+export function nodeTooltip(
+  node: Pick<
+    ResourceNodeRow,
+    "resourceItemName" | "purity" | "x" | "y" | "itemsPerMinute" | "claim" | "kind" | "resourceItemId"
+  >,
+  factoryNameById: Map<string, string>,
+): string {
+  const kindLabel = nodeKindLabel(node);
+  const base = kindLabel
+    ? `${node.resourceItemName} · ${node.purity} · ${kindLabel}`
+    : `${node.resourceItemName} · ${node.purity}`;
+  if (!node.claim) return `${base} · click to bind or drag onto a factory`;
+  const factoryLabel = node.claim.factoryId
+    ? factoryNameById.get(node.claim.factoryId) ?? "unknown factory"
+    : "no factory yet";
+  return `${base} · ${node.itemsPerMinute.toFixed(0)} ipm · ${coordChip(node.x, node.y)} · feeds ${factoryLabel}`;
 }
 
 // Image dimensions of the bundled WebP. Must stay in lockstep with
@@ -196,14 +228,27 @@ export function MapView() {
       } catch {}
     }, 150);
   };
+  // Live zoom scale, tracked so node markers can counter-scale
+  // themselves — see markerScreenScale below. Rounded to 2 decimals
+  // so a continuous wheel/pinch gesture doesn't force a re-render of
+  // every marker on every sub-pixel tick; the resulting steps are
+  // imperceptible.
+  const [zoomScale, setZoomScale] = useState(initialTransform?.scale ?? DEFAULT_SCALE);
 
   // Filter state survives reloads via localStorage — the player set
   // these to suit how they're working, surfacing a fresh default
   // every launch would be a step back. Stored globally (not per-
   // playthrough) because filter intent travels with the user, not
   // their save file.
+  //
+  // Claimed nodes default to visible: hiding them by default made a
+  // claim disappear from the map — and therefore unreachable to view,
+  // edit or unclaim — the moment it was made, with no cue that a
+  // "Show claimed nodes too" toggle exists to bring it back. The
+  // toggle survives as an opt-out for players who want to declutter
+  // while hunting fresh nodes.
   const [showClaimedToo, setShowClaimedToo] = useState(() =>
-    readBool(STORAGE.showClaimed, false),
+    readBool(STORAGE.showClaimed, true),
   );
   const [hiddenResources, setHiddenResourcesState] = useState<Set<string>>(() =>
     new Set(readStringArray(STORAGE.hiddenResources)),
@@ -241,6 +286,26 @@ export function MapView() {
     setLoadoutState(next);
     writeLoadout(next);
   };
+  // Tier-eligible miner marks for the placement loadout, sourced from
+  // any real miner-ore row's (already tier-filtered server-side)
+  // allowedExtractors — every such row shares the same list, so one
+  // sample is the whole map's answer. Oil seeps carry a single
+  // Oil-Extractor option instead of miner marks, hence the id check.
+  const minerMarkOptions = useMemo(() => {
+    const sample = (nodes.data ?? []).find((n) =>
+      n.allowedExtractors.some((e) => e.id.startsWith("Build_MinerMk")),
+    );
+    return sample?.allowedExtractors ?? [];
+  }, [nodes.data]);
+  // The loadout as it should actually be used: the persisted preference
+  // when it's still tier-eligible, otherwise the best mark the
+  // playthrough has actually reached. Corrects a stale `localStorage`
+  // mark (e.g. carried over from a higher-tier playthrough, or from
+  // before this gate existed) without an effect + re-render round trip.
+  const effectiveLoadout = useMemo(
+    () => clampLoadoutMinerId(loadout, minerMarkOptions),
+    [loadout, minerMarkOptions],
+  );
   // Armed water placement: the next map click drops a group there.
   // The cursor itself becomes a droplet so the mode is unmissable.
   const [placingWater, setPlacingWater] = useState(false);
@@ -376,6 +441,25 @@ export function MapView() {
     () => new Map(items.data?.map((i) => [i.id, i.name]) ?? []),
     [items.data],
   );
+
+  const factoryNameById = useMemo(
+    () => new Map((factories.data ?? []).map((f) => [f.id, f.name])),
+    [factories.data],
+  );
+
+  // Same port-capacity sweep the Resources row and Validate panel read
+  // from — reused here (never re-derived) so a claim edited on the map
+  // can flag "over port cap" too, instead of only being caught once the
+  // user leaves the map. `enabled` skips the sweep entirely until
+  // there's an active playthrough to check.
+  const validation = useValidation(!!playthrough.data);
+  const portWarningsByNode = useMemo(() => {
+    const map = new Map<string, PortCapacityFinding>();
+    for (const f of validation.data?.findings ?? []) {
+      if (f.kind === "claimOverPortCapacity") map.set(f.nodeId, f);
+    }
+    return map;
+  }, [validation.data]);
 
   // Screen → map-pixel conversion for events that don't originate on a
   // map-anchored element (right-click anywhere, popover drag handles).
@@ -552,7 +636,11 @@ export function MapView() {
               controls are minimal, so we render our own to keep the
               brand styling consistent. */}
           <div className="absolute right-14 top-3 z-20">
-            <PlacementLoadout loadout={loadout} onChange={setLoadout} />
+            <PlacementLoadout
+              loadout={effectiveLoadout}
+              onChange={setLoadout}
+              markOptions={minerMarkOptions}
+            />
           </div>
 
           <div className="absolute right-3 top-3 z-20 flex flex-col gap-1">
@@ -620,6 +708,22 @@ export function MapView() {
             </button>
           </div>
 
+          {/* The armed toolbar button's own colour change is easy to
+              miss — it's a small border/background tint on a button
+              that's already one of several in the same corner. This
+              banner is the state's unmissable record: present exactly
+              while a click will place water, gone the instant it
+              won't (Esc, a second click on the tool, or a completed
+              placement), so losing the mode is never silent. */}
+          {placingWater && (
+            <div
+              role="status"
+              className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 whitespace-nowrap rounded-full border border-accent bg-accent px-3 py-1.5 text-xs font-medium text-white shadow-lg"
+            >
+              Placing water extractors — click the map · Esc to cancel
+            </div>
+          )}
+
           <div ref={containerRef} className="absolute inset-0 bg-black/40">
             <TransformWrapper
               ref={wrapRef}
@@ -628,7 +732,11 @@ export function MapView() {
               initialScale={initialTransform?.scale ?? DEFAULT_SCALE}
               initialPositionX={initialTransform?.x ?? 0}
               initialPositionY={initialTransform?.y ?? 0}
-              onTransform={(ref: ReactZoomPanPinchRef) => persistTransform(ref.state)}
+              onTransform={(ref: ReactZoomPanPinchRef) => {
+                persistTransform(ref.state);
+                const rounded = Math.round(ref.state.scale * 100) / 100;
+                setZoomScale((prev) => (prev === rounded ? prev : rounded));
+              }}
               limitToBounds={false}
               // Wheel step is the multiplier per tick — the lib's
               // default 0.2 is huge on a Mac trackpad (every scroll
@@ -730,115 +838,176 @@ export function MapView() {
                     const { xPct, yPct } = worldToPct(node.x, node.y);
                     const selected = selectedNodeId === node.id;
                     const size = 24;
-                    const tooltip = `${node.resourceItemName} · ${node.purity}${
-                      node.claim
-                        ? ` · ${node.itemsPerMinute.toFixed(0)} ipm`
-                        : " · click to bind or drag onto a factory"
-                    }`;
+                    const tooltip = nodeTooltip(node, factoryNameById);
                     return (
-                      <button
-                        type="button"
+                      <div
                         key={node.id}
-                        aria-label={tooltip}
-                        title={tooltip}
-                        className="specs-map-marker absolute -translate-x-1/2 -translate-y-1/2 inline-flex items-center justify-center rounded-full bg-bg-raised transition-transform hover:scale-125"
-                        onClick={(e) => {
-                          // mousedown→up already toggles the popover
-                          // — stop the synthetic click bubbling so the
-                          // map wrapper's onClick={setSelectedNodeId(null)}
-                          // doesn't immediately clear what we just set.
-                          e.stopPropagation();
-                        }}
+                        className="specs-map-marker absolute"
                         style={{
                           left: `${xPct * MAP_W}px`,
                           top: `${yPct * MAP_H}px`,
-                          width: size,
-                          height: size,
-                          boxShadow:
-                            PURITY_GLOW[node.purity as keyof typeof PURITY_GLOW],
-                          opacity: node.claim ? 1 : 0.78,
-                          outline: selected
-                            ? "2px solid var(--color-primary)"
-                            : undefined,
-                          outlineOffset: 3,
+                          // Counters the map's own CSS zoom transform
+                          // so the marker's on-screen footprint holds
+                          // at the size it renders today at the
+                          // default view, instead of scaling in
+                          // lockstep with the coordinate spread. That
+                          // lockstep is what made tight clusters (a
+                          // resource well's satellites) impossible to
+                          // separate by zooming — the ratio between
+                          // marker size and gap never changed. The
+                          // gap between markers still grows normally
+                          // with zoom (it's just distance in world
+                          // pixels), so past some zoom level a fixed-
+                          // size marker no longer covers its
+                          // neighbour.
+                          transform: `translate(-50%, -50%) scale(${DEFAULT_SCALE / zoomScale})`,
                         }}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          // Anchor in map-pixel space so the ghost line
-                          // starts exactly at the node centre.
-                          const fromX = xPct * MAP_W;
-                          const fromY = yPct * MAP_H;
-                          const startClientX = e.clientX;
-                          const startClientY = e.clientY;
-                          let armed = false;
-                          const onMove = (ev: MouseEvent) => {
-                            if (
-                              !armed &&
-                              Math.hypot(
-                                ev.clientX - startClientX,
-                                ev.clientY - startClientY,
-                              ) >= CLICK_THRESHOLD_PX
-                            ) {
-                              armed = true;
-                              setLinkingNode({ nodeId: node.id, fromX, fromY });
-                            }
-                            if (!armed) return;
-                            // Convert screen delta back to map-pixel
-                            // space via the current zoom scale.
-                            const scale = wrapRef.current?.state.scale ?? 1;
-                            setLinkCursor({
-                              x: fromX + (ev.clientX - startClientX) / scale,
-                              y: fromY + (ev.clientY - startClientY) / scale,
-                            });
-                          };
-                          const onUp = () => {
-                            window.removeEventListener("mousemove", onMove);
-                            window.removeEventListener("mouseup", onUp);
-                            if (!armed) {
-                              // Plain click — fall through to existing
-                              // popover behaviour.
-                              setSelectedNodeId(
-                                node.id === selectedNodeId ? null : node.id,
+                      >
+                        <button
+                          type="button"
+                          aria-label={tooltip}
+                          title={tooltip}
+                          className="inline-flex items-center justify-center rounded-full bg-bg-raised transition-transform hover:scale-125"
+                          onClick={(e) => {
+                            // mousedown→up already toggles the popover
+                            // — stop the synthetic click bubbling so the
+                            // map wrapper's onClick={setSelectedNodeId(null)}
+                            // doesn't immediately clear what we just set.
+                            e.stopPropagation();
+                          }}
+                          style={{
+                            width: size,
+                            height: size,
+                            boxShadow:
+                              PURITY_GLOW[node.purity as keyof typeof PURITY_GLOW],
+                            opacity: node.claim ? 1 : 0.78,
+                            outline: selected
+                              ? "2px solid var(--color-primary)"
+                              : undefined,
+                            outlineOffset: 3,
+                            // A factory pin's rendered footprint (icon +
+                            // name label) is routinely several times a
+                            // node's 24×24 box, and factories are meant
+                            // to sit right on the cluster they claim
+                            // from — so without an explicit stacking
+                            // order, a pin fully swallows every click on
+                            // the nodes underneath it. Nodes need to win
+                            // that contest: claiming/inspecting a node is
+                            // the finer-grained, more frequent action,
+                            // and the factory pin stays reachable from
+                            // whatever part of its box isn't covered by a
+                            // node. Factory/water pins are left at the
+                            // default stacking level, so this only
+                            // changes node-vs-pin priority, not their
+                            // order relative to each other.
+                            zIndex: 2,
+                          }}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            // Water placement is armed and wins over
+                            // whatever's under the cursor — without this,
+                            // a node sitting where the player meant to
+                            // place water swallows the click (the node's
+                            // own handlers stop it reaching the map
+                            // wrapper's onClick, where placement normally
+                            // happens) and opens the node card instead,
+                            // with the tool silently still armed or not
+                            // depending on what the player does next.
+                            // Placing here, the same as an empty-map
+                            // click, means a click while armed always
+                            // does the thing the banner says it will.
+                            if (placingWater) {
+                              const map = clientToMap(e.clientX, e.clientY);
+                              if (!map) return;
+                              const { worldX, worldY } = pctToWorld(map.x / MAP_W, map.y / MAP_H);
+                              setPlacingWater(false);
+                              setWaterGroup.mutate(
+                                {
+                                  worldX,
+                                  worldY,
+                                  count: loadout.waterCount,
+                                  clockPct: loadout.waterClockPct,
+                                },
+                                { onSuccess: (g) => setSelectedWaterGroupId(g.id) },
                               );
                               return;
                             }
-                            const targetFactoryId = linkHoverFactoryIdRef.current;
-                            setLinkingNode(null);
-                            setLinkCursor(null);
-                            setLinkHoverFactoryId(null);
-                            if (targetFactoryId) {
-                              // Bind the node to that factory. Unclaimed
-                              // miner nodes take the placement loadout
-                              // (current mark + clock); existing claims
-                              // keep their own miner/clock — coerced
-                              // through the node's allowed list, so a
-                              // stale extractor (Mk2 on an oil node)
-                              // repairs on bind instead of failing the
-                              // server's validation.
-                              const existing = node.claim;
-                              void setClaim.mutateAsync({
-                                nodeId: node.id,
-                                minerId: claimDefaultExtractor(
-                                  node,
-                                  existing?.minerId ?? loadout.minerId,
-                                ),
-                                clockPct: existing?.clockPct ?? loadout.minerClockPct,
-                                factoryId: targetFactoryId,
-                                notes: existing?.notes ?? null,
+                            // Anchor in map-pixel space so the ghost line
+                            // starts exactly at the node centre.
+                            const fromX = xPct * MAP_W;
+                            const fromY = yPct * MAP_H;
+                            const startClientX = e.clientX;
+                            const startClientY = e.clientY;
+                            let armed = false;
+                            const onMove = (ev: MouseEvent) => {
+                              if (
+                                !armed &&
+                                Math.hypot(
+                                  ev.clientX - startClientX,
+                                  ev.clientY - startClientY,
+                                ) >= CLICK_THRESHOLD_PX
+                              ) {
+                                armed = true;
+                                setLinkingNode({ nodeId: node.id, fromX, fromY });
+                              }
+                              if (!armed) return;
+                              // Convert screen delta back to map-pixel
+                              // space via the current zoom scale.
+                              const scale = wrapRef.current?.state.scale ?? 1;
+                              setLinkCursor({
+                                x: fromX + (ev.clientX - startClientX) / scale,
+                                y: fromY + (ev.clientY - startClientY) / scale,
                               });
-                            }
-                          };
-                          window.addEventListener("mousemove", onMove);
-                          window.addEventListener("mouseup", onUp);
-                        }}
-                      >
-                        <Icon
-                          itemId={markerIconId(node.resourceItemId)}
-                          alt=""
-                          className="h-4 w-4"
-                        />
-                      </button>
+                            };
+                            const onUp = () => {
+                              window.removeEventListener("mousemove", onMove);
+                              window.removeEventListener("mouseup", onUp);
+                              if (!armed) {
+                                // Plain click — fall through to existing
+                                // popover behaviour.
+                                setSelectedNodeId(
+                                  node.id === selectedNodeId ? null : node.id,
+                                );
+                                return;
+                              }
+                              const targetFactoryId = linkHoverFactoryIdRef.current;
+                              setLinkingNode(null);
+                              setLinkCursor(null);
+                              setLinkHoverFactoryId(null);
+                              if (targetFactoryId) {
+                                // Bind the node to that factory. Unclaimed
+                                // miner nodes take the placement loadout
+                                // (current mark + clock); existing claims
+                                // keep their own miner/clock — coerced
+                                // through the node's allowed list, so a
+                                // stale extractor (Mk2 on an oil node)
+                                // repairs on bind instead of failing the
+                                // server's validation.
+                                const existing = node.claim;
+                                void setClaim.mutateAsync({
+                                  nodeId: node.id,
+                                  minerId: claimDefaultExtractor(
+                                    node,
+                                    existing?.minerId ?? effectiveLoadout.minerId,
+                                  ),
+                                  clockPct: existing?.clockPct ?? effectiveLoadout.minerClockPct,
+                                  factoryId: targetFactoryId,
+                                  notes: existing?.notes ?? null,
+                                });
+                              }
+                            };
+                            window.addEventListener("mousemove", onMove);
+                            window.addEventListener("mouseup", onUp);
+                          }}
+                        >
+                          <Icon
+                            itemId={markerIconId(node.resourceItemId)}
+                            alt=""
+                            className="h-4 w-4"
+                          />
+                        </button>
+                      </div>
                     );
                   })}
 
@@ -920,6 +1089,19 @@ export function MapView() {
                             setLinkHoverFactoryId(null);
                         }}
                         currentScale={() => wrapRef.current?.state.scale ?? 1}
+                        onPanBy={(dxScreen, dyScreen) => {
+                          const state = wrapRef.current?.state;
+                          if (!state) return;
+                          // animationTime 0 — the whole point is 1:1
+                          // tracking with the cursor, an eased catch-up
+                          // would fight the drag instead of following it.
+                          wrapRef.current?.setTransform(
+                            state.positionX + dxScreen,
+                            state.positionY + dyScreen,
+                            state.scale,
+                            0,
+                          );
+                        }}
                       />
                     );
                   })}
@@ -1063,41 +1245,48 @@ export function MapView() {
 
           {/* Right-click quick-create. Anchored at the cursor in
               container space so it doesn't scale with zoom. */}
-          {quickCreate && (
-            <div
-              className="absolute z-30"
-              style={{
-                left: Math.min(quickCreate.screenX, (containerRef.current?.clientWidth ?? 600) - 280),
-                top: Math.min(quickCreate.screenY, (containerRef.current?.clientHeight ?? 400) - 140),
-              }}
-            >
-              <QuickCreateFactoryPopover
-                pending={createFactory.isPending}
-                onCreate={(name) => {
-                  const { worldX, worldY } = pctToWorld(
-                    quickCreate.mapX / MAP_W,
-                    quickCreate.mapY / MAP_H,
-                  );
-                  createFactory.mutate(
-                    { name },
-                    {
-                      onSuccess: (factory) => {
-                        void factoryApi
-                          .setPosition({ id: factory.id, worldX, worldY })
-                          .finally(() => factories.refetch());
-                        setQuickCreate(null);
-                        // Straight into planning: the designer opens
-                        // with the product picker ready and a
-                        // "Cancel & delete" escape hatch.
-                        openPlanDesigner(factory.id, true);
-                      },
-                    },
-                  );
+          {quickCreate && (() => {
+            // Computed once and reused for both the popover's coordinate
+            // readout and the actual placement — siting is the entire
+            // point of placing from the map, so the popover has to say
+            // where "here" is before the player commits.
+            const { worldX, worldY } = pctToWorld(
+              quickCreate.mapX / MAP_W,
+              quickCreate.mapY / MAP_H,
+            );
+            return (
+              <div
+                className="absolute z-30"
+                style={{
+                  left: Math.min(quickCreate.screenX, (containerRef.current?.clientWidth ?? 600) - 280),
+                  top: Math.min(quickCreate.screenY, (containerRef.current?.clientHeight ?? 400) - 140),
                 }}
-                onClose={() => setQuickCreate(null)}
-              />
-            </div>
-          )}
+              >
+                <QuickCreateFactoryPopover
+                  pending={createFactory.isPending}
+                  coordLabel={coordChip(worldX, worldY)}
+                  onCreate={(name) => {
+                    createFactory.mutate(
+                      { name },
+                      {
+                        onSuccess: (factory) => {
+                          void factoryApi
+                            .setPosition({ id: factory.id, worldX, worldY })
+                            .finally(() => factories.refetch());
+                          setQuickCreate(null);
+                          // Straight into planning: the designer opens
+                          // with the product picker ready and a
+                          // "Cancel & delete" escape hatch.
+                          openPlanDesigner(factory.id, true);
+                        },
+                      },
+                    );
+                  }}
+                  onClose={() => setQuickCreate(null)}
+                />
+              </div>
+            );
+          })()}
 
           {/* Whole-map resource budget dock. Shares the bottom-left
               corner with the node popover — the popover wins while a
@@ -1165,8 +1354,9 @@ export function MapView() {
                 // and would be saved onto the freshly-picked node.
                 key={selectedNode.id}
                 node={selectedNode}
-                loadout={loadout}
+                loadout={effectiveLoadout}
                 factories={factories.data ?? []}
+                portWarning={portWarningsByNode.get(selectedNode.id)}
                 onClaim={(input) => {
                   void setClaim
                     .mutateAsync({
@@ -1268,6 +1458,13 @@ interface FactoryPinProps {
   /** Reads the current zoom scale from the wrapper so pixel deltas
       from drag events translate into world deltas correctly. */
   currentScale: () => number;
+  /** Pans the map by a raw screen-pixel delta. The pin sits on the
+   * wrapper's `panning.excluded` list (a pin has to win clicks over
+   * the pan gesture), so a plain drag starting here would otherwise
+   * be swallowed with no effect at all — this re-implements panning
+   * by hand for exactly that case, so "drag to pan" still works
+   * everywhere the map's own instructions say it does. */
+  onPanBy: (dxScreen: number, dyScreen: number) => void;
 }
 
 // Mousedown→up movement under this distance (in screen pixels) counts
@@ -1425,6 +1622,7 @@ function FactoryPin({
   onLinkHoverEnter,
   onLinkHoverLeave,
   currentScale,
+  onPanBy,
 }: FactoryPinProps) {
   const { xPct, yPct } = worldToPct(factory.worldX, factory.worldY);
   const startRef = useRef<{
@@ -1450,7 +1648,7 @@ function FactoryPin({
           : "border-primary bg-bg-raised/95 hover:bg-bg-raised"
       }`}
       style={{ left: `${px}px`, top: `${py}px` }}
-      title={`${factory.name} — click for details, double-click to open the plan, drag to move`}
+      title={`${factory.name} — click for details, double-click to open the plan, drag to pan the map, Alt/Option-drag to move`}
       onDoubleClick={(e) => {
         e.stopPropagation();
         onOpenPlan();
@@ -1460,6 +1658,13 @@ function FactoryPin({
       onMouseDown={(e) => {
         e.preventDefault();
         e.stopPropagation();
+        // A pin's hit area is the whole label pill, and the map's own
+        // instruction line puts "drag to pan" everywhere — a plain
+        // drag that happens to start on a pin has to keep panning,
+        // not silently relocate the factory. Moving needs a deliberate
+        // Alt/Option hold, captured once at mousedown so releasing the
+        // key mid-drag can't flip which gesture is in progress.
+        const movesFactory = e.altKey;
         startRef.current = {
           x: baseX,
           y: baseY,
@@ -1467,6 +1672,8 @@ function FactoryPin({
           clientY: e.clientY,
           moved: false,
         };
+        let lastClientX = e.clientX;
+        let lastClientY = e.clientY;
         const onMove = (ev: MouseEvent) => {
           const s = startRef.current;
           if (!s) return;
@@ -1477,12 +1684,21 @@ function FactoryPin({
           // through a no-op "drag" before re-rendering at its origin.
           if (!s.moved && Math.hypot(dxScreen, dyScreen) >= CLICK_THRESHOLD_PX) {
             s.moved = true;
-            onDragStart();
+            if (movesFactory) onDragStart();
           }
           if (s.moved) {
-            const scale = currentScale();
-            setHoverPos({ x: s.x + dxScreen / scale, y: s.y + dyScreen / scale });
+            if (movesFactory) {
+              const scale = currentScale();
+              setHoverPos({ x: s.x + dxScreen / scale, y: s.y + dyScreen / scale });
+            } else {
+              // Same wrapper the map's own panning would use — this is
+              // panning by hand for the one surface (a pin) the library
+              // excludes from its own drag-to-pan handling.
+              onPanBy(ev.clientX - lastClientX, ev.clientY - lastClientY);
+            }
           }
+          lastClientX = ev.clientX;
+          lastClientY = ev.clientY;
         };
         const onUp = (ev: MouseEvent) => {
           const s = startRef.current;
@@ -1494,6 +1710,10 @@ function FactoryPin({
             // Plain click — open the factory card popover instead.
             setHoverPos(null);
             onClick();
+            return;
+          }
+          if (!movesFactory) {
+            // Panned the map; the factory itself never moved.
             return;
           }
           const scale = currentScale();
@@ -1543,19 +1763,29 @@ function FactoryPin({
 
 interface QuickCreateFactoryPopoverProps {
   pending: boolean;
+  /** Where "here" is, formatted the same way every other coordinate
+   * readout on the map is (`coordChip`) — siting is the whole point of
+   * placing from the map, so this has to be checkable before Create. */
+  coordLabel: string;
   onCreate: (name: string) => void;
   onClose: () => void;
 }
 
 /** Right-click → name → pin. The fastest path from "a factory goes
- * here" to a pin on the map; planning what it makes can come later. */
-function QuickCreateFactoryPopover({ pending, onCreate, onClose }: QuickCreateFactoryPopoverProps) {
+ * here" to a pin on the map; planning what it makes can come later.
+ * Exported so a regression test can pin the coordinate readout
+ * without having to drive a real right-click through the pan/zoom
+ * wrapper. */
+export function QuickCreateFactoryPopover({ pending, coordLabel, onCreate, onClose }: QuickCreateFactoryPopoverProps) {
   const [name, setName] = useState("");
   const valid = name.trim().length > 0;
   return (
     <Card className="w-[260px] p-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-semibold text-fg">New factory here</span>
+        <div className="min-w-0">
+          <span className="text-sm font-semibold text-fg">New factory here</span>
+          <div className="text-[11px] tabular-nums text-fg-muted">{coordLabel}</div>
+        </div>
         <button
           type="button"
           onClick={onClose}
@@ -1589,6 +1819,20 @@ function QuickCreateFactoryPopover({ pending, onCreate, onClose }: QuickCreateFa
       </div>
     </Card>
   );
+}
+
+/**
+ * Machine count comes from the factory record's `machineCount` (the sum of
+ * every recipe node's own `count`), not the number of recipe-node rows —
+ * a factory can have four recipe nodes that add up to eleven machines.
+ * Exported so a regression test can pin a factory where those two numbers
+ * differ.
+ */
+export function formatFactoryPopoverSummary(
+  machineCount: number,
+  powerMw: number,
+): string {
+  return `${machineCount} machine${machineCount === 1 ? "" : "s"} · ${powerMw.toFixed(1)} MW`;
 }
 
 interface FactoryPopoverProps {
@@ -1711,10 +1955,15 @@ function FactoryPopover({
               {f?.name ?? "Loading…"}
             </div>
             <div className="text-[11px] text-fg-muted tabular-nums">
-              {detail.data
-                ? `${detail.data.machines.length} machine${detail.data.machines.length === 1 ? "" : "s"} · ${ledger?.powerMw.toFixed(1)} MW`
+              {detail.data && ledger
+                ? formatFactoryPopoverSummary(detail.data.factory.machineCount, ledger.powerMw)
                 : ""}
             </div>
+            {/* Same coordinate chip "New factory here" (#97) and node
+                cards already carry — without it there's no way to check
+                where a factory actually is, or confirm a drag landed
+                (or was undone) where intended. */}
+            {f && <div className="text-[11px] tabular-nums text-fg-muted">{coordChip(f.worldX, f.worldY)}</div>}
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -1898,7 +2147,7 @@ interface NodePopoverProps {
   node: ResourceNodeRow;
   /** Placement loadout — initial miner/clock for unclaimed miner nodes. */
   loadout: MapLoadout;
-  factories: { id: string; name: string }[];
+  factories: FactoryPickerCandidate[];
   onClaim: (input: {
     minerId: string | null;
     clockPct: number;
@@ -1907,9 +2156,16 @@ interface NodePopoverProps {
   }) => void;
   onRelease: () => void;
   onClose: () => void;
+  /** Validate's port-capacity finding for this node, if any — same
+   * check as the Resources row's inline flag, read from the one sweep
+   * both surfaces share instead of a second copy of the belt/pipe
+   * capacity lookup. Only meaningful once the node actually has a
+   * committed claim — the finding is derived from persisted state,
+   * not from whatever's still being typed into this card. */
+  portWarning?: PortCapacityFinding;
 }
 
-function NodePopover({ node, loadout, factories, onClaim, onRelease, onClose }: NodePopoverProps) {
+function NodePopover({ node, loadout, factories, onClaim, onRelease, onClose, portWarning }: NodePopoverProps) {
   // claimDefaultExtractor coerces stale claims (e.g. a Mk2 saved on an
   // oil node) to the node's valid building, so Update repairs them.
   const [minerId, setMinerId] = useState<string>(
@@ -1918,7 +2174,8 @@ function NodePopover({ node, loadout, factories, onClaim, onRelease, onClose }: 
   const [clockPct, setClockPct] = useState(
     node.claim?.clockPct ?? (node.kind === "miner_node" ? loadout.minerClockPct : 100),
   );
-  const [factoryId, setFactoryId] = useState(node.claim?.factoryId ?? "");
+  const [factoryId, setFactoryId] = useState<string | null>(node.claim?.factoryId ?? null);
+  const kindLabel = nodeKindLabel(node);
 
   return (
     <Card className="w-[300px] p-3">
@@ -1927,11 +2184,35 @@ function NodePopover({ node, loadout, factories, onClaim, onRelease, onClose }: 
           <div className="flex items-center gap-2 text-sm font-semibold text-fg">
             <Icon itemId={markerIconId(node.resourceItemId)} className="h-4 w-4" />
             {node.resourceItemName} · {node.purity}
+            {kindLabel && (
+              <span className="rounded-full border border-border bg-bg px-1.5 py-0.5 text-[10px] font-normal text-fg-muted">
+                {kindLabel}
+              </span>
+            )}
           </div>
-          <div className="mt-0.5 text-[11px] text-fg-muted">
-            {(node.x / 100000).toFixed(1)}km E ·{" "}
-            {(node.y / 100000).toFixed(1)}km N
+          <div className="mt-0.5 flex items-center gap-2 text-[11px] text-fg-muted">
+            <span>{coordChip(node.x, node.y)}</span>
+            {/* Same rate readout the Resources row editor's claim chip
+                carries (`ipmLabel`) — this card is meant to be the
+                secondary surface for the same decision, not a worse-
+                supported one. */}
+            {node.itemsPerMinute > 0 && (
+              <span className="font-medium text-fg">{Math.round(node.itemsPerMinute)} ipm</span>
+            )}
           </div>
+          {/* Only a committed claim can have a finding — the sweep
+              this reads runs against persisted claims, not whatever
+              clock is still being typed into the form below. Same
+              wording as the Resources row's pill so the same problem
+              reads identically wherever it's seen. */}
+          {node.claim && portWarning && (
+            <div
+              className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-[10px] text-warning"
+              title={`Outputs ${portWarning.outputIpm.toFixed(1)}${portWarning.isFluid ? " m³/min" : "/min"} — its port caps at ${portWarning.capacityIpm.toFixed(1)}${portWarning.isFluid ? " m³/min" : "/min"} (Mk.${portWarning.capacityMark} ${portWarning.isFluid ? "pipe" : "belt"}), clock to ${floorClockPct(portWarning.maxFittingClockPct)}% to fit`}
+            >
+              over port cap
+            </div>
+          )}
         </div>
         <button
           type="button"
@@ -1954,7 +2235,7 @@ function NodePopover({ node, loadout, factories, onClaim, onRelease, onClose }: 
             >
               {node.allowedExtractors.map((e) => (
                 <option key={e.id} value={e.id}>
-                  {e.name}
+                  {extractorOptionLabel(e)}
                 </option>
               ))}
             </select>
@@ -1968,7 +2249,11 @@ function NodePopover({ node, loadout, factories, onClaim, onRelease, onClose }: 
                 value={clockPct}
                 onChange={setClockPct}
                 slider={false}
-                ariaLabel="Node clock percent"
+                // Matches the identical control in the Resources list
+                // (NodeRow's ClaimEditor) — same action, same label, so
+                // an accessibility audit doesn't read them as two
+                // different controls.
+                ariaLabel="Claim clock percent"
               />
             </div>
           </label>
@@ -1977,18 +2262,16 @@ function NodePopover({ node, loadout, factories, onClaim, onRelease, onClose }: 
 
       <label className="mt-2 block text-xs">
         <span className="text-fg-muted">Factory</span>
-        <select
-          value={factoryId}
-          onChange={(e) => setFactoryId(e.target.value)}
-          className="mt-1 h-7 w-full rounded-md border border-border bg-bg px-1.5 text-[12px] text-fg outline-none focus:border-primary"
-        >
-          <option value="">— none —</option>
-          {factories.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.name}
-            </option>
-          ))}
-        </select>
+        <div className="mt-1">
+          <FilterSelect
+            compact
+            ariaLabel="Factory"
+            placeholder="— none —"
+            options={factoryPickerOptions(node, factories)}
+            value={factoryId}
+            onChange={setFactoryId}
+          />
+        </div>
       </label>
 
       <div className="mt-3 flex items-center justify-end gap-2">
@@ -2002,7 +2285,7 @@ function NodePopover({ node, loadout, factories, onClaim, onRelease, onClose }: 
             onClaim({
               minerId: minerId === "" ? null : minerId,
               clockPct,
-              factoryId: factoryId.trim() === "" ? null : factoryId,
+              factoryId,
               notes: null,
             })
           }

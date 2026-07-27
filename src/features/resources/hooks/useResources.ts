@@ -74,6 +74,13 @@ function invalidate(client: ReturnType<typeof useQueryClient>) {
   // moment a node is bound or released without the user having to
   // re-click the factory.
   client.invalidateQueries({ queryKey: ["factory"] });
+  // The Resources screen's inline port-capacity flag reads the same
+  // sweep the Validate panel runs (`useValidation`). Its own hook
+  // deliberately never polls, so a claim edit has to invalidate it
+  // explicitly — this only refetches while something has it mounted
+  // (React Query skips inactive queries), so it's a no-op everywhere
+  // else.
+  client.invalidateQueries({ queryKey: ["validation-sweep"] });
 }
 
 export function useSetNodeClaim() {

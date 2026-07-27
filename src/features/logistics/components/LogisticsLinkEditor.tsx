@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 
 import { useFactoryList } from "@/features/factory/hooks/useFactories";
 import { useItems } from "@/features/library/hooks/useLibrary";
+import { factoryDistanceMeters } from "@/features/map/transform";
 import { Button } from "@/shared/ui/Button";
 import { FilterSelect } from "@/shared/ui/FilterSelect";
 
@@ -49,6 +50,9 @@ export function LogisticsLinkEditor({ link, onClose, onSaved }: LogisticsLinkEdi
   const [itemId, setItemId] = useState<string | null>(link?.itemId ?? null);
   const [ipmText, setIpmText] = useState<string>(link ? String(link.itemsPerMinute) : "");
   const [distanceText, setDistanceText] = useState<string>(link?.distanceM != null ? String(link.distanceM) : "");
+  // A stored/typed distance is the user's word over the map's; only keep
+  // auto-filling from the map while nobody has touched the field yet.
+  const [distanceTouched, setDistanceTouched] = useState<boolean>(link?.distanceM != null);
   const [notes, setNotes] = useState<string>(link?.notes ?? "");
   const [selectedJson, setSelectedJson] = useState<string | null>(link?.transportPlanJson ?? null);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -73,6 +77,15 @@ export function LogisticsLinkEditor({ link, onClose, onSaved }: LogisticsLinkEdi
   const planQuery = usePlanLogistics(planInput);
   const plans = planQuery.data ?? [];
 
+  // Uniform with every other modal in the app — Escape closes.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   // When the planner output changes, drop a stale selection that's no
   // longer in the list — otherwise the radio shows nothing checked but
   // we'd happily submit the old JSON.
@@ -90,6 +103,25 @@ export function LogisticsLinkEditor({ link, onClose, onSaved }: LogisticsLinkEdi
     () => factoryOptions.filter((o) => o.value !== fromFactoryId),
     [factoryOptions, fromFactoryId],
   );
+
+  // The map already knows where both endpoints are — measure it instead
+  // of asking the player to. `null` covers "not both picked yet" and "one
+  // endpoint has never been placed on the map" alike.
+  const derivedDistanceM = useMemo(() => {
+    const from = factories.data?.find((f) => f.id === fromFactoryId);
+    const to = factories.data?.find((f) => f.id === toFactoryId);
+    if (!from || !to) return null;
+    const meters = factoryDistanceMeters(from, to);
+    return meters != null ? Math.round(meters) : null;
+  }, [factories.data, fromFactoryId, toFactoryId]);
+
+  // Keep the field in sync with the map's measurement until the player
+  // overrides it — matching or picking new endpoints should re-derive,
+  // but a manual edit is the player's call from then on.
+  useEffect(() => {
+    if (distanceTouched || derivedDistanceM == null) return;
+    setDistanceText(String(derivedDistanceM));
+  }, [derivedDistanceM, distanceTouched]);
   const itemOptions = useMemo(
     () =>
       (items.data ?? []).map((i) => ({
@@ -193,122 +225,158 @@ export function LogisticsLinkEditor({ link, onClose, onSaved }: LogisticsLinkEdi
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="flex flex-1 flex-col gap-4 overflow-auto p-6">
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="text-sm font-medium text-fg">From factory</span>
-              <div className="mt-1">
-                <FilterSelect
-                  options={factoryOptions}
-                  value={fromFactoryId}
-                  onChange={setFromFactoryId}
-                  placeholder="Source"
-                  disabled={isEdit}
-                />
-              </div>
-            </label>
-            <label className="block">
-              <span className="text-sm font-medium text-fg">To factory</span>
-              <div className="mt-1">
-                <FilterSelect
-                  options={toFactoryOptions}
-                  value={toFactoryId}
-                  onChange={setToFactoryId}
-                  placeholder="Destination"
-                  disabled={isEdit}
-                />
-              </div>
-            </label>
-          </div>
-
-          <label className="block">
-            <span className="text-sm font-medium text-fg">Item</span>
-            <div className="mt-1">
-              <FilterSelect
-                options={itemOptions}
-                value={itemId}
-                onChange={setItemId}
-                placeholder="Pick an item to ship"
-                disabled={isEdit}
-              />
+        {/*
+          `noValidate` hands every field to the manual checks below.
+          Without it, the browser's own constraint validation (the
+          `min` on throughput) intercepts the submit event before this
+          handler ever runs — a "0" throughput fails silently with no
+          message instead of surfacing "must be at least 0.01 ipm".
+        */}
+        <form
+          onSubmit={onSubmit}
+          noValidate
+          className="flex flex-1 min-h-0 flex-col"
+        >
+          {/*
+            The header and footer stay put; only this region scrolls.
+            A flex child's default `min-height: auto` refuses to shrink
+            below its content size, so without `min-h-0` here the eight
+            transport options push the whole form past the modal's
+            `max-h-[90vh]` and the parent's `overflow-hidden` just clips
+            the excess — Save changes was rendered but unreachable.
+          */}
+          <div className="flex flex-1 min-h-0 flex-col gap-4 overflow-y-auto p-6">
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-sm font-medium text-fg">From factory</span>
+                <div className="mt-1">
+                  <FilterSelect
+                    options={factoryOptions}
+                    value={fromFactoryId}
+                    onChange={setFromFactoryId}
+                    placeholder="Source"
+                    disabled={isEdit}
+                  />
+                </div>
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-fg">To factory</span>
+                <div className="mt-1">
+                  <FilterSelect
+                    options={toFactoryOptions}
+                    value={toFactoryId}
+                    onChange={setToFactoryId}
+                    placeholder="Destination"
+                    disabled={isEdit}
+                  />
+                </div>
+              </label>
             </div>
-          </label>
 
-          <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="text-sm font-medium text-fg">
-                Throughput (ipm or m³/min)
-              </span>
-              <input
-                type="number"
-                inputMode="decimal"
-                min={0.01}
-                step={0.01}
-                value={ipmText}
-                onChange={(e) => setIpmText(e.target.value)}
-                className="mt-1 h-10 w-full rounded-md border border-border bg-bg px-3 text-sm text-fg outline-none focus:border-primary"
-                placeholder="e.g. 60"
+              <span className="text-sm font-medium text-fg">Item</span>
+              <div className="mt-1">
+                <FilterSelect
+                  options={itemOptions}
+                  value={itemId}
+                  onChange={setItemId}
+                  placeholder="Pick an item to ship"
+                  disabled={isEdit}
+                />
+              </div>
+            </label>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-sm font-medium text-fg">
+                  Throughput (ipm or m³/min)
+                </span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0.01}
+                  step={0.01}
+                  value={ipmText}
+                  onChange={(e) => setIpmText(e.target.value)}
+                  className="mt-1 h-10 w-full rounded-md border border-border bg-bg px-3 text-sm text-fg outline-none focus:border-primary"
+                  placeholder="e.g. 60"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-fg">Distance (m, optional)</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  step={1}
+                  value={distanceText}
+                  onChange={(e) => {
+                    setDistanceTouched(true);
+                    setDistanceText(e.target.value);
+                  }}
+                  className="mt-1 h-10 w-full rounded-md border border-border bg-bg px-3 text-sm text-fg outline-none focus:border-primary"
+                  placeholder="for vehicle/train/drone plans (Phase 5b)"
+                />
+                {!distanceTouched && derivedDistanceM != null && (
+                  <p className="mt-1 text-xs text-fg-muted">
+                    From the map — {derivedDistanceM.toLocaleString()} m between the two factories.
+                  </p>
+                )}
+                {fromFactoryId && toFactoryId && derivedDistanceM == null && (
+                  <p className="mt-1 text-xs text-fg-muted">
+                    Place both factories on the map to measure this automatically.
+                  </p>
+                )}
+              </label>
+            </div>
+
+            <div>
+              <div className="mb-2 text-sm font-medium text-fg">Plan</div>
+              {!planInput && (
+                <p className="text-xs text-fg-muted">
+                  Pick an item and enter a throughput to see ranked plans.
+                </p>
+              )}
+              {planInput && planQuery.isPending && (
+                <p className="text-xs text-fg-muted">Computing plans…</p>
+              )}
+              {planError && (
+                <p role="alert" className="text-sm text-danger">{planError}</p>
+              )}
+              {planInput && !planQuery.isPending && !planError && (
+                // Always render the picker once the planner has had a chance
+                // to respond — `<TransportPlanPicker />` owns its own
+                // empty-state hint, which is more helpful than a blank gap.
+                <TransportPlanPicker
+                  plans={plans}
+                  selectedJson={selectedJson}
+                  onPick={(p) => setSelectedJson(serialisePlan(p))}
+                />
+              )}
+            </div>
+
+            <label className="block">
+              <span className="text-sm font-medium text-fg">Notes (optional)</span>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={2}
+                className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-primary"
+                placeholder="Anything worth remembering about this link"
               />
             </label>
-            <label className="block">
-              <span className="text-sm font-medium text-fg">Distance (m, optional)</span>
-              <input
-                type="number"
-                inputMode="numeric"
-                min={0}
-                step={1}
-                value={distanceText}
-                onChange={(e) => setDistanceText(e.target.value)}
-                className="mt-1 h-10 w-full rounded-md border border-border bg-bg px-3 text-sm text-fg outline-none focus:border-primary"
-                placeholder="for vehicle/train/drone plans (Phase 5b)"
-              />
-            </label>
-          </div>
 
-          <div>
-            <div className="mb-2 text-sm font-medium text-fg">Plan</div>
-            {!planInput && (
-              <p className="text-xs text-fg-muted">
-                Pick an item and enter a throughput to see ranked plans.
-              </p>
+            {validationError && (
+              <p role="alert" className="text-sm text-danger">{validationError}</p>
             )}
-            {planInput && planQuery.isPending && (
-              <p className="text-xs text-fg-muted">Computing plans…</p>
-            )}
-            {planError && (
-              <p role="alert" className="text-sm text-danger">{planError}</p>
-            )}
-            {planInput && !planQuery.isPending && !planError && (
-              // Always render the picker once the planner has had a chance
-              // to respond — `<TransportPlanPicker />` owns its own
-              // empty-state hint, which is more helpful than a blank gap.
-              <TransportPlanPicker
-                plans={plans}
-                selectedJson={selectedJson}
-                onPick={(p) => setSelectedJson(serialisePlan(p))}
-              />
+            {serverError && !validationError && (
+              <p role="alert" className="text-sm text-danger">{serverError}</p>
             )}
           </div>
 
-          <label className="block">
-            <span className="text-sm font-medium text-fg">Notes (optional)</span>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-              className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-primary"
-              placeholder="Anything worth remembering about this link"
-            />
-          </label>
-
-          {validationError && (
-            <p role="alert" className="text-sm text-danger">{validationError}</p>
-          )}
-          {serverError && !validationError && (
-            <p role="alert" className="text-sm text-danger">{serverError}</p>
-          )}
-
-          <div className="mt-auto flex justify-end gap-2 border-t border-border pt-4">
+          {/* Outside the scrolling region so Save changes is always
+              on screen, however many transport options the plan list grows to. */}
+          <div className="flex justify-end gap-2 border-t border-border px-6 py-4">
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>

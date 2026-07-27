@@ -1,16 +1,19 @@
-import { useMemo, useState } from "react";
-import { Plus, Share2, X } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { Check, Plus, Share2, X } from "lucide-react";
 
 import { FilterSelect } from "@/shared/ui/FilterSelect";
 import { Icon } from "@/shared/ui/Icon";
 import { buildTargetOptions } from "@/features/planner/options";
 import type { PlanTargetSpec } from "@/features/planner/types";
-import { useItems, useRecipes } from "@/features/library/hooks/useLibrary";
+import { useItemTiers } from "@/features/planner/hooks/useItemTiers";
+import { useItems } from "@/features/library/hooks/useLibrary";
+import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
+import { RateInput } from "./RateInput";
 
 export interface PlanTargetsBarProps {
   targets: PlanTargetSpec[];
   itemNames: Map<string, string>;
-  onAddTarget: (itemId: string) => void;
+  onAddTarget: (itemId: string, ipm: number) => void;
   onRemoveTarget: (itemId: string) => void;
   onSetTargetIpm: (itemId: string, ipm: number) => void;
 }
@@ -25,17 +28,54 @@ export function PlanTargetsBar({
   onSetTargetIpm,
 }: PlanTargetsBarProps) {
   const items = useItems();
-  const recipes = useRecipes();
+  const itemTiers = useItemTiers();
+  const playthrough = useCurrentPlaythrough();
   const [adding, setAdding] = useState(false);
+  // Item and rate land together, one commit — picking the item alone used to
+  // add it at a hardcoded 60/min and re-solve immediately, so deep-tree items
+  // (Modular Frame etc.) blew the factory out to hundreds of machines before
+  // the rate could be edited down.
+  const [pendingItemId, setPendingItemId] = useState<string | null>(null);
+  const [pendingIpm, setPendingIpm] = useState(60);
+  const [pendingRateInvalid, setPendingRateInvalid] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
   const targetOptions = useMemo(
-    () => buildTargetOptions(items.data, recipes.data),
-    [items.data, recipes.data],
+    () => buildTargetOptions(items.data, itemTiers.data, playthrough.data?.currentTier),
+    [items.data, itemTiers.data, playthrough.data?.currentTier],
   );
   const available = useMemo(() => {
     const used = new Set(targets.map((t) => t.itemId));
     return targetOptions.filter((o) => !used.has(o.value));
   }, [targetOptions, targets]);
+  const pendingItemName = pendingItemId ? (itemNames.get(pendingItemId) ?? pendingItemId) : null;
+
+  // Stable identity: `RateInput` reports validity from an effect, so a
+  // fresh closure would re-fire it on every render.
+  const handlePendingRateInvalid = useCallback((invalid: boolean) => {
+    setPendingRateInvalid(invalid);
+    if (!invalid) setAddError(null);
+  }, []);
+
+  const cancelAdd = () => {
+    setAdding(false);
+    setPendingItemId(null);
+    setPendingIpm(60);
+    setPendingRateInvalid(false);
+    setAddError(null);
+  };
+  const confirmAdd = () => {
+    if (pendingRateInvalid) {
+      setAddError("Enter a rate greater than 0 — decimals like 2.5 are fine.");
+      return;
+    }
+    if (!pendingItemId) {
+      setAddError("Pick a product first.");
+      return;
+    }
+    onAddTarget(pendingItemId, pendingIpm);
+    cancelAdd();
+  };
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -48,23 +88,10 @@ export function PlanTargetsBar({
           <span className="text-sm font-medium text-fg">
             {itemNames.get(t.itemId) ?? t.itemId}
           </span>
-          <input
-            type="number"
-            // min is the stepping base for native spinners — 0.1 made
-            // a down-arrow from 3 land on 2.1. With base 0 the arrows
-            // snap to whole numbers (3 → 2, 2.5 → 2); decimals are
-            // still typeable, and onChange rejects anything ≤ 0.
-            min={0}
-            step={1}
+          <RateInput
             value={t.ipm}
-            aria-label={`Rate for ${itemNames.get(t.itemId) ?? t.itemId}`}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              if (Number.isFinite(v) && v > 0) onSetTargetIpm(t.itemId, v);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-            }}
+            onCommit={(next) => onSetTargetIpm(t.itemId, next)}
+            ariaLabel={`Rate for ${itemNames.get(t.itemId) ?? t.itemId}`}
             className="h-7 w-20 rounded-md border border-border bg-bg px-2 text-sm tabular-nums text-fg outline-none focus:border-primary"
           />
           <span className="text-xs text-fg-muted">/min</span>
@@ -88,20 +115,73 @@ export function PlanTargetsBar({
         </div>
       ))}
       {adding ? (
-        <div className="w-72">
-          <FilterSelect
-            compact
-            autoFocus
-            ariaLabel="Add product"
-            options={available}
-            value={null}
-            placeholder="What should this factory make?"
-            onChange={(next) => {
-              if (next) onAddTarget(next);
-              setAdding(false);
-            }}
-          />
-        </div>
+        pendingItemId ? (
+          <div className="flex flex-col gap-1">
+            <form
+              // noValidate: native constraint validation cancels the
+              // submit before React's handler runs, which is how a
+              // rejected rate used to look identical to a dead button.
+              // The check below owns the decision and the message.
+              noValidate
+              className="flex items-center gap-2 rounded-full border border-dashed border-primary/60 bg-bg-raised py-1 pl-2 pr-1"
+              onSubmit={(e) => {
+                e.preventDefault();
+                confirmAdd();
+              }}
+            >
+              <Icon itemId={pendingItemId} alt="" className="h-5 w-5" />
+              <span className="text-sm font-medium text-fg">{pendingItemName}</span>
+              <RateInput
+                autoFocus
+                value={pendingIpm}
+                onCommit={setPendingIpm}
+                revertOnBlur={false}
+                onInvalidChange={handlePendingRateInvalid}
+                ariaLabel={`Rate for ${pendingItemName}`}
+                className="h-7 w-20 rounded-md border border-border bg-bg px-2 text-sm tabular-nums text-fg outline-none focus:border-primary"
+              />
+              <span className="text-xs text-fg-muted">/min</span>
+              <button
+                type="submit"
+                aria-label={`Confirm adding ${pendingItemName}`}
+                className="rounded-full p-1 text-success hover:bg-border"
+              >
+                <Check className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                aria-label="Cancel adding product"
+                onClick={cancelAdd}
+                className="rounded-full p-1 text-fg-muted hover:bg-border hover:text-danger"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </form>
+            {addError && (
+              <span role="alert" className="px-3 text-xs text-danger">
+                {addError}
+              </span>
+            )}
+          </div>
+        ) : (
+          <div className="w-72">
+            <FilterSelect
+              compact
+              autoFocus
+              ariaLabel="Add product"
+              options={available}
+              value={null}
+              placeholder="What should this factory make?"
+              onChange={(next) => {
+                if (next) {
+                  setPendingItemId(next);
+                } else {
+                  setAdding(false);
+                }
+              }}
+            />
+          </div>
+        )
       ) : (
         <button
           type="button"

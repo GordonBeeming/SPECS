@@ -72,6 +72,12 @@ export function usePlanDesigner(factoryId: string) {
   });
 
   const [working, setWorking] = useState<PlanWorkingState | null>(null);
+  // Bumped to re-solve when nothing in the working copy changed but the
+  // world it's solved against did — raising another factory's export
+  // target moves this plan's import capacity without touching a single
+  // one of its own inputs, and a stale graph there means the panel
+  // still says "needs 20/min more" right after you supplied it.
+  const [computeNonce, setComputeNonce] = useState(0);
   const [compute, setCompute] = useState<ComputePlanResult | null>(null);
   const [computing, setComputing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -127,6 +133,8 @@ export function usePlanDesigner(factoryId: string) {
           edges: [],
           totalMachines: 0,
           totalPowerMw: 0,
+          extractorCount: 0,
+          extractorPowerMw: 0,
           rawDemand: {},
           warnings: [],
           samForced: false,
@@ -169,7 +177,10 @@ export function usePlanDesigner(factoryId: string) {
       cancelled = true;
       window.clearTimeout(handle);
     };
-  }, [working, factoryId]);
+  }, [working, factoryId, computeNonce]);
+
+  /** Re-solve against the current world without editing the plan. */
+  const recompute = useCallback(() => setComputeNonce((n) => n + 1), []);
 
   const persisted = planQuery.data;
   const dirty = useMemo(() => {
@@ -229,6 +240,19 @@ export function usePlanDesigner(factoryId: string) {
   const addExternalSource = useCallback(
     (itemId: string, sourceFactoryId: string | null, ipmCap: number | null) =>
       update((prev) => {
+        // A concrete factory can only source an item once — re-adding the
+        // same (item, factory) pair used to push a second identical row,
+        // which then materialized as a second logistics link on save.
+        // "Future factory" placeholders (`sourceFactoryId === null`) have
+        // no identity to dedup against, so those still stack freely.
+        if (
+          sourceFactoryId !== null &&
+          prev.imports.some(
+            (i) => i.itemId === itemId && i.sourceFactoryId === sourceFactoryId,
+          )
+        ) {
+          return prev;
+        }
         const hasAny = prev.imports.some((i) => i.itemId === itemId);
         const selfRow = { itemId, sourceFactoryId: factoryId, ipmCap: null };
         const next = [...prev.imports];
@@ -416,6 +440,7 @@ export function usePlanDesigner(factoryId: string) {
     working,
     compute,
     computing,
+    recompute,
     dirty,
     saving,
     saveError,

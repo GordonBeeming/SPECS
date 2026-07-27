@@ -40,8 +40,9 @@ and the run closes with Space Elevator Phase 5.
 
 ## Logistics notes
 
-- Mk6 (1200/min) finally swallows a maxed Mk.3 miner on one belt. Note
-  which upgrade removed the last mouth-of-miner splits.
+- Mk6 (1200/min) finally swallows a maxed Mk.3 miner on one belt — the
+  first tier where a Pure node at 250% needs no underclock to get its
+  full output off the port. Note which nodes that let you un-throttle.
 - Quantum Encoder and Particle Accelerator power draw is spiky; the
   power artifact should state peak vs average assumptions.
 

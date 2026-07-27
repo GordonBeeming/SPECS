@@ -112,7 +112,10 @@ pub fn factory_list(conn: &Connection) -> Result<Vec<Factory>> {
     let mut stmt = conn.prepare(
         "SELECT f.id, f.name, f.world_x, f.world_y, f.color, f.notes, f.icon_id,
                 f.created_at, f.updated_at,
-                (SELECT COUNT(*) FROM factory_machine m WHERE m.factory_id = f.id) AS machine_count
+                -- SUM(count), not COUNT(*): each factory_machine row is a recipe
+                -- node that can represent several physical machines via its
+                -- own `count` column.
+                (SELECT COALESCE(SUM(m.count), 0) FROM factory_machine m WHERE m.factory_id = f.id) AS machine_count
          FROM factory f
          ORDER BY LOWER(f.name)",
     )?;
@@ -141,7 +144,7 @@ pub fn factory_get(conn: &Connection, id: &str) -> Result<Option<Factory>> {
     let mut stmt = conn.prepare(
         "SELECT f.id, f.name, f.world_x, f.world_y, f.color, f.notes, f.icon_id,
                 f.created_at, f.updated_at,
-                (SELECT COUNT(*) FROM factory_machine m WHERE m.factory_id = f.id) AS machine_count
+                (SELECT COALESCE(SUM(m.count), 0) FROM factory_machine m WHERE m.factory_id = f.id) AS machine_count
          FROM factory f WHERE f.id = ?",
     )?;
     let mut rows = stmt.query_map([id], |r| {
@@ -323,7 +326,28 @@ mod tests {
             assert_eq!(factories[0].name, "Copper Plant");
             assert_eq!(factories[0].machine_count, 0);
             assert_eq!(factories[1].name, "Iron Plant");
-            assert_eq!(factories[1].machine_count, 1);
+            // One recipe-node row with count=4 is four physical machines, not one.
+            assert_eq!(factories[1].machine_count, 4);
+        });
+    }
+
+    /// Pins machine_count as SUM(count) across multiple recipe nodes, with a
+    /// recipe-node total (2) that differs from the true machine total (6) —
+    /// the exact shape that let COUNT(*) masquerade as a believable answer.
+    #[test]
+    fn machine_count_sums_machines_across_recipe_nodes_not_node_count() {
+        let pt = db();
+        pt.with(|c| {
+            factory_insert(c, "f1", "Iron Works", None, None, None, "2026-05-10T00:00:00Z").unwrap();
+            machine_insert(c, "m1", "f1", "Build_SmelterMk1_C", "Recipe_IronIngot_C",
+                           2, 100.0, false, 0, 0, None, "2026-05-10T00:00:01Z").unwrap();
+            machine_insert(c, "m2", "f1", "Build_ConstructorMk1_C", "Recipe_IronPlate_C",
+                           4, 100.0, false, 0, 0, None, "2026-05-10T00:00:02Z").unwrap();
+            // Two recipe-node rows, six physical machines.
+            let f = factory_get(c, "f1").unwrap().unwrap();
+            assert_eq!(f.machine_count, 6);
+            let listed = factory_list(c).unwrap();
+            assert_eq!(listed[0].machine_count, 6);
         });
     }
 

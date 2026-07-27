@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
@@ -68,20 +69,20 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("<NodeRow />", () => {
   it("renders unclaimed nodes with a claim button (no chip)", () => {
-    renderWithProviders(<NodeRow row={unclaimed} factories={[]} index={0} />);
+    renderWithProviders(<NodeRow row={unclaimed} factories={[]} index={0} preferredMinerId={null} />);
     expect(screen.getByText("unclaimed")).toBeInTheDocument();
     expect(screen.getByLabelText("Claim node")).toBeInTheDocument();
   });
 
   it("renders claimed nodes with miner mark + clock + ipm chips", () => {
-    renderWithProviders(<NodeRow row={claimedMk2} factories={[]} index={0} />);
+    renderWithProviders(<NodeRow row={claimedMk2} factories={[]} index={0} preferredMinerId={null} />);
     expect(screen.getByText("Mk2")).toBeInTheDocument();
     expect(screen.getByText("100%")).toBeInTheDocument();
     expect(screen.getByText("240 ipm")).toBeInTheDocument();
   });
 
   it("one-click claim sends sensible defaults (Mk1, 100% clock, no factory)", async () => {
-    renderWithProviders(<NodeRow row={unclaimed} factories={[]} index={0} />);
+    renderWithProviders(<NodeRow row={unclaimed} factories={[]} index={0} preferredMinerId={null} />);
     fireEvent.click(screen.getByLabelText("Claim node"));
     await waitFor(() =>
       expect(resourcesApi.setClaim).toHaveBeenCalledWith({
@@ -94,21 +95,101 @@ describe("<NodeRow />", () => {
     );
   });
 
-  it("editing surfaces the bound-factory dropdown with the playthrough's factories", () => {
+  it("one-click claim uses the map's Placing mark when the node accepts it, not always Mk1", async () => {
+    // Regresses the list's `+` ignoring the tier-appropriate mark the
+    // map's own quick-claim already honours — a Tier 8 claim from this
+    // list defaulted to Mk1 (three marks below what's unlocked) and
+    // needed a second edit pass every time.
+    renderWithProviders(
+      <NodeRow
+        row={unclaimed}
+        factories={[]}
+        index={0}
+        preferredMinerId="Build_MinerMk3_C"
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Claim node"));
+    await waitFor(() =>
+      expect(resourcesApi.setClaim).toHaveBeenCalledWith(
+        expect.objectContaining({ minerId: "Build_MinerMk3_C" }),
+      ),
+    );
+  });
+
+  it("falls back to the node's first allowed extractor when the preferred mark isn't valid here", async () => {
+    // An oil node only ever accepts the Oil Extractor — a miner mark
+    // preference from elsewhere on the map must not leak through.
+    renderWithProviders(
+      <NodeRow
+        row={oilNode}
+        factories={[]}
+        index={0}
+        preferredMinerId="Build_MinerMk3_C"
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Claim node"));
+    await waitFor(() =>
+      expect(resourcesApi.setClaim).toHaveBeenCalledWith(
+        expect.objectContaining({ minerId: "Build_OilPump_C" }),
+      ),
+    );
+  });
+
+  it("editing surfaces the bound-factory combobox with the playthrough's factories", async () => {
+    const user = userEvent.setup();
     renderWithProviders(
       <NodeRow
         row={claimedMk2}
         index={0}
+        preferredMinerId={null}
+        // (0,0) on both factories is the "never placed on the map"
+        // sentinel (see `hasWorldPosition`) — keeps this test about the
+        // dropdown listing every factory, not about distance sorting.
         factories={[
-          { id: "F1", name: "Iron Plant" },
-          { id: "F2", name: "Steel Plant" },
+          { id: "F1", name: "Iron Plant", worldX: 0, worldY: 0 },
+          { id: "F2", name: "Steel Plant", worldX: 0, worldY: 0 },
         ]}
       />,
     );
     fireEvent.click(screen.getByLabelText("Edit"));
-    expect(screen.getByRole("combobox", { name: /factory/i })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Iron Plant" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Steel Plant" })).toBeInTheDocument();
+    const combobox = screen.getByRole("combobox", { name: /factory/i });
+    expect(combobox).toBeInTheDocument();
+    await user.click(combobox);
+    expect(await screen.findByRole("option", { name: /Iron Plant/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Steel Plant/ })).toBeInTheDocument();
+  });
+
+  it("orders the factory picker nearest-first and shows the distance a native select can't", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <NodeRow
+        row={claimedMk2}
+        index={0}
+        preferredMinerId={null}
+        factories={[
+          // 3-4-5 triangle scaled into world cm, straight from the node's
+          // own (0, 0) coords — 500m and 5m respectively.
+          { id: "far", name: "Steel Plant", worldX: 30000, worldY: 40000 },
+          { id: "near", name: "Iron Plant", worldX: 300, worldY: 400 },
+          { id: "unplaced", name: "Future Plant", worldX: 0, worldY: 0 },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Edit"));
+    await user.click(screen.getByRole("combobox", { name: /factory/i }));
+    // Name-filtered: the row also renders the (still-native) Extractor
+    // <select>, whose <option>s share the "option" role and would
+    // otherwise pollute this list.
+    const options = await screen.findAllByRole("option", { name: /Plant/ });
+    expect(options.map((o) => o.textContent)).toEqual([
+      expect.stringContaining("Iron Plant"),
+      expect.stringContaining("Steel Plant"),
+      expect.stringContaining("Future Plant"),
+    ]);
+    expect(options[0].textContent).toContain("5 m");
+    // Unplaced factories can't measure a distance — no bogus number,
+    // and they sort after every measured factory.
+    expect(options[2].textContent).not.toMatch(/\d+ m/);
   });
 
   it("fracking wells expose the well extractor instead of miner marks", () => {
@@ -122,7 +203,7 @@ describe("<NodeRow />", () => {
         { id: "Build_FrackingSmasher_C", name: "Resource Well Pressuriser", baseIpm: 60, unlockTier: 8 },
       ],
     };
-    renderWithProviders(<NodeRow row={well} factories={[]} index={0} />);
+    renderWithProviders(<NodeRow row={well} factories={[]} index={0} preferredMinerId={null} />);
     fireEvent.click(screen.getByLabelText("Claim node"));
     return waitFor(() =>
       expect(resourcesApi.setClaim).toHaveBeenCalledWith(
@@ -143,7 +224,7 @@ describe("<NodeRow />", () => {
   };
 
   it("oil nodes one-click claim with the Oil Extractor, not a miner", async () => {
-    renderWithProviders(<NodeRow row={oilNode} factories={[]} index={0} />);
+    renderWithProviders(<NodeRow row={oilNode} factories={[]} index={0} preferredMinerId={null} />);
     fireEvent.click(screen.getByLabelText("Claim node"));
     await waitFor(() =>
       expect(resourcesApi.setClaim).toHaveBeenCalledWith(
@@ -169,10 +250,13 @@ describe("<NodeRow />", () => {
         }}
         factories={[]}
         index={0}
+        preferredMinerId={null}
       />,
     );
     fireEvent.click(screen.getByLabelText("Edit"));
-    expect(screen.getByRole("option", { name: "Oil Extractor" })).toBeInTheDocument();
+    // Labelled with its unlock tier now — same "name · T{tier}" shape
+    // the generator picker uses.
+    expect(screen.getByRole("option", { name: "Oil Extractor · T5" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /Miner Mk/ })).toBeNull();
   });
 
@@ -196,6 +280,7 @@ describe("<NodeRow />", () => {
         }}
         factories={[]}
         index={0}
+        preferredMinerId={null}
       />,
     );
     expect(screen.getByText("wrong extractor")).toBeInTheDocument();
@@ -203,5 +288,73 @@ describe("<NodeRow />", () => {
     // Editor coerces the selection to the valid building so a plain
     // Save repairs the claim.
     expect(screen.getByRole("combobox", { name: /extractor/i })).toHaveValue("Build_OilPump_C");
+  });
+
+  it("flags a claim over its port capacity inline, at the point the clock was set (#101)", () => {
+    // Regression: the same check the Validate panel already surfaced
+    // used to only exist two screens away — the row where the illegal
+    // clock is actually set showed nothing.
+    renderWithProviders(
+      <NodeRow
+        row={claimedMk2}
+        factories={[]}
+        index={0}
+        preferredMinerId={null}
+        portWarning={{
+          kind: "claimOverPortCapacity",
+          severity: "warning",
+          category: "capacity",
+          nodeId: claimedMk2.id,
+          resourceItemName: "Pure Iron Ore",
+          nodeIndex: 0,
+          nodeX: 0,
+          nodeY: 0,
+          extractorName: "Miner Mk.2",
+          outputIpm: 240,
+          capacityIpm: 60,
+          isFluid: false,
+          capacityMark: 1,
+          // Non-whole ratio (162.5, not 25) — pins the same floor-not-round
+          // fix the Validate panel got, so the row's own tooltip can't
+          // regress to advising a clock that still overshoots.
+          maxFittingClockPct: 62.5,
+        }}
+      />,
+    );
+    const flag = screen.getByText("over port cap");
+    expect(flag).toBeInTheDocument();
+    expect(flag).toHaveAttribute("title", expect.stringContaining("clock to 62% to fit"));
+  });
+
+  it("renders no port-capacity flag when the claim fits", () => {
+    renderWithProviders(
+      <NodeRow row={claimedMk2} factories={[]} index={0} preferredMinerId={null} />,
+    );
+    expect(screen.queryByText("over port cap")).toBeNull();
+  });
+
+  it("labels a well satellite and an oil seep so the two Crude Oil rows don't read as identical", () => {
+    const wellSatellite: ResourceNodeRow = {
+      ...oilNode,
+      id: "BP_OilWell1",
+      kind: "fracking_well",
+      allowedExtractors: [
+        { id: "Build_FrackingSmasher_C", name: "Resource Well Extractor", baseIpm: 60, unlockTier: 8 },
+      ],
+    };
+    renderWithProviders(
+      <div>
+        <NodeRow row={oilNode} factories={[]} index={0} preferredMinerId={null} />
+        <NodeRow row={wellSatellite} factories={[]} index={1} preferredMinerId={null} />
+      </div>,
+    );
+    expect(screen.getByText("Oil seep")).toBeInTheDocument();
+    expect(screen.getByText("Well satellite")).toBeInTheDocument();
+  });
+
+  it("doesn't label an ordinary miner node — the resource name is already unambiguous", () => {
+    renderWithProviders(<NodeRow row={unclaimed} factories={[]} index={0} preferredMinerId={null} />);
+    expect(screen.queryByText("Oil seep")).toBeNull();
+    expect(screen.queryByText("Well satellite")).toBeNull();
   });
 });

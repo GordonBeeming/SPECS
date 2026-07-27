@@ -1,12 +1,9 @@
 import { TriangleAlert } from "lucide-react";
 
 import type { PlanWarning, PlannerError } from "@/features/planner/types";
+import { rate } from "./rates";
 
-function rate(n: number): string {
-  return `${n % 1 === 0 ? n.toFixed(0) : n.toFixed(1)}/min`;
-}
-
-function warningLine(w: PlanWarning): string {
+export function warningLine(w: PlanWarning): string {
   switch (w.kind) {
     case "rawShort":
       return `${w.itemName} — needs ${rate(w.demandIpm)}, claimed nodes supply ${rate(w.claimedIpm)} (claim more nodes)`;
@@ -18,6 +15,16 @@ function warningLine(w: PlanWarning): string {
       return `${w.itemName} — ${rate(w.ipm)} of liquid has no consumer and will stall the line (use it in a recipe or export it)`;
     case "optimizerFellBack":
       return `Showing the standard-recipe chain — the optimizer couldn't finish (${w.reason})`;
+    case "aboveTier": {
+      // Naming every step is the point — "something is above tier" sends
+      // you hunting the graph for which node it was.
+      const shown = w.itemNames.slice(0, 4).join(", ");
+      const rest = w.itemNames.length - 4;
+      const steps = rest > 0 ? `${shown} and ${rest} more` : shown;
+      return `Needs Tier ${w.requiredTier} — you're on Tier ${w.currentTier}. Out of reach: ${steps} (plan it now, build it once you get there)`;
+    }
+    case "targetUnplannable":
+      return `${w.itemName} can't be planned — ${w.reason} (remove it or pick a different product)`;
   }
 }
 

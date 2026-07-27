@@ -43,9 +43,26 @@ export function usePowerBalance(factoryId: string | null) {
   });
 }
 
+// Every factory's balance in one call — backs the Power screen's grid
+// total and the "which factories have no power" sidebar prominence,
+// both of which need every factory rather than just the selected one.
+export function useAllPowerBalances() {
+  const playthrough = useCurrentPlaythrough();
+  const ptId = playthrough.data?.id ?? null;
+  return useQuery({
+    queryKey: [...queryKeys.power.balances, ptId] as const,
+    queryFn: () => powerApi.listBalances(),
+    enabled: !!playthrough.data,
+  });
+}
+
 function invalidate(client: ReturnType<typeof useQueryClient>, factoryId: string) {
   client.invalidateQueries({ queryKey: queryKeys.power.list(factoryId) });
   client.invalidateQueries({ queryKey: queryKeys.power.balance(factoryId) });
+  // The Power screen's grid-total header reads every factory's
+  // balance at once — keep it in sync with the same mutations that
+  // bust the single-factory balance above.
+  client.invalidateQueries({ queryKey: queryKeys.power.balances });
   // The map view consumes `["power", "list-all", ptId]` via
   // useAllPowerGens; without this invalidation a freshly-added /
   // edited / deleted generator wouldn't reflect on the map until

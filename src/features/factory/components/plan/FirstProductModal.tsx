@@ -1,11 +1,14 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Package, Trash2 } from "lucide-react";
 
 import { Button } from "@/shared/ui/Button";
 import { FilterSelect } from "@/shared/ui/FilterSelect";
 import { Icon } from "@/shared/ui/Icon";
 import { buildTargetOptions } from "@/features/planner/options";
-import { useItems, useRecipes } from "@/features/library/hooks/useLibrary";
+import { useItemTiers } from "@/features/planner/hooks/useItemTiers";
+import { useItems } from "@/features/library/hooks/useLibrary";
+import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
+import { RateInput } from "./RateInput";
 
 export interface FirstProductModalProps {
   factoryName: string;
@@ -29,20 +32,39 @@ export function FirstProductModal({
   onDeleteFactory,
 }: FirstProductModalProps) {
   const items = useItems();
-  const recipes = useRecipes();
+  const itemTiers = useItemTiers();
+  const playthrough = useCurrentPlaythrough();
   const [itemId, setItemId] = useState<string | null>(null);
   const [ipm, setIpm] = useState(60);
+  const [rateInvalid, setRateInvalid] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const options = useMemo(
-    () => buildTargetOptions(items.data, recipes.data),
-    [items.data, recipes.data],
+    () => buildTargetOptions(items.data, itemTiers.data, playthrough.data?.currentTier),
+    [items.data, itemTiers.data, playthrough.data?.currentTier],
   );
   const itemName = useMemo(
     () => options.find((o) => o.value === itemId)?.label ?? null,
     [options, itemId],
   );
 
-  const canConfirm = itemId !== null && Number.isFinite(ipm) && ipm > 0;
+  // Stable identity: `RateInput` reports validity from an effect.
+  const handleRateInvalid = useCallback((invalid: boolean) => {
+    setRateInvalid(invalid);
+    if (!invalid) setError(null);
+  }, []);
+
+  const submit = () => {
+    if (rateInvalid) {
+      setError("Enter a rate greater than 0 — decimals like 2.5 are fine.");
+      return;
+    }
+    if (itemId === null) {
+      setError("Pick a product first.");
+      return;
+    }
+    onConfirm(itemId, ipm);
+  };
 
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-bg/70 p-6 backdrop-blur-sm">
@@ -50,9 +72,14 @@ export function FirstProductModal({
         role="dialog"
         aria-label="Choose what this factory makes"
         className="w-full max-w-[460px] rounded-xl border border-border bg-bg-raised p-8 shadow-2xl"
+        // noValidate: native constraint validation cancels the submit
+        // before this handler runs, and a dialog that just refuses to
+        // close is the worst failure mode available — the user can't
+        // tell "rejected" from "my click didn't register".
+        noValidate
         onSubmit={(e) => {
           e.preventDefault();
-          if (canConfirm && itemId) onConfirm(itemId, ipm);
+          submit();
         }}
       >
         <h3 className="text-center text-2xl font-semibold text-fg">
@@ -91,20 +118,21 @@ export function FirstProductModal({
         </div>
 
         <div className="mt-4 flex items-baseline justify-center gap-2">
-          <input
-            type="number"
-            min={0}
-            step={1}
+          <RateInput
             value={ipm}
-            aria-label="Items per minute"
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              if (Number.isFinite(v)) setIpm(v);
-            }}
+            onCommit={setIpm}
+            revertOnBlur={false}
+            onInvalidChange={handleRateInvalid}
+            ariaLabel="Items per minute"
             className="h-12 w-32 rounded-lg border border-border bg-bg px-3 text-center text-2xl font-semibold tabular-nums text-fg outline-none focus:border-primary"
           />
           <span className="text-lg text-fg-muted">/min</span>
         </div>
+        {error && (
+          <p role="alert" className="mt-2 text-center text-sm text-danger">
+            {error}
+          </p>
+        )}
 
         <div className="mt-8 flex items-center justify-between gap-3">
           <Button
@@ -116,7 +144,7 @@ export function FirstProductModal({
             <Trash2 className="h-4 w-4" />
             {firstRun ? "Cancel & delete this factory" : "Delete this factory"}
           </Button>
-          <Button type="submit" disabled={!canConfirm} className="px-6 py-2 text-sm">
+          <Button type="submit" className="px-6 py-2 text-sm">
             OK
           </Button>
         </div>

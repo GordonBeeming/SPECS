@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -131,16 +131,18 @@ describe("<AddMachineForm /> — amplifiers", () => {
     // Open the amp disclosure and set 2/4 somersloop + 1 power shard.
     await user.click(screen.getByText(/Amplifiers/i));
     const slotsField = await screen.findByLabelText(/Somersloop slots filled/i);
-    await user.clear(slotsField);
-    await user.type(slotsField, "2");
+    fireEvent.change(slotsField, { target: { value: "2" } });
     const shardField = screen.getByLabelText(/Power shards/i);
-    await user.clear(shardField);
-    await user.type(shardField, "1");
+    fireEvent.change(shardField, { target: { value: "1" } });
     // Clock cap with 1 shard is 150% — push it up so the cap actually
-    // participates in the round-trip.
+    // participates in the round-trip. `fireEvent.change` sets the whole
+    // value atomically — typing this digit-by-digit via `user.type()`
+    // races the controlled re-render between keystrokes (the DOM value
+    // React writes back after each keystroke can desync from
+    // user-event's own cursor tracking on a `type="number"` input),
+    // occasionally dropping the trailing digits.
     const clockField = screen.getByLabelText(/Clock %/i);
-    await user.clear(clockField);
-    await user.type(clockField, "150");
+    fireEvent.change(clockField, { target: { value: "150" } });
     await user.click(screen.getByRole("button", { name: /^Add$/i }));
 
     await waitFor(() => {
@@ -165,10 +167,12 @@ describe("<AddMachineForm /> — amplifiers", () => {
     await openRecipeCombobox(user);
     await user.click(await screen.findByRole("option", { name: /Iron Ingot/i }));
     // 0 shards → cap stays at 100%. Bumping the clock to 200 should hit
-    // the inline validation, not the network.
+    // the inline validation, not the network. `fireEvent.change` sets
+    // the value in one atomic step — see the note on the "amplifiers"
+    // test above for why digit-by-digit `user.type()` on this field is
+    // flaky.
     const clockField = screen.getByLabelText(/Clock %/i);
-    await user.clear(clockField);
-    await user.type(clockField, "200");
+    fireEvent.change(clockField, { target: { value: "200" } });
     await user.click(screen.getByRole("button", { name: /^Add$/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/only allow clocks up to 100/i);
     expect(spy).not.toHaveBeenCalled();

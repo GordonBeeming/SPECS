@@ -49,7 +49,10 @@ byproduct netting harder than anything before it.
 ## Logistics notes
 
 - A Mk.3 miner at 250% on a Pure node is 1200/min — over even Mk5's 780.
-  Belt math at the miner mouth gets real; show the splits.
+  A miner feeds one belt, so the extra 420/min never leaves the port and
+  splitting past it changes nothing. Clock these nodes to 780/min or below,
+  or claim a second node; the layout must state which. A rate above the belt
+  at the miner mouth is the app's bug (#82), not a layout to draw.
 - Resource wells: the pressuriser is the clocked building; satellites
   carry purity. The app's claims are per-satellite — verify the totals
   match pressuriser × satellites and file an issue for mismatches.

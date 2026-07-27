@@ -1,41 +1,11 @@
 //! The matrix enumeration engine.
 //!
-//! `first_producible_tier` is the piece that would have caught the
-//! original bug: it computes the earliest tier an item's chain fully
-//! grounds out, from `Recipe.unlock_tier` and `Building.unlock_tier`
-//! directly, independent of `compute_plan_graph`. That's deliberate —
-//! `compute_plan_graph` itself never gates a standard recipe by tier
-//! (only `unlocked_alts` narrows candidates), so asking the planner
-//! whether an item is "producible at tier N" would always answer yes
-//! for any tier once a single non-alt chain exists. This module is the
-//! independent tier model the invariant suite checks the planner's
-//! actual output against.
-//!
-//! A recipe's own ground tier is `max(recipe.unlock_tier,
-//! building.unlock_tier)` — the exact pairing whose mismatch (an alt
-//! shipped with a lower unlock tier than the building it runs in) is
-//! the bug this matrix exists to catch. An item's tier is the cheapest
-//! viable recipe once every input is itself available by that tier;
-//! extracted resources ground out at tier 0 unconditionally, mirroring
-//! how `compute_plan_graph` treats claimed raw supply.
-//!
-//! The tier for every item is solved together by relaxing to a fixed
-//! point (Bellman-Ford style) rather than by memoized per-item DFS. A
-//! DFS with a `visiting` cycle guard is order-dependent: item X's
-//! answer, cached while some unrelated ancestor Y happens to be mid-
-//! cycle, can come out too pessimistic (a candidate recipe of X that
-//! routes through Y gets excluded from X's `min` for that evaluation,
-//! even though X reached independently would have found it fine) — and
-//! that pessimistic value then poisons every other item that reuses
-//! X's cache entry. In this dataset the recipe graph is interconnected
-//! enough (roughly 40% of producible items sit adjacent to some cycle)
-//! that this isn't a corner case: it under-reported several items'
-//! tiers, including one item four tiers too high and several reported
-//! as never producible at all when they are. Relaxation has no
-//! evaluation order to be sensitive to — every item starts unknown
-//! (extracted resources start at tier 0), each pass tries to improve
-//! every item from whatever its inputs currently know, and it repeats
-//! until a full pass changes nothing.
+//! Every case is one (item, tier, alt mode) triple solved through the
+//! real `compute_plan_graph`, so the sibling suites can assert what the
+//! planner actually produces against an independent model of what the
+//! tier allows. That model is `planner::tier` — the same whole-chain
+//! table the planner itself gates on — reached here through
+//! `first_producible_tier`.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
@@ -43,18 +13,15 @@ use std::sync::OnceLock;
 use crate::features::planner::commands::tier_reachable_alts;
 use crate::features::planner::domain::compute_plan_graph;
 use crate::features::planner::dto::{PlanComputeOptions, PlanGraph, PlanTargetSpec, PlannerError};
+use crate::features::planner::tier::{self, TierTable};
 use crate::shared::gamedata::GameData;
+
+pub(crate) use crate::features::planner::tier::AltMode;
 
 /// Every case is solved under this synthetic factory id — the matrix
 /// never touches a real playthrough, so the id just needs to be stable
 /// for `compute_plan_graph`'s self-supply bookkeeping.
 const MATRIX_FACTORY_ID: &str = "matrix-harness";
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum AltMode {
-    Off,
-    On,
-}
 
 #[derive(Debug, Clone)]
 pub(crate) struct MatrixCase {
@@ -86,16 +53,6 @@ pub(crate) struct CaseResult {
     pub pipe_cap_ipm: Option<f32>,
 }
 
-/// `Recipe_Unpackage*` recipes are inverse-utility (they only exist to
-/// recover a liquid/gas from its packaged form) and are excluded from
-/// chain candidates everywhere else in the planner
-/// (`domain::is_inverse_recipe`); that helper is private to `domain.rs`
-/// so the tier model duplicates the same one-line rule rather than
-/// widen that module's visibility for a test harness.
-fn is_inverse_recipe(recipe_id: &str) -> bool {
-    recipe_id.starts_with("Recipe_Unpackage")
-}
-
 /// Best belt throughput unlocked by `tier`, derived from
 /// `belt_tiers` — Mk1 is unlocked at Tier 0, so this is always defined
 /// for any `u8` tier.
@@ -119,80 +76,22 @@ pub(crate) fn pipe_cap(gd: &GameData, tier: u8) -> Option<f32> {
 
 /// Earliest tier `item_id`'s chain fully grounds out under `alts`, or
 /// `None` if no chain ever grounds out (e.g. an alt-only item under
-/// `AltMode::Off`). See the module doc for why this is computed from
-/// the dataset's tier fields instead of by probing `compute_plan_graph`,
-/// and why it's a whole-graph relaxation rather than a per-item walk.
+/// `AltMode::Off`).
 pub(crate) fn first_producible_tier(gd: &GameData, item_id: &str, alts: AltMode) -> Option<u8> {
     tier_table(gd, alts).get(item_id).copied().flatten()
 }
 
 /// The relaxed tier table for one alt mode, solved once and cached —
 /// every producible item's tier depends on every other's, so there's
-/// no cheaper unit of work than "the whole graph," and every caller
-/// wants the same table for a given `alts`.
-fn tier_table(gd: &GameData, alts: AltMode) -> &'static HashMap<String, Option<u8>> {
-    static OFF: OnceLock<HashMap<String, Option<u8>>> = OnceLock::new();
-    static ON: OnceLock<HashMap<String, Option<u8>>> = OnceLock::new();
+/// no cheaper unit of work than "the whole graph," and every case in
+/// the matrix wants the same table for a given `alts`.
+fn tier_table(gd: &GameData, alts: AltMode) -> &'static TierTable {
+    static OFF: OnceLock<TierTable> = OnceLock::new();
+    static ON: OnceLock<TierTable> = OnceLock::new();
     match alts {
-        AltMode::Off => OFF.get_or_init(|| compute_tier_table(gd, AltMode::Off)),
-        AltMode::On => ON.get_or_init(|| compute_tier_table(gd, AltMode::On)),
+        AltMode::Off => OFF.get_or_init(|| tier::item_tier_table(gd, AltMode::Off)),
+        AltMode::On => ON.get_or_init(|| tier::item_tier_table(gd, AltMode::On)),
     }
-}
-
-fn compute_tier_table(gd: &GameData, alts: AltMode) -> HashMap<String, Option<u8>> {
-    let mut tier: HashMap<String, Option<u8>> = gd
-        .items()
-        .iter()
-        .map(|item| {
-            // Extracted resources ground out at tier 0 regardless of
-            // any recipe that happens to also emit them (e.g. Water as
-            // a byproduct) — matches how `compute_plan_graph` treats
-            // claimed raw supply as unconditionally viable.
-            let seed = if gd.is_extracted_resource(&item.id) { Some(0) } else { None };
-            (item.id.clone(), seed)
-        })
-        .collect();
-
-    loop {
-        let mut changed = false;
-        for item in gd.items() {
-            if gd.is_extracted_resource(&item.id) {
-                continue;
-            }
-            let mut best = tier[&item.id];
-            for recipe in gd.recipes_producing(&item.id) {
-                if is_inverse_recipe(&recipe.id) {
-                    continue;
-                }
-                if recipe.is_alt && alts == AltMode::Off {
-                    continue;
-                }
-                let building_tier = gd.building(&recipe.building_id).map(|b| b.unlock_tier).unwrap_or(0);
-                let mut recipe_tier = recipe.unlock_tier.max(building_tier);
-                let mut viable = true;
-                for input in &recipe.inputs {
-                    match tier.get(&input.item_id).copied().flatten() {
-                        Some(t) => recipe_tier = recipe_tier.max(t),
-                        None => {
-                            viable = false;
-                            break;
-                        }
-                    }
-                }
-                if viable {
-                    best = Some(best.map_or(recipe_tier, |b: u8| b.min(recipe_tier)));
-                }
-            }
-            if best != tier[&item.id] {
-                tier.insert(item.id.clone(), best);
-                changed = true;
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
-    tier
 }
 
 /// True for items a plan can target at all — mirrors the guard
@@ -264,6 +163,10 @@ fn solve_case(gd: &GameData, case: MatrixCase) -> CaseResult {
         MATRIX_FACTORY_ID,
         &[target],
         &unlocked,
+        // The case's tier is the whole point — solving it ungated
+        // would let a Tier 3 case plan a Tier 8 chain and every
+        // invariant built on this matrix would pass on a lie.
+        Some(case.tier),
         &HashMap::new(),
         &[],
         &HashMap::new(),
@@ -318,18 +221,15 @@ mod tests {
     }
 
     #[test]
-    fn first_producible_tier_agrees_with_hand_checked_items() {
+    fn first_producible_tier_reads_through_to_the_shared_tier_table() {
         let gd = GameData::from_bundled().unwrap();
         // Iron Plate: Smelter + Constructor, both Tier 0 buildings, no
-        // alt required — producible from the very first tier.
-        assert_eq!(
-            first_producible_tier(&gd, "Desc_IronPlate_C", AltMode::Off),
-            Some(0)
-        );
-        assert_eq!(
-            first_producible_tier(&gd, "Desc_IronPlate_C", AltMode::On),
-            Some(0)
-        );
+        // alt required — producible from the very first tier. The
+        // table's own coverage lives in `planner::tier`; this pins the
+        // read-through and the caching wrapper around it.
+        assert_eq!(first_producible_tier(&gd, "Desc_IronPlate_C", AltMode::Off), Some(0));
+        assert_eq!(first_producible_tier(&gd, "Desc_IronPlate_C", AltMode::On), Some(0));
+        assert!(std::ptr::eq(tier_table(&gd, AltMode::On), tier_table(&gd, AltMode::On)));
 
         // An extracted resource is never a valid plan target, so it
         // must never surface as "producible" — it's excluded from the
@@ -415,31 +315,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn tier_table_relaxation_does_not_under_report_cycle_adjacent_items() {
-        // Regression coverage for the exact bug a memoized-DFS version
-        // of this table had: items whose recipe sits near a recycling
-        // loop (Rubber/Plastic, here) got a too-pessimistic — or
-        // entirely missing — tier because the DFS cached a result
-        // computed while an unrelated ancestor was mid-cycle. These
-        // three were confirmed wrong under that approach and are
-        // hand-verified correct here.
-        let gd = GameData::from_bundled().unwrap();
-        assert_eq!(
-            first_producible_tier(&gd, "Desc_SpaceElevatorPart_2_C", AltMode::On),
-            Some(3),
-            "Smart Plating's standard recipe only needs Modular Frame (T2) + Steel Plate (T3), \
-             both grounded well before its own T7 alt"
-        );
-        assert_eq!(
-            first_producible_tier(&gd, "Desc_AlienPowerFuel_C", AltMode::Off),
-            Some(9),
-            "producible via its standard T9 recipe even with alts off"
-        );
-        assert_eq!(
-            first_producible_tier(&gd, "Desc_SpaceElevatorPart_9_C", AltMode::On),
-            Some(8),
-            "Nuclear Pasta's standard recipe needs Copper Dust + Pressure Conversion Cube, both T8"
-        );
-    }
 }

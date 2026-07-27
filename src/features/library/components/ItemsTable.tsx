@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Icon } from "@/shared/ui/Icon";
 import { useItems, useRecipes } from "../hooks/useLibrary";
+import { deriveItemUnlockTiers } from "../tiers";
 import type { Item } from "../types";
 import { LibraryTable, type Column } from "./LibraryTable";
 
@@ -19,22 +20,10 @@ const columns: Column<Item & { _tier: number }>[] = [
 export function ItemsTable() {
   const { data, isPending, isError, error } = useItems();
   const recipes = useRecipes();
-  // Items don't carry a tier directly; derive from the earliest
-  // standard (non-alt, non-Unpackage) recipe producing each item.
   // Raw resources (no producing recipe) sort to Tier 0.
   const rows = useMemo(() => {
     if (!data) return undefined;
-    const tierByItem = new Map<string, number>();
-    for (const r of recipes.data ?? []) {
-      if (r.isAlt) continue;
-      if (r.id.startsWith("Recipe_Unpackage")) continue;
-      for (const o of r.outputs) {
-        const cur = tierByItem.get(o.itemId);
-        if (cur === undefined || r.unlockTier < cur) {
-          tierByItem.set(o.itemId, r.unlockTier);
-        }
-      }
-    }
+    const tierByItem = deriveItemUnlockTiers(recipes.data ?? []);
     return [...data]
       .map((i) => ({ ...i, _tier: tierByItem.get(i.id) ?? 0 }))
       .sort((a, b) =>

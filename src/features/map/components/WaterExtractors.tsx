@@ -4,6 +4,8 @@ import { Droplets, Lock, LockOpen, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { ClockInput } from "@/shared/ui/ClockInput";
+import { FilterSelect } from "@/shared/ui/FilterSelect";
+import { factoryPickerOptions, type FactoryPickerCandidate } from "../transform";
 import type { WaterExtractorGroup } from "@/features/resources/types";
 
 // Mirror of MapView's CLICK_THRESHOLD_PX — mousedown→up under this is
@@ -148,7 +150,7 @@ export function WaterExtractorPin({
 
 export interface WaterExtractorPopoverProps {
   group: WaterExtractorGroup;
-  factories: Array<{ id: string; name: string }>;
+  factories: FactoryPickerCandidate[];
   pending: boolean;
   onSave: (patch: {
     count: number;
@@ -182,7 +184,7 @@ export function WaterExtractorPopover({
       ? { count: group.count2, clockPct: group.clock2Pct }
       : null,
   );
-  const [factoryId, setFactoryId] = useState(group.factoryId ?? "");
+  const [factoryId, setFactoryId] = useState<string | null>(group.factoryId ?? null);
 
   const bankIpm = (c: number, p: number) => c * 120 * (p / 100);
   const totalIpm = bankIpm(count, clockPct) + (bank2 ? bankIpm(bank2.count, bank2.clockPct) : 0);
@@ -289,18 +291,14 @@ export function WaterExtractorPopover({
 
       <label className="mt-2 block text-xs">
         <span className="text-fg-muted">Feeds factory</span>
-        <select
+        <FilterSelect
+          compact
+          ariaLabel="Feeds factory"
+          placeholder="— none —"
+          options={factoryPickerOptions({ x: group.worldX, y: group.worldY }, factories)}
           value={factoryId}
-          onChange={(e) => setFactoryId(e.target.value)}
-          className="mt-1 h-7 w-full rounded-md border border-border bg-bg px-1.5 text-[12px] text-fg outline-none focus:border-primary"
-        >
-          <option value="">— none —</option>
-          {factories.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.name}
-            </option>
-          ))}
-        </select>
+          onChange={setFactoryId}
+        />
       </label>
 
       <div className="mt-3 flex items-center justify-between gap-2">
@@ -316,7 +314,7 @@ export function WaterExtractorPopover({
               clockPct,
               count2: bank2?.count ?? null,
               clock2Pct: bank2?.clockPct ?? null,
-              factoryId: factoryId.trim() === "" ? null : factoryId,
+              factoryId,
             })
           }
           className="px-3 py-1 text-xs"

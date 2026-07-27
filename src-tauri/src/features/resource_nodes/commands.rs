@@ -3,12 +3,13 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::features::playthrough::state::ActivePlaythrough;
+use crate::shared::db::playthrough_db::PlaythroughDb;
 use crate::shared::error::{AppError, AppResult};
 use crate::shared::gamedata::GameData;
 
 use super::domain::{
     BudgetAssumption, allowed_extractors, extractor_output_ipm, resource_budget,
-    water_group_output_ipm,
+    tier_eligible_extractors, water_group_output_ipm,
 };
 use super::dto::{
     ResourceBudget, ResourceNodeClaim, ResourceNodeRow, SetNodeClaimInput,
@@ -48,7 +49,18 @@ pub fn list_resource_nodes(
     game_data: State<GameData>,
 ) -> AppResult<Vec<ResourceNodeRow>> {
     let db = require_active(&active)?;
+    list_resource_nodes_impl(&db, &game_data)
+}
+
+fn list_resource_nodes_impl(
+    db: &PlaythroughDb,
+    game_data: &GameData,
+) -> AppResult<Vec<ResourceNodeRow>> {
     let claims = db.with(|c| repo::claims_all(c).map_err(AppError::from))?;
+    let (current_tier, _progress) = db.with(|c| {
+        crate::features::playthrough::repo::progress_get(c).map_err(AppError::from)
+    })?;
+    let tier: u8 = current_tier.clamp(0, u8::MAX as i64) as u8;
     let mut out = Vec::with_capacity(game_data.nodes().len());
     for node in game_data.nodes() {
         let claim_row = claims.get(&node.id);
@@ -63,12 +75,27 @@ pub fn list_resource_nodes(
                 other => other.to_string(),
             });
         let ipm = claim_row
-            .map(|c| extractor_output_ipm(node, c.miner_id.as_deref(), c.clock_pct, &game_data))
+            .map(|c| extractor_output_ipm(node, c.miner_id.as_deref(), c.clock_pct, game_data))
             .unwrap_or(0.0);
-        let allowed = allowed_extractors(node, &game_data);
+        // Family truth, unfiltered — `claim_invalid_extractor` must stay
+        // about "wrong building for this node", not "not unlocked yet",
+        // so a legacy above-tier claim keeps reading as tier-gated
+        // (validation's `ClaimExtractorAboveTier`) rather than invalid.
+        let allowed = allowed_extractors(node, game_data);
         let claim_invalid_extractor = claim_row
             .and_then(|c| c.miner_id.as_deref())
             .is_some_and(|id| !allowed.iter().any(|e| e.id == id));
+        // Picker options narrow to what's actually buildable right now,
+        // every family alike — oil and well extractors used to be
+        // exempted here (they were the only families with no in-game
+        // tiers to reach when the exemption was written), which is how a
+        // Tier 6 well satellite ended up offering its Tier 8 extractor
+        // unchallenged. `tier_eligible_extractors` never returns empty
+        // even for a single-option family, so this still leaves an
+        // already-claimed or fresh node with its one extractor pickable
+        // — the tier just shows through in the option's own
+        // `unlock_tier` instead of being silently absorbed.
+        let picker_extractors = tier_eligible_extractors(&allowed, tier);
         out.push(ResourceNodeRow {
             id: node.id.clone(),
             resource_item_id: node.resource_item_id.clone(),
@@ -88,7 +115,7 @@ pub fn list_resource_nodes(
                 updated_at: r.updated_at.clone(),
             }),
             items_per_minute: ipm,
-            allowed_extractors: allowed,
+            allowed_extractors: picker_extractors,
             claim_invalid_extractor,
         });
     }
@@ -290,6 +317,7 @@ pub fn delete_water_extractor_group(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shared::gamedata::types::NodeKind;
 
     #[test]
     fn validate_clock_matches_other_slices_clamps() {
@@ -298,5 +326,90 @@ mod tests {
         assert!(validate_clock(f32::NAN).is_err());
         assert!(validate_clock(100.0).is_ok());
         assert!(validate_clock(250.0).is_ok());
+    }
+
+    fn open_test_db(tier: i64) -> PlaythroughDb {
+        let db = PlaythroughDb::open_in_memory().expect("open in-memory playthrough db");
+        db.with(|c| crate::features::playthrough::repo::progress_init(c, tier))
+            .expect("seed progress");
+        db
+    }
+
+    #[test]
+    fn list_resource_nodes_hides_above_tier_miner_marks_but_keeps_single_option_families() {
+        let gd = GameData::from_bundled().unwrap();
+        let db = open_test_db(0);
+        let rows = list_resource_nodes_impl(&db, &gd).unwrap();
+
+        let iron = rows
+            .iter()
+            .find(|r| r.resource_item_id == "Desc_OreIron_C")
+            .expect("iron row");
+        assert_eq!(
+            iron.allowed_extractors.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(),
+            ["Build_MinerMk1_C"],
+            "a fresh Tier 0 game must default the picker to Mk1 only"
+        );
+
+        // Oil is a single-option family (Oil Extractor, T5) — it must
+        // still offer its one extractor at Tier 0, not go empty. Crude
+        // oil also has fracking-well satellites with the same resource
+        // id, so pick the miner_node (seep) row specifically.
+        let oil = rows
+            .iter()
+            .find(|r| r.resource_item_id == "Desc_LiquidOil_C" && r.kind == NodeKind::MinerNode)
+            .expect("oil seep row");
+        assert_eq!(oil.allowed_extractors.len(), 1);
+        assert_eq!(oil.allowed_extractors[0].id, "Build_OilPump_C");
+    }
+
+    #[test]
+    fn list_resource_nodes_widens_miner_options_as_tier_rises() {
+        let gd = GameData::from_bundled().unwrap();
+        let db = open_test_db(4);
+        let rows = list_resource_nodes_impl(&db, &gd).unwrap();
+        let iron = rows
+            .iter()
+            .find(|r| r.resource_item_id == "Desc_OreIron_C")
+            .expect("iron row");
+        assert_eq!(
+            iron.allowed_extractors.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(),
+            ["Build_MinerMk1_C", "Build_MinerMk2_C"],
+            "Mk2 unlocks at T4 — it should now appear alongside Mk1"
+        );
+    }
+
+    #[test]
+    fn list_resource_nodes_keeps_claim_invalid_extractor_about_family_not_tier() {
+        // A Mk2 claim on an iron node at Tier 0 is the right building
+        // family, just not yet unlocked — that's `ClaimExtractorAboveTier`
+        // territory in validation, not `claim_invalid_extractor` (which
+        // means "wrong building for this node entirely", e.g. a miner
+        // mark stuck on an oil seep). Narrowing the *picker* to Mk1 must
+        // not also flip this flag for an existing claim.
+        let gd = GameData::from_bundled().unwrap();
+        let db = open_test_db(0);
+        let iron = gd
+            .nodes()
+            .iter()
+            .find(|n| {
+                n.resource_item_id == "Desc_OreIron_C"
+                    && n.purity == crate::shared::gamedata::types::NodePurity::Normal
+            })
+            .unwrap();
+        db.with(|c| {
+            repo::claim_upsert(c, &iron.id, Some("Build_MinerMk2_C"), 100.0, None, None, "n")
+        })
+        .unwrap();
+        let rows = list_resource_nodes_impl(&db, &gd).unwrap();
+        let row = rows.iter().find(|r| r.id == iron.id).unwrap();
+        assert!(
+            !row.claim_invalid_extractor,
+            "an above-tier but same-family claim isn't an invalid extractor"
+        );
+        // The stored claim's real rate still shows (Mk2 @ Normal = 120
+        // ipm) — the picker's narrowed options don't retroactively
+        // change what's already built.
+        assert!((row.items_per_minute - 120.0).abs() < 0.01);
     }
 }
