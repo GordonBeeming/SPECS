@@ -25,6 +25,18 @@ use super::tier;
 /// reporting threshold only.
 pub const REPORTABLE_IPM: f32 = 0.05;
 
+/// What's left of a flow once everything already taking from it has had
+/// its share. Negative never means "owed" — it means there is nothing
+/// spare, so the floor is part of the rule, not a tidy-up.
+///
+/// The one derivation behind three figures that must agree:
+/// `ExportOfferProduct.spare_ipm` and `remaining_ipm` (what another
+/// factory can take), and a plan node's `free_output_ipm` (what this
+/// factory can offer). They differ only in what counts as "drawn".
+pub(crate) fn spare_ipm(produced_ipm: f32, drawn_ipm: f32) -> f32 {
+    (produced_ipm - drawn_ipm).max(0.0)
+}
+
 /// Per-machine ipm of `item_id` for this recipe at 100% clock with no
 /// amplification.
 fn recipe_output_rate(recipe: &Recipe, item_id: &str) -> Option<f32> {
@@ -572,6 +584,38 @@ fn effective_external_cap(
     }
 }
 
+/// The ceiling the user actually declared for each fully-cut item, as a
+/// number the optimizer can be bound by.
+///
+/// Only an explicit `ipm_cap` counts, and only when *every* spec for the
+/// item carries one. The derived figure `effective_external_cap` falls
+/// back to — the source's real remaining export capacity — is deliberately
+/// not a bound: it is `0` for a factory that makes the item but hasn't
+/// opened an export slice yet, which is the state every import is in for
+/// the one click between picking a source and raising it. Binding the LP
+/// on that would rewrite the plan around avoiding an item the user just
+/// said they wanted. An explicit cap is a statement; an absent export
+/// slice is an absence.
+///
+/// An item with any uncapped spec is left out entirely, which is what
+/// keeps "however much it takes, from a factory I haven't built yet"
+/// plannable.
+fn declared_import_caps(
+    full_cuts: &HashSet<String>,
+    imports: &[PlanImportSpec],
+) -> HashMap<String, f32> {
+    let mut caps: HashMap<String, f32> = HashMap::new();
+    for item in full_cuts {
+        let specs: Vec<&PlanImportSpec> = imports.iter().filter(|s| s.item_id == *item).collect();
+        if specs.is_empty() || specs.iter().any(|s| s.ipm_cap.is_none()) {
+            continue;
+        }
+        let total: f32 = specs.iter().filter_map(|s| s.ipm_cap).map(|c| c.max(0.0)).sum();
+        caps.insert(item.clone(), total);
+    }
+    caps
+}
+
 /// Distribute one cut item's accumulated demand across its import
 /// specs in declared order. Sourced specs take up to their effective
 /// cap (explicit cap, else real export capacity); whatever is left is
@@ -775,7 +819,6 @@ fn solve_with_gate_relaxation(
     game_data: &GameData,
     input: &solver::SolveInput,
     weights: &HashMap<String, f64>,
-    budget_ms: u64,
 ) -> Result<solver::PlanSolution, SolvedComputeError> {
     let to_compute_error = |e: solver::SolveError| match e {
         solver::SolveError::Unreachable { item_id } => {
@@ -783,10 +826,10 @@ fn solve_with_gate_relaxation(
         }
         solver::SolveError::Failed(reason) => SolvedComputeError::Solver(reason),
     };
-    match solver::solve(game_data, input, weights, budget_ms) {
+    match solver::solve(game_data, input, weights) {
         Err(solver::SolveError::Unreachable { .. }) if input.tier_allowed.is_some() => {
             let ungated = solver::SolveInput { tier_allowed: None, ..*input };
-            solver::solve(game_data, &ungated, weights, budget_ms).map_err(to_compute_error)
+            solver::solve(game_data, &ungated, weights).map_err(to_compute_error)
         }
         other => other.map_err(to_compute_error),
     }
@@ -846,6 +889,7 @@ fn compute_plan_graph_solved(
         .collect();
     let full_cuts: HashSet<String> =
         cut_all.iter().filter(|i| !self_items.contains(*i)).cloned().collect();
+    let import_caps = declared_import_caps(&full_cuts, imports);
     let mixed: Vec<String> = {
         let mut v: Vec<String> =
             cut_all.iter().filter(|i| self_items.contains(*i)).cloned().collect();
@@ -922,17 +966,30 @@ fn compute_plan_graph_solved(
     // scale shifts).
     let mut ext_supply: HashMap<String, f32> = HashMap::new();
     let mut solution: Option<solver::PlanSolution> = None;
-    for _pass in 0..4 {
+    let started = std::time::Instant::now();
+    for pass in 0..4 {
+        // The budget guards further work, never an answer already in
+        // hand. Each extra pass only sharpens a mixed import's external
+        // share, so stopping early costs a little precision; stopping
+        // *after* a solve used to cost the whole plan, because the
+        // greedy chain it fell back to can't break a recycling loop at
+        // all and returned `CycleDetected` for a plan the LP had just
+        // solved.
+        if pass > 0 && started.elapsed().as_millis() as u64 > options.solver_budget_ms {
+            break;
+        }
         let input = solver::SolveInput {
             demands: &demands,
             external_supply: &ext_supply,
             cut_items: &full_cuts,
+            import_caps: &import_caps,
+            claimed_supply: available_supply,
             recipe_overrides: &overrides,
             unlocked_alts,
             include_sam,
             tier_allowed,
         };
-        let sol = solve_with_gate_relaxation(game_data, &input, &weights, options.solver_budget_ms)?;
+        let sol = solve_with_gate_relaxation(game_data, &input, &weights)?;
 
         let mut next: HashMap<String, f32> = HashMap::new();
         for item in &mixed {
@@ -1067,6 +1124,35 @@ fn assemble_solved_graph(
         }
     }
 
+    // Free output per step: what's left of a bank's production once the
+    // rest of this factory's machines have taken their share. Computed
+    // here, before raws and imports join `producers` and the sink joins
+    // `consumers`, because those are flows in and out of the factory —
+    // only the stages compete for an item internally. A Screws bank
+    // making 519/min that the Rotor and Reinforced Plate lines eat has
+    // nothing free, and offering its gross throughput as an export
+    // declares one the factory can't honour.
+    let mut free_output: HashMap<String, f32> = HashMap::new();
+    for s in &stages {
+        let Some(prods) = producers.get(&s.primary_item) else { continue };
+        let produced: f32 = prods.iter().map(|(_, ipm)| *ipm).sum();
+        let mine: f32 = prods
+            .iter()
+            .filter(|(key, _)| *key == s.node_key)
+            .map(|(_, ipm)| *ipm)
+            .sum();
+        if produced <= 1e-3 || mine <= 0.0 {
+            continue;
+        }
+        let drawn: f32 = consumers
+            .get(&s.primary_item)
+            .map(|cs| cs.iter().map(|(_, ipm)| *ipm).sum())
+            .unwrap_or(0.0);
+        // Several banks can make the same item; each is credited its
+        // share of the free total, not all of it.
+        free_output.insert(s.node_key.clone(), spare_ipm(produced, drawn) * (mine / produced));
+    }
+
     // Raw extraction + imports are producers too.
     let mut raw_items: Vec<(&String, &f64)> = sol.raw_extraction.iter().collect();
     raw_items.sort_by(|a, b| a.0.cmp(b.0));
@@ -1199,6 +1285,7 @@ fn assemble_solved_graph(
             clock_pct: s.stage.clock_pct,
             power_mw: s.stage.power_mw,
             output_ipm: s.stage.output_ipm,
+            free_output_ipm: free_output.get(&s.node_key).copied().unwrap_or(0.0),
             is_alt: s.stage.is_alt,
             is_target,
             target_ipm: target_ipms.get(s.primary_item.as_str()).copied(),
@@ -1630,6 +1717,13 @@ pub fn compute_plan_graph_greedy(
         }
 
         let is_target = target_ipms.contains_key(item_id.as_str());
+        // Greedy sizes each bank to exactly the demand it collected, so
+        // everything past the target's own rate is another step's
+        // ingredient. Same `spare_ipm` rule as the optimizer path, with
+        // the internal draw arrived at by subtraction rather than from a
+        // per-node flow map.
+        let target_ipm = target_ipms.get(item_id.as_str()).copied().unwrap_or(0.0);
+        let internal_draw = (stage.output_ipm - target_ipm).max(0.0);
         nodes.push(PlanNode::Recipe {
             node_key,
             item_id: item_id.clone(),
@@ -1642,6 +1736,7 @@ pub fn compute_plan_graph_greedy(
             clock_pct: stage.clock_pct,
             power_mw: stage.power_mw,
             output_ipm: stage.output_ipm,
+            free_output_ipm: spare_ipm(stage.output_ipm, internal_draw),
             is_alt: stage.is_alt,
             is_target,
             target_ipm: target_ipms.get(item_id.as_str()).copied(),
@@ -2888,4 +2983,183 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_solve_that_completed_is_kept_however_long_it_took() {
+        // The budget used to be checked *after* `problem.solve()`
+        // returned, so a slow success was thrown away and handed to the
+        // greedy chain — which can't break a recycling loop and errors
+        // outright. `started.elapsed()` is load-dependent by
+        // construction, so the same plan solved or failed depending on
+        // what else the machine was doing. A budget of zero is the
+        // extreme of that: every solve overruns it, and every solve must
+        // still come back.
+        let gd = GameData::from_bundled().unwrap();
+        let options = PlanComputeOptions { include_sam: false, solver_budget_ms: 0 };
+        let graph = compute_plan_graph(
+            "fac-self",
+            &[target("Desc_Cable_C", 60.0)],
+            &HashSet::new(),
+            None,
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            &HashMap::new(),
+            &options,
+            &gd,
+        )
+        .unwrap();
+        assert!(
+            !graph
+                .warnings
+                .iter()
+                .any(|w| matches!(w, PlanWarning::OptimizerFellBack { .. })),
+            "the optimizer solved this; the budget must not discard it: {:?}",
+            graph.warnings
+        );
+        assert!(!recipe_keys(&graph).is_empty());
+    }
+
+    #[test]
+    fn free_output_is_production_minus_what_the_factory_eats_itself() {
+        // A Screws bank making 519/min with the Rotor and Reinforced
+        // Plate lines eating nearly all of it prefilled an export at
+        // 519, declaring a rate the factory can't honour. Iron Plate is
+        // the same shape in miniature: it's a target in its own right
+        // *and* an ingredient for Reinforced Iron Plate.
+        let gd = GameData::from_bundled().unwrap();
+        let graph = compute_plan_graph(
+            "fac-self",
+            &[
+                target("Desc_IronPlateReinforced_C", 5.0),
+                target("Desc_IronPlate_C", 20.0),
+            ],
+            &HashSet::new(),
+            None,
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            &HashMap::new(),
+            &PlanComputeOptions::default(),
+            &gd,
+        )
+        .unwrap();
+        let plate = graph
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                PlanNode::Recipe { item_id, output_ipm, free_output_ipm, .. }
+                    if item_id == "Desc_IronPlate_C" =>
+                {
+                    Some((*output_ipm, *free_output_ipm))
+                }
+                _ => None,
+            })
+            .expect("iron plate step");
+        assert!(
+            plate.0 > 20.0 + REPORTABLE_IPM,
+            "the plate line also feeds the reinforced line: {}",
+            plate.0
+        );
+        assert!(
+            (plate.1 - 20.0).abs() < 0.5,
+            "only the target's own rate is free to export, got {} of {}",
+            plate.1,
+            plate.0
+        );
+    }
+
+    #[test]
+    fn a_step_nobody_else_draws_from_has_all_of_its_output_free() {
+        let gd = GameData::from_bundled().unwrap();
+        let graph = compute_plan_graph(
+            "fac-self",
+            &[target("Desc_IronPlate_C", 20.0)],
+            &HashSet::new(),
+            None,
+            &HashMap::new(),
+            &[],
+            &HashMap::new(),
+            &HashMap::new(),
+            &PlanComputeOptions::default(),
+            &gd,
+        )
+        .unwrap();
+        for node in &graph.nodes {
+            let PlanNode::Recipe { item_id, output_ipm, free_output_ipm, .. } = node else {
+                continue;
+            };
+            if item_id != "Desc_IronPlate_C" {
+                continue;
+            }
+            assert!(
+                (output_ipm - free_output_ipm).abs() < 0.5,
+                "nothing consumes the plate here: {output_ipm} produced, {free_output_ipm} free"
+            );
+        }
+    }
+
+    #[test]
+    fn a_declared_import_cap_reaches_the_optimizer_as_a_bound() {
+        // The end-to-end half of the solver's cap test: the number the
+        // user typed into the source row has to arrive at the LP, not
+        // stop at the warning that reports the gap.
+        let gd = GameData::from_bundled().unwrap();
+        let mut alts = HashSet::new();
+        alts.insert("Recipe_Alternate_Cable_2_C".to_string());
+        let imports = [import_spec("Desc_Wire_C", Some("fac-wire"), Some(10.0))];
+        let graph = compute_plan_graph(
+            "fac-self",
+            &[target("Desc_Cable_C", 60.0)],
+            &alts,
+            None,
+            &HashMap::new(),
+            &imports,
+            &HashMap::new(),
+            &HashMap::new(),
+            &PlanComputeOptions::default(),
+            &gd,
+        )
+        .unwrap();
+        let wire = graph.nodes.iter().find_map(|n| match n {
+            PlanNode::Import { item_id, ipm, .. } if item_id == "Desc_Wire_C" => Some(*ipm),
+            _ => None,
+        });
+        assert!(
+            wire.map(|ipm| ipm <= 10.0 + 1e-3).unwrap_or(true),
+            "the plan drew {wire:?} against a declared cap of 10"
+        );
+    }
+
+    #[test]
+    fn an_uncapped_import_stays_unbounded_so_a_future_source_is_plannable() {
+        // Planning the endgame backwards means sourcing from a factory
+        // that doesn't exist yet. An absent cap has to keep meaning
+        // "however much it takes" — bounding it on the source's current
+        // (zero) export capacity would rewrite the plan around avoiding
+        // the item the user just said they wanted.
+        let gd = GameData::from_bundled().unwrap();
+        let imports = [import_spec("Desc_Wire_C", None, None)];
+        let graph = compute_plan_graph(
+            "fac-self",
+            &[target("Desc_Cable_C", 60.0)],
+            &HashSet::new(),
+            None,
+            &HashMap::new(),
+            &imports,
+            &HashMap::new(),
+            &HashMap::new(),
+            &PlanComputeOptions::default(),
+            &gd,
+        )
+        .unwrap();
+        let wire = graph
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                PlanNode::Import { item_id, ipm, .. } if item_id == "Desc_Wire_C" => Some(*ipm),
+                _ => None,
+            })
+            .expect("wire import node");
+        assert!((wire - 120.0).abs() < 0.5, "the whole draw comes from the import: {wire}");
+    }
 }

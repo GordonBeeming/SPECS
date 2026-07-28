@@ -5,6 +5,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
 
+use crate::features::alts::repo as alts_repo;
 use crate::features::factory::dto::Factory;
 use crate::features::factory::repo as factory_repo;
 use crate::features::logistics::repo as logistics_repo;
@@ -16,7 +17,7 @@ use crate::shared::gamedata::GameData;
 
 use crate::shared::db::playthrough_db::PlaythroughDb;
 
-use super::domain::compute_plan_graph;
+use super::domain::{compute_plan_graph, spare_ipm};
 use super::dto::{
     ComputePlanInput, ComputePlanResult, FactoryPlan, PlanImportRowDto, PlanLayoutEntry,
     PlanNode, SavePlanInput, SavePlanResult,
@@ -64,6 +65,10 @@ pub(crate) fn tier_reachable_alts(tier: u8, game_data: &GameData) -> HashSet<Str
 /// graph — see `add_bound_extractor_power`.
 struct PlanContext {
     alts: HashSet<String>,
+    /// Alts actually scanned, which is a different question from `alts`
+    /// (everything the tier reaches). The planner plans with the second
+    /// set on purpose; the designer needs the first to say so.
+    collected_alts: HashSet<String>,
     current_tier: u8,
     supply: std::collections::HashMap<String, f32>,
     claims: std::collections::HashMap<String, nodes_repo::ClaimRow>,
@@ -85,11 +90,48 @@ fn gather_plan_context(
         db.with(|c| crate::features::playthrough::repo::progress_get(c).map_err(AppError::from))?;
     let tier: u8 = current_tier.clamp(0, u8::MAX as i64) as u8;
     let alts = tier_reachable_alts(tier, game_data);
+    let collected_alts: HashSet<String> = db
+        .with(|c| alts_repo::alt_list(c).map_err(AppError::from))?
+        .into_iter()
+        .map(|a| a.recipe_id)
+        .collect();
     let claims = db.with(|c| nodes_repo::claims_all(c).map_err(AppError::from))?;
     let water_groups = db.with(|c| nodes_repo::water_groups_all(c).map_err(AppError::from))?;
     let supply =
         nodes_domain::supply_for_factory(&claims, &water_groups, factory_id, tier, game_data);
-    Ok(PlanContext { alts, current_tier: tier, supply, claims, water_groups })
+    Ok(PlanContext { alts, collected_alts, current_tier: tier, supply, claims, water_groups })
+}
+
+/// Name the alts a computed plan leans on that aren't scanned yet.
+///
+/// Deliberately not a `PlanWarning`: the plan is correct and buildable
+/// in principle, and whether the pioneer can build it *today* is a
+/// separate fact from whether the chain is sound. Kept as its own list
+/// so the designer can say "this needs 3 alts you haven't got" beside
+/// the recipes rather than in the same amber block as a raw shortfall.
+fn attach_uncollected_alts(
+    graph: &mut super::dto::PlanGraph,
+    collected: &HashSet<String>,
+    game_data: &GameData,
+) {
+    let mut names: Vec<String> = graph
+        .nodes
+        .iter()
+        .filter_map(|n| match n {
+            PlanNode::Recipe { recipe_id, is_alt: true, .. } => Some(recipe_id),
+            _ => None,
+        })
+        .filter(|recipe_id| !collected.contains(*recipe_id))
+        .map(|recipe_id| {
+            game_data
+                .recipe(recipe_id)
+                .map(|r| r.name.clone())
+                .unwrap_or_else(|| recipe_id.clone())
+        })
+        .collect();
+    names.sort();
+    names.dedup();
+    graph.uncollected_alts = names;
 }
 
 /// Extractors (miners, water/oil pumps, resource wells) are claimed
@@ -136,6 +178,7 @@ fn add_bound_extractor_power(
 /// headroom when its plan recomputes.
 fn gather_export_capacity(
     db: &PlaythroughDb,
+    game_data: &GameData,
     beneficiary_factory_id: &str,
 ) -> AppResult<std::collections::HashMap<(String, String), f32>> {
     let targets = db.with(|c| plan_repo::plan_targets_all(c).map_err(AppError::from))?;
@@ -151,7 +194,9 @@ fn gather_export_capacity(
             .or_insert(0.0) += l.items_per_minute;
     }
     let mut out = std::collections::HashMap::new();
+    let mut planned: HashSet<(String, String)> = HashSet::new();
     for (fid, t) in targets {
+        planned.insert((fid.clone(), t.item_id.clone()));
         let Some(export) = t.export_ipm else { continue };
         if export <= 0.0 {
             continue;
@@ -161,7 +206,72 @@ fn gather_export_capacity(
         // `ipm`, so offers clamp to what actually gets made.
         let export = export.min(t.ipm);
         let d = *drawn.get(&(fid.clone(), t.item_id.clone())).unwrap_or(&0.0);
-        out.insert((fid, t.item_id), (export - d).max(0.0));
+        out.insert((fid, t.item_id), spare_ipm(export, d));
+    }
+    // Intermediates need no export slice to be real capacity, so an
+    // import sourced from one has to size itself against the surplus
+    // directly — otherwise the picker offers a source the solve then
+    // treats as delivering nothing.
+    for ((fid, item), surplus) in intermediate_surplus(db, game_data)? {
+        if planned.contains(&(fid.clone(), item.clone())) {
+            continue;
+        }
+        let d = *drawn.get(&(fid.clone(), item.clone())).unwrap_or(&0.0);
+        out.insert((fid, item), spare_ipm(surplus, d));
+    }
+    Ok(out)
+}
+
+/// Machine-side surplus per (factory, item) for items their factory has
+/// no plan target for — the ingots, sheets, rods and byproducts a plan
+/// makes on its way to what it was actually told to build.
+///
+/// This is the whole of the "surplus export" idea: an intermediate is
+/// already being produced, so taking some of it claims part of an
+/// existing flow rather than adding a product. That distinction is why
+/// `raise_export_target` can keep refusing to add a target to somebody
+/// else's factory — a raise changes what that factory *is*, and this
+/// doesn't.
+///
+/// Read off the materialized machines rather than by re-solving each
+/// plan: plan-managed machine rows are regenerated on every save, so
+/// they're the persisted shadow of the plan graph, and this runs on
+/// every debounced compute.
+fn intermediate_surplus(
+    db: &PlaythroughDb,
+    game_data: &GameData,
+) -> AppResult<std::collections::HashMap<(String, String), f32>> {
+    let (tier_i64, _) =
+        db.with(|c| crate::features::playthrough::repo::progress_get(c).map_err(AppError::from))?;
+    let tier: u8 = tier_i64.clamp(0, u8::MAX as i64) as u8;
+    // Whole-playthrough tables, loaded once and passed through rather
+    // than re-queried per factory.
+    let factories = db.with(|c| factory_repo::factory_list(c).map_err(AppError::from))?;
+    let claims = db.with(|c| nodes_repo::claims_all(c).map_err(AppError::from))?;
+    let water_groups = db.with(|c| nodes_repo::water_groups_all(c).map_err(AppError::from))?;
+    let no_links = std::collections::HashMap::new();
+
+    let mut out = std::collections::HashMap::new();
+    for f in factories {
+        let machines =
+            db.with(|c| factory_repo::machines_for_factory(c, &f.id).map_err(AppError::from))?;
+        if machines.is_empty() {
+            continue;
+        }
+        let ledger = crate::features::factory::commands::compose_ledger_with_supply(
+            &f.id,
+            &machines,
+            game_data,
+            &claims,
+            &water_groups,
+            &no_links,
+            tier,
+        );
+        for flow in ledger.flows {
+            if flow.net_per_minute > 0.0 {
+                out.insert((f.id.clone(), flow.item_id), flow.net_per_minute);
+            }
+        }
     }
     Ok(out)
 }
@@ -248,7 +358,7 @@ pub(crate) fn saved_plan_graph(
         return Ok(None);
     }
     let ctx = gather_plan_context(db, game_data, factory_id)?;
-    let export_capacity = gather_export_capacity(db, factory_id)?;
+    let export_capacity = gather_export_capacity(db, game_data, factory_id)?;
     let imports: Vec<super::dto::PlanImportSpec> = plan
         .imports
         .iter()
@@ -296,7 +406,7 @@ pub(crate) fn plan_save_impl(
         .ok_or_else(|| AppError::NotFound(format!("factory {} not found", input.factory_id)))?;
 
     let ctx = gather_plan_context(db, game_data, &input.factory_id)?;
-    let export_capacity = gather_export_capacity(db, &input.factory_id)?;
+    let export_capacity = gather_export_capacity(db, game_data, &input.factory_id)?;
     // The graph is recomputed server-side from the submitted inputs —
     // a client-supplied graph is never trusted for materialization.
     let mut graph = compute_plan_graph(
@@ -319,6 +429,9 @@ pub(crate) fn plan_save_impl(
         &ctx.water_groups,
         game_data,
     );
+    // The designer renders the saved graph straight back, so a flag it
+    // was showing before the save has to survive it.
+    attach_uncollected_alts(&mut graph, &ctx.collected_alts, game_data);
 
     let mut machine_ids: Vec<String> = Vec::new();
     let mut link_ids: Vec<String> = Vec::new();
@@ -490,7 +603,7 @@ pub fn factory_plan_compute(
     validate_plan_specs(&input.targets)?;
     let db = require_active(&active)?;
     let ctx = gather_plan_context(&db, &game_data, &input.factory_id)?;
-    let export_capacity = gather_export_capacity(&db, &input.factory_id)?;
+    let export_capacity = gather_export_capacity(&db, &game_data, &input.factory_id)?;
     match compute_plan_graph(
         &input.factory_id,
         &input.targets,
@@ -511,6 +624,13 @@ pub fn factory_plan_compute(
                 &ctx.water_groups,
                 &game_data,
             );
+            attach_uncollected_alts(&mut graph, &ctx.collected_alts, &game_data);
+            // Designer path only. The save path and the validation
+            // sweep don't need the offers, and computing them means
+            // reading every factory's machines — a cost worth paying
+            // once per edit and not once per factory in a sweep.
+            let offers = export_offers_impl(&db, &game_data)?;
+            attach_existing_producers(&mut graph, &input.factory_id, &offers);
             Ok(ComputePlanResult::Ok { graph })
         }
         Err(error) => Ok(ComputePlanResult::Err { error }),
@@ -584,7 +704,9 @@ fn export_offers_impl(
 
     let mut by_factory: std::collections::HashMap<String, Vec<super::dto::ExportOfferProduct>> =
         std::collections::HashMap::new();
+    let mut planned: HashSet<(String, String)> = HashSet::new();
     for (fid, t) in targets {
+        planned.insert((fid.clone(), t.item_id.clone()));
         if t.ipm <= 0.0 {
             continue;
         }
@@ -603,8 +725,39 @@ fn export_offers_impl(
             produced_ipm: t.ipm,
             export_ipm: export,
             drawn_ipm,
-            remaining_ipm: (export - drawn_ipm).max(0.0),
-            spare_ipm: (t.ipm - drawn_ipm).max(0.0),
+            remaining_ipm: spare_ipm(export, drawn_ipm),
+            spare_ipm: spare_ipm(t.ipm, drawn_ipm),
+        });
+    }
+
+    // Intermediates. Every factory produces several items on the way to
+    // what it was told to build, and from Tier 4 on those — ingots,
+    // sheets, rods, wire — are exactly what a new factory wants. There's
+    // no export slice to widen here and none is needed: the surplus is
+    // already coming off the machines, so `export_ipm` is the surplus
+    // itself and the panel has nothing to ask the user to raise.
+    // Sorted before they're appended: the source is a HashMap, and a
+    // panel whose rows reshuffle between two identical loads is its own
+    // bug. Targets keep their declared order ahead of them.
+    let mut intermediates: Vec<((String, String), f32)> =
+        intermediate_surplus(db, game_data)?.into_iter().collect();
+    intermediates.sort_by(|a, b| a.0.cmp(&b.0));
+    for ((fid, item_id), surplus) in intermediates {
+        if planned.contains(&(fid.clone(), item_id.clone())) || surplus <= 0.0 {
+            continue;
+        }
+        let drawn_ipm = *drawn.get(&(fid.clone(), item_id.clone())).unwrap_or(&0.0);
+        by_factory.entry(fid).or_default().push(super::dto::ExportOfferProduct {
+            item_name: game_data
+                .item(&item_id)
+                .map(|i| i.name.clone())
+                .unwrap_or_else(|| item_id.clone()),
+            item_id,
+            produced_ipm: surplus,
+            export_ipm: surplus,
+            drawn_ipm,
+            remaining_ipm: spare_ipm(surplus, drawn_ipm),
+            spare_ipm: spare_ipm(surplus, drawn_ipm),
         });
     }
 
@@ -621,6 +774,83 @@ fn export_offers_impl(
         .collect();
     out.sort_by_key(|o| o.factory_name.to_lowercase());
     Ok(out)
+}
+
+/// Below this a "somebody else already makes it" prompt is noise — the
+/// same half-a-tenth threshold the rest of the planner reports against.
+const OFFERABLE_SPARE_IPM: f32 = super::domain::REPORTABLE_IPM;
+
+/// Point every locally-built step at the factories that already make
+/// that item with capacity to spare.
+///
+/// The Sources panel has always been able to answer this, per item, once
+/// you go and ask. Nothing asked it *for* you, so the default outcome
+/// was rebuilding: at Tier 9 four factories built 238 machines' worth of
+/// parts three other factories were already making with spare, while the
+/// two that did take the import path needed 1 and 2 machines. Attaching
+/// the answer to the graph is what lets the designer offer it at the
+/// moment the local copy appears.
+///
+/// Offers only — nothing here changes a plan. Which producer to take
+/// from, and whether to take one at all, stays the user's call.
+fn attach_existing_producers(
+    graph: &mut super::dto::PlanGraph,
+    factory_id: &str,
+    offers: &[super::dto::ExportOffer],
+) {
+    // Items this plan already imports aren't candidates: the flow the
+    // prompt would suggest is the one that's already there.
+    let imported: HashSet<&str> = graph
+        .nodes
+        .iter()
+        .filter_map(|n| match n {
+            PlanNode::Import { item_id, .. } => Some(item_id.as_str()),
+            _ => None,
+        })
+        .collect();
+
+    let mut out: Vec<super::dto::ExistingProducer> = Vec::new();
+    for node in &graph.nodes {
+        let PlanNode::Recipe { node_key, item_id, item_name, output_ipm, .. } = node else {
+            continue;
+        };
+        if imported.contains(item_id.as_str()) {
+            continue;
+        }
+        let mut sources: Vec<super::dto::ExistingProducerSource> = offers
+            .iter()
+            .filter(|o| o.factory_id != factory_id)
+            .filter_map(|o| {
+                o.products
+                    .iter()
+                    .find(|p| p.item_id == *item_id && p.spare_ipm > OFFERABLE_SPARE_IPM)
+                    .map(|p| super::dto::ExistingProducerSource {
+                        factory_id: o.factory_id.clone(),
+                        factory_name: o.factory_name.clone(),
+                        spare_ipm: p.spare_ipm,
+                    })
+            })
+            .collect();
+        if sources.is_empty() {
+            continue;
+        }
+        // Most spare first, then by name so equal offers don't shuffle.
+        sources.sort_by(|a, b| {
+            b.spare_ipm
+                .partial_cmp(&a.spare_ipm)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.factory_name.to_lowercase().cmp(&b.factory_name.to_lowercase()))
+        });
+        out.push(super::dto::ExistingProducer {
+            node_key: node_key.clone(),
+            item_id: item_id.clone(),
+            item_name: item_name.clone(),
+            local_ipm: *output_ipm,
+            sources,
+        });
+    }
+    out.sort_by(|a, b| a.item_name.to_lowercase().cmp(&b.item_name.to_lowercase()));
+    graph.existing_producers = out;
 }
 
 #[tauri::command]
@@ -1399,7 +1629,7 @@ mod tests {
         assert!((wire.export_ipm - 100.0).abs() < 1e-3, "offer clamps to production");
         assert!((wire.remaining_ipm - 100.0).abs() < 1e-3);
 
-        let capacity = gather_export_capacity(&db, "fac-consumer").unwrap();
+        let capacity = gather_export_capacity(&db, &gd, "fac-consumer").unwrap();
         let cap = capacity
             .get(&("fac-wire".to_string(), "Desc_Wire_C".to_string()))
             .copied()
@@ -1791,7 +2021,7 @@ mod tests {
         );
         assert!((raised.new_target_ipm - 260.0).abs() < 1e-3);
         // What the asker's own plan will now be allowed to pull.
-        let capacity = gather_export_capacity(&db, "fac-cables").unwrap();
+        let capacity = gather_export_capacity(&db, &gd, "fac-cables").unwrap();
         let for_cables = capacity
             .get(&("fac-wire".to_string(), "Desc_Wire_C".to_string()))
             .copied()
@@ -1988,6 +2218,262 @@ mod tests {
         assert!(
             plan.layout.iter().all(|l| l.node_key != "recipe:Desc_GoneItem_C"),
             "stale node key must be pruned on save"
+        );
+    }
+
+    // ---------- surplus exports, uncollected alts, existing producers ----------
+
+    /// A bank the plan never asked for — one Constructor turning ingots
+    /// into 15 rods/min that nothing downstream consumes. The realistic
+    /// shape of an intermediate with genuine surplus.
+    fn insert_manual_rod_bank(db: &PlaythroughDb, factory_id: &str) {
+        db.with(|c| {
+            factory_repo::machine_insert(
+                c,
+                "machine-rods",
+                factory_id,
+                "Build_ConstructorMk1_C",
+                "Recipe_IronRod_C",
+                1,
+                100.0,
+                false,
+                0,
+                0,
+                None,
+                NOW,
+            )
+        })
+        .expect("insert manual rod bank");
+    }
+
+    #[test]
+    fn a_factory_that_makes_an_item_without_a_target_for_it_is_still_offered() {
+        // #100 made a producer discoverable when the item was a plan
+        // target. Intermediates are the larger set — nearly every plan
+        // makes several on the way to what it was told to build — and
+        // they were a dead end, because the Sources panel only ever
+        // looked at targets.
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "fac-rods", "Rod shop");
+        insert_manual_rod_bank(&db, "fac-rods");
+
+        let offers = export_offers_impl(&db, &gd).unwrap();
+        let rod = offers
+            .iter()
+            .find(|o| o.factory_id == "fac-rods")
+            .and_then(|o| o.products.iter().find(|p| p.item_id == "Desc_IronRod_C"))
+            .expect("the rods it actually makes must be offered");
+        assert!((rod.spare_ipm - 15.0).abs() < 0.1, "spare {}", rod.spare_ipm);
+
+        // And the offer has to be a number the solve can size an import
+        // against, or the picker lists a source that delivers nothing.
+        let capacity = gather_export_capacity(&db, &gd, "fac-consumer").unwrap();
+        let cap = capacity
+            .get(&("fac-rods".to_string(), "Desc_IronRod_C".to_string()))
+            .copied()
+            .unwrap_or(0.0);
+        assert!((cap - 15.0).abs() < 0.1, "surplus must reach the solver, got {cap}");
+    }
+
+    #[test]
+    fn an_intermediate_its_own_factory_eats_is_not_offered_as_spare() {
+        // The honest half. A plan that consumes every rod it makes has
+        // nothing going free, and saying otherwise would offer capacity
+        // that only exists if somebody raises that factory's target —
+        // which is `raise_export_target`'s deliberate refusal, not this.
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "fac-screws", "Screw works");
+        plan_save_impl(
+            &db,
+            &gd,
+            save_input(
+                "fac-screws",
+                vec![PlanTargetSpec {
+                    item_id: "Desc_IronScrew_C".into(),
+                    ipm: 40.0,
+                    export_ipm: None,
+                }],
+                vec![],
+            ),
+            NOW,
+        )
+        .unwrap();
+
+        let offers = export_offers_impl(&db, &gd).unwrap();
+        let rod = offers
+            .iter()
+            .find(|o| o.factory_id == "fac-screws")
+            .and_then(|o| o.products.iter().find(|p| p.item_id == "Desc_IronRod_C"));
+        assert!(
+            rod.map(|p| p.spare_ipm < super::super::domain::REPORTABLE_IPM).unwrap_or(true),
+            "rods the screw line eats are not spare: {rod:?}"
+        );
+    }
+
+    #[test]
+    fn a_plan_leaning_on_alts_nobody_scanned_says_so() {
+        // A plan can be built entirely out of alternates the pioneer
+        // hasn't collected and look completely buildable. "Unlocked at
+        // T5" and "I have it" are different questions; only the first
+        // was being asked, and Validate answered the second too late to
+        // help while the recipes were being chosen.
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        db.with(|c| crate::features::playthrough::repo::progress_set_tier(c, 9)).unwrap();
+        insert_test_factory(&db, "fac-1", "Plate works");
+
+        let alt = "Recipe_Alternate_IngotIron_C";
+        let mut graph = super::super::dto::PlanGraph {
+            nodes: vec![PlanNode::Recipe {
+                node_key: "recipe:Desc_IronIngot_C".into(),
+                item_id: "Desc_IronIngot_C".into(),
+                item_name: "Iron Ingot".into(),
+                recipe_id: alt.into(),
+                recipe_name: "Alternate: Iron Alloy Ingot".into(),
+                building_id: "Build_SmelterMk1_C".into(),
+                building_name: "Smelter".into(),
+                machine_count: 1,
+                clock_pct: 100.0,
+                power_mw: 4.0,
+                output_ipm: 60.0,
+                free_output_ipm: 60.0,
+                is_alt: true,
+                is_target: true,
+                target_ipm: Some(60.0),
+                inputs: vec![],
+                outputs: vec![],
+            }],
+            ..Default::default()
+        };
+
+        let ctx = gather_plan_context(&db, &gd, "fac-1").unwrap();
+        attach_uncollected_alts(&mut graph, &ctx.collected_alts, &gd);
+        assert_eq!(graph.uncollected_alts.len(), 1, "{:?}", graph.uncollected_alts);
+
+        db.with(|c| alts_repo::alt_unlock(c, alt, NOW)).unwrap();
+        let ctx = gather_plan_context(&db, &gd, "fac-1").unwrap();
+        attach_uncollected_alts(&mut graph, &ctx.collected_alts, &gd);
+        assert!(graph.uncollected_alts.is_empty(), "scanned alts drop off the list");
+    }
+
+    #[test]
+    fn a_step_somebody_else_already_makes_with_spare_is_named_on_the_graph() {
+        // At Tier 9 four factories built 238 machines' worth of parts
+        // three other factories already made with spare, because nothing
+        // said so at the moment the local copy appeared.
+        let mut graph = super::super::dto::PlanGraph {
+            nodes: vec![PlanNode::Recipe {
+                node_key: "recipe:Desc_IronRod_C".into(),
+                item_id: "Desc_IronRod_C".into(),
+                item_name: "Iron Rod".into(),
+                recipe_id: "Recipe_IronRod_C".into(),
+                recipe_name: "Iron Rod".into(),
+                building_id: "Build_ConstructorMk1_C".into(),
+                building_name: "Constructor".into(),
+                machine_count: 2,
+                clock_pct: 100.0,
+                power_mw: 8.0,
+                output_ipm: 30.0,
+                free_output_ipm: 0.0,
+                is_alt: false,
+                is_target: false,
+                target_ipm: None,
+                inputs: vec![],
+                outputs: vec![],
+            }],
+            ..Default::default()
+        };
+        let product = |spare: f32| super::super::dto::ExportOfferProduct {
+            item_id: "Desc_IronRod_C".into(),
+            item_name: "Iron Rod".into(),
+            produced_ipm: spare,
+            export_ipm: spare,
+            drawn_ipm: 0.0,
+            remaining_ipm: spare,
+            spare_ipm: spare,
+        };
+        let offers = vec![
+            super::super::dto::ExportOffer {
+                factory_id: "fac-rods".into(),
+                factory_name: "Rod shop".into(),
+                products: vec![product(15.0)],
+            },
+            super::super::dto::ExportOffer {
+                factory_id: "fac-more-rods".into(),
+                factory_name: "Rod shop II".into(),
+                products: vec![product(40.0)],
+            },
+            // Its own surplus is not a suggestion to import from itself.
+            super::super::dto::ExportOffer {
+                factory_id: "fac-self".into(),
+                factory_name: "This one".into(),
+                products: vec![product(99.0)],
+            },
+        ];
+        attach_existing_producers(&mut graph, "fac-self", &offers);
+
+        assert_eq!(graph.existing_producers.len(), 1);
+        let found = &graph.existing_producers[0];
+        assert_eq!(found.node_key, "recipe:Desc_IronRod_C");
+        assert!((found.local_ipm - 30.0).abs() < 1e-3);
+        let names: Vec<&str> =
+            found.sources.iter().map(|s| s.factory_name.as_str()).collect();
+        assert_eq!(names, vec!["Rod shop II", "Rod shop"], "most spare first");
+    }
+
+    #[test]
+    fn an_item_this_plan_already_imports_is_not_offered_again() {
+        let mut graph = super::super::dto::PlanGraph {
+            nodes: vec![
+                PlanNode::Recipe {
+                    node_key: "recipe:Desc_IronRod_C".into(),
+                    item_id: "Desc_IronRod_C".into(),
+                    item_name: "Iron Rod".into(),
+                    recipe_id: "Recipe_IronRod_C".into(),
+                    recipe_name: "Iron Rod".into(),
+                    building_id: "Build_ConstructorMk1_C".into(),
+                    building_name: "Constructor".into(),
+                    machine_count: 2,
+                    clock_pct: 100.0,
+                    power_mw: 8.0,
+                    output_ipm: 30.0,
+                    free_output_ipm: 0.0,
+                    is_alt: false,
+                    is_target: false,
+                    target_ipm: None,
+                    inputs: vec![],
+                    outputs: vec![],
+                },
+                PlanNode::Import {
+                    node_key: "import:Desc_IronRod_C".into(),
+                    item_id: "Desc_IronRod_C".into(),
+                    item_name: "Iron Rod".into(),
+                    ipm: 30.0,
+                    allocations: vec![],
+                    unassigned_ipm: 0.0,
+                },
+            ],
+            ..Default::default()
+        };
+        let offers = vec![super::super::dto::ExportOffer {
+            factory_id: "fac-rods".into(),
+            factory_name: "Rod shop".into(),
+            products: vec![super::super::dto::ExportOfferProduct {
+                item_id: "Desc_IronRod_C".into(),
+                item_name: "Iron Rod".into(),
+                produced_ipm: 15.0,
+                export_ipm: 15.0,
+                drawn_ipm: 0.0,
+                remaining_ipm: 15.0,
+                spare_ipm: 15.0,
+            }],
+        }];
+        attach_existing_producers(&mut graph, "fac-self", &offers);
+        assert!(
+            graph.existing_producers.is_empty(),
+            "the flow it would suggest is the one already there"
         );
     }
 }
