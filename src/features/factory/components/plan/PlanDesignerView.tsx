@@ -10,7 +10,7 @@ import type { ImportAllocation, RaiseExportTargetResult } from "@/features/plann
 import { invoke } from "@/shared/tauri/invoke";
 import { AddMachineForm } from "../AddMachineForm";
 import { FactoryLedgerTable } from "../FactoryLedgerTable";
-import { useItems, useRecipes } from "@/features/library/hooks/useLibrary";
+import { useIconDisplayNames, useItems, useRecipes } from "@/features/library/hooks/useLibrary";
 import { useUnlockedAlts } from "@/features/alts/hooks/useAlts";
 import { useLogisticsLinks } from "@/features/logistics/hooks/useLogistics";
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
@@ -55,6 +55,7 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
   const factories = useFactoryList();
   const items = useItems();
   const recipes = useRecipes();
+  const iconNames = useIconDisplayNames();
   const unlockedAlts = useUnlockedAlts();
   const links = useLogisticsLinks();
   const designer = usePlanDesigner(factoryId);
@@ -387,6 +388,7 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
           <IconPicker
             value={detail.data.factory.iconId ?? null}
             suggested={(working?.targets ?? []).map((t) => t.itemId)}
+            nameById={iconNames}
             onChange={(next) => {
               setIcon.mutate({ id: factoryId, iconId: next });
               setEditingIcon(false);

@@ -121,6 +121,17 @@ describe("buildNetworkEdges", () => {
     );
     expect(edges[0].label).toBe("Desc_Water_C · 120 ipm");
   });
+
+  it("keeps a fractional rate's decimal instead of rounding it away", () => {
+    // Throughput is routinely fractional in this app (a Motor line at
+    // 2.5/min, say) — `toFixed(0)` used to round that to "3 ipm", a
+    // figure that isn't what's actually flowing.
+    const edges = buildNetworkEdges(
+      [link({ id: "link-rip", itemId: "Desc_IronPlateReinforced_C", itemsPerMinute: 2.5 })],
+      items,
+    );
+    expect(edges[0].label).toBe("Reinforced Iron Plate · 2.5 ipm");
+  });
 });
 
 describe("utilisationFromPlanJson", () => {

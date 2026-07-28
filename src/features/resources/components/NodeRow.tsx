@@ -9,6 +9,7 @@ import { FilterSelect } from "@/shared/ui/FilterSelect";
 import { factoryPickerOptions, type FactoryPickerCandidate } from "@/features/map/transform";
 import { floorClockPct } from "@/features/validation/clock";
 import type { Finding } from "@/features/validation/types";
+import { num } from "@/shared/format/rates";
 
 import { claimDefaultExtractor, nodeDisplayLabel, nodeKindLabel, previewExtractorIpm } from "../display";
 import { useClearNodeClaim, useSetNodeClaim } from "../hooks/useResources";
@@ -272,7 +273,7 @@ function ClaimEditor({
         <ClockInput value={clockPct} onChange={setClockPct} ariaLabel="Claim clock percent" />
         {row.kind !== "geyser" && (
           <span className="text-[11px] font-medium text-fg">
-            {Math.round(previewIpm)} ipm at this clock
+            {num(previewIpm)} ipm at this clock
           </span>
         )}
       </label>

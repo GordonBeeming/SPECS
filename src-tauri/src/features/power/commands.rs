@@ -296,10 +296,40 @@ pub(crate) fn power_balance_with_supply(
     )
     .power_mw;
 
-    let gens = db.with(|c| repo::power_gens_for_factory(c, factory_id).map_err(AppError::from))?;
     let mut generated_mw = 0.0_f32;
     let mut fuel_totals: BTreeMap<String, f32> = BTreeMap::new();
     let mut byproduct_totals: BTreeMap<String, f32> = BTreeMap::new();
+
+    // A nuclear waste recipe is materialized as an ordinary
+    // `factory_machine` row so the planner can chain through it — its
+    // building is `Build_GeneratorNuclear_C`, whose `power_mw` is
+    // authored as 0 because a generator's draw side is nothing (see
+    // convert-game-data.ts). Left uncounted here, a plan that produces
+    // nuclear waste builds a Nuclear Power Plant that contributes
+    // neither its generation nor its fuel/byproduct flows to the grid,
+    // and the only way to see them was to re-declare the same physical
+    // plant as a manual `power_gen` row — double-counting it. Fuel and
+    // byproduct flows aren't added here: they already flow through
+    // `consumed_mw` as the recipe's own ordinary inputs/outputs, so
+    // mirroring them into `fuel_totals`/`byproduct_totals` would
+    // double-count those instead.
+    for m in &machines {
+        let Some(gen) = game_data.generator(&m.building_id) else {
+            continue;
+        };
+        let Some(fuel_item_id) = game_data
+            .recipe(&m.recipe_id)
+            .and_then(|r| r.inputs.first())
+            .map(|i| i.item_id.as_str())
+        else {
+            continue;
+        };
+        if let Some(fuel) = gen.fuels.iter().find(|f| f.fuel_item_id == fuel_item_id) {
+            generated_mw += generator_power_mw(gen, fuel, m.count, m.clock_pct);
+        }
+    }
+
+    let gens = db.with(|c| repo::power_gens_for_factory(c, factory_id).map_err(AppError::from))?;
     for g in &gens {
         // Don't silently drop rows whose generator/fuel id doesn't
         // resolve — that would mask data corruption (or a dataset
@@ -429,6 +459,49 @@ mod tests {
         assert!(
             balance.fuel_flows.iter().any(|f| f.item_id == "Desc_NuclearFuelRod_C"),
             "the consumed side still reports the rods"
+        );
+    }
+
+    #[test]
+    fn power_balance_counts_generation_from_a_plan_saved_nuclear_plant() {
+        // A plan that produces nuclear waste materializes the burn
+        // recipe as an ordinary factory_machine (Build_GeneratorNuclear_C
+        // / Recipe_NuclearWaste_C) so the planner can chain through it.
+        // Before this fix that machine's generation never reached the
+        // balance — only manual power_gen rows did — so the plant
+        // appeared to produce nothing on a grid it draws 0 MW from too
+        // (its power_mw is deliberately authored as 0; a generator's
+        // draw side is nothing). One plant at 50% clock generates
+        // 2,500 × 0.5 = 1,250 MW.
+        let db = open_test_db(9);
+        let gd = GameData::from_bundled().unwrap();
+        db.with(|c| factory_repo::factory_insert(c, "f1", "Nuclear", None, None, None, NOW))
+            .expect("insert factory");
+        db.with(|c| {
+            factory_repo::machine_insert(
+                c, "m1", "f1", "Build_GeneratorNuclear_C", "Recipe_NuclearWaste_C", 1, 50.0,
+                false, 0, 0, None, NOW,
+            )
+        })
+        .expect("insert machine");
+
+        let balance = power_balance_impl(&db, &gd, "f1").expect("balance computes");
+        assert!(
+            (balance.generated_mw - 1250.0).abs() < 0.01,
+            "expected 1,250 MW from one plant at 50%, got {}",
+            balance.generated_mw
+        );
+        // No manual power_gen row exists, so the generator-loop's own
+        // fuel/byproduct totals must stay empty — the rod and waste
+        // already flow through consumed_mw as the recipe's ordinary
+        // inputs/outputs, and mirroring them here would double-count.
+        assert!(
+            balance.fuel_flows.is_empty(),
+            "fuel flows should come from the recipe ledger, not be duplicated here"
+        );
+        assert!(
+            balance.byproduct_flows.is_empty(),
+            "byproduct flows should come from the recipe ledger, not be duplicated here"
         );
     }
 

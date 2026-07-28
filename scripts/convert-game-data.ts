@@ -745,6 +745,24 @@ const generators = GENERATOR_SPECS.map((spec) => {
   };
 });
 
+// The dump's ingredients for a generator-hosted "recipe" (burning a fuel
+// rod for waste) never include the reactor's coolant — that's modeled as
+// the building's own supplementalLoad, not a recipe ingredient — so
+// without this fold-in, a default planner chain through nuclear waste
+// would understate raw Water demand by the coolant load each plant
+// actually draws. The recipe's own cycle time already matches the rate
+// the generator computed its fuel/coolant figures at, so the two
+// per-minute numbers share the same clock and can be combined directly.
+for (const recipe of recipes) {
+  const generator = generators.find((g) => g.id === recipe.buildingId);
+  if (!generator) continue;
+  const fuelItemId = recipe.inputs[0]?.itemId;
+  const fuel = generator.fuels.find((f) => f.fuelItemId === fuelItemId);
+  if (fuel?.supplementalItemId !== undefined && fuel.supplementalPerMinute) {
+    recipe.inputs.push({ itemId: fuel.supplementalItemId, perMinute: fuel.supplementalPerMinute });
+  }
+}
+
 // --- Item list ----------------------------------------------------------
 
 type SpecsItem = {

@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/shared/ui/Button";
 import { Icon } from "@/shared/ui/Icon";
 import { IconPicker } from "@/shared/ui/IconPicker";
-import { useBuildings } from "@/features/library/hooks/useLibrary";
+import { useBuildings, useIconDisplayNames } from "@/features/library/hooks/useLibrary";
 import { queryKeys } from "@/shared/query/keys";
 import { factoryApi } from "../api";
 import { useCreateFactory } from "../hooks/useFactories";
@@ -40,6 +40,7 @@ export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalPro
   const [validationError, setValidationError] = useState<string | null>(null);
   const create = useCreateFactory();
   const buildings = useBuildings();
+  const iconNames = useIconDisplayNames();
   const queryClient = useQueryClient();
 
   // Default the suggested grid to all production building ids — those
@@ -195,6 +196,7 @@ export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalPro
                     value={iconId}
                     onChange={(next) => setIconId(next)}
                     suggested={suggested}
+                    nameById={iconNames}
                   />
                 </div>
               )}

@@ -198,6 +198,16 @@ describe("<NodeRow />", () => {
     expect(screen.getByText("240 ipm")).toBeInTheDocument();
   });
 
+  it("keeps a fractional preview rate instead of rounding it to a target the belt can't actually hit", () => {
+    // 240 base × 37% clock = 88.8 — landing on an exact rate while
+    // dragging is the whole point of this preview, so rounding 88.8 to
+    // 89 would show a number the player can't actually build to.
+    renderWithProviders(<NodeRow row={claimedMk2} factories={[]} index={0} preferredMinerId={null} />);
+    fireEvent.click(screen.getByLabelText("Edit"));
+    fireEvent.change(screen.getByLabelText("Claim clock percent"), { target: { value: "37" } });
+    expect(screen.getByText("88.8 ipm at this clock")).toBeInTheDocument();
+  });
+
   it("editing surfaces the bound-factory combobox with the playthrough's factories", async () => {
     const user = userEvent.setup();
     renderWithProviders(

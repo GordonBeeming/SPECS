@@ -160,6 +160,17 @@ function scopedKey(base: string, playthroughId: string | null): string {
 // measures the real container and replaces it.
 const DEFAULT_SCALE = 0.6;
 
+/** Scale that covers a container of the given size with the map image,
+ * rather than fitting inside it — the map is meant to be panned, so
+ * it's fine to run past the container in one axis as long as neither
+ * axis leaves bare canvas showing. Shared by the mount-time
+ * ResizeObserver (below) and the playthrough-switch effect, which both
+ * need it for a playthrough with no saved view of its own. */
+function coverFitScale(width: number, height: number): number {
+  const cover = Math.max(width / MAP_W, height / MAP_H);
+  return Math.min(Math.max(cover, 0.4), 6); // matches TransformWrapper's own min/maxScale
+}
+
 /** Last pan/zoom state, restored on mount so leaving the tab and
  * coming back continues exactly where the user was. */
 function readTransform(key: string): { scale: number; x: number; y: number } | null {
@@ -300,9 +311,7 @@ export function MapView() {
       const { width, height } = entry.contentRect;
       if (width <= 0 || height <= 0) return;
       applied = true;
-      const cover = Math.max(width / MAP_W, height / MAP_H);
-      const scale = Math.min(Math.max(cover, 0.4), 6); // matches TransformWrapper's own min/maxScale
-      wrapRef.current?.setTransform(0, 0, scale, 0);
+      wrapRef.current?.setTransform(0, 0, coverFitScale(width, height), 0);
       observer.disconnect();
     });
     observer.observe(el);
@@ -452,8 +461,24 @@ export function MapView() {
     setShowWaterExtractors(readBool(scopedKey(STORAGE.showWater, playthroughId), false));
     setLoadoutState(readLoadout(playthroughId));
     const t = readTransform(scopedKey(STORAGE.transform, playthroughId));
-    setZoomScale(t?.scale ?? DEFAULT_SCALE);
-    wrapRef.current?.setTransform(t?.x ?? 0, t?.y ?? 0, t?.scale ?? DEFAULT_SCALE, 0);
+    if (t) {
+      setZoomScale(t.scale);
+      wrapRef.current?.setTransform(t.x, t.y, t.scale, 0);
+    } else {
+      // No saved view for the playthrough being switched to — the
+      // mount-time ResizeObserver already disconnected by now, so
+      // without this the map fell back to the fixed DEFAULT_SCALE
+      // regardless of window size, reopening with the same bare-canvas
+      // margins the mount-time cover fit exists to remove. The
+      // container is already measurable here (the map has already
+      // rendered once), so this can read it synchronously instead of
+      // needing another observer.
+      const rect = containerRef.current?.getBoundingClientRect();
+      const scale =
+        rect && rect.width > 0 && rect.height > 0 ? coverFitScale(rect.width, rect.height) : DEFAULT_SCALE;
+      setZoomScale(scale);
+      wrapRef.current?.setTransform(0, 0, scale, 0);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playthroughId]);
   // Right-click quick-create: where the popover renders (container-

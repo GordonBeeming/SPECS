@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@/shared/query/keys";
 import { libraryApi } from "../api";
@@ -92,4 +93,22 @@ export function useExtractedResources() {
     queryFn: libraryApi.extractedResources,
     ...STATIC,
   });
+}
+
+/**
+ * `Desc_*_C` / `Build_*_C` id → display name, covering every item and
+ * building in one lookup. `IconPicker` (a `shared/ui` branded primitive)
+ * needs this to search and label its grid, but doesn't fetch game data
+ * itself — this is the library-slice side of that split, for any caller
+ * that shows the full bundled icon set rather than a narrower pool.
+ */
+export function useIconDisplayNames(): Map<string, string> {
+  const items = useItems();
+  const buildings = useBuildings();
+  return useMemo(() => {
+    const m = new Map<string, string>();
+    for (const i of items.data ?? []) m.set(i.id, i.name);
+    for (const b of buildings.data ?? []) m.set(b.id, b.name);
+    return m;
+  }, [items.data, buildings.data]);
 }

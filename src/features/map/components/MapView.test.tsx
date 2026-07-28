@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
+import { queryKeys } from "@/shared/query/keys";
 import { playthroughApi } from "@/features/playthrough/api";
 import { factoryApi } from "@/features/factory/api";
 import type { Factory } from "@/features/factory/types";
@@ -520,6 +521,95 @@ describe("<MapView /> — a water-extractor pin holds its size at zoom too (#99)
     renderWithProviders(<MapView />);
     const pin = await screen.findByTitle(/Water Extractor · 480/i);
     expect(pin.parentElement?.style.transform).toBe("translate(-50%, -50%) scale(1)");
+  });
+});
+
+describe("<MapView /> — refitting the map after switching playthroughs", () => {
+  beforeEach(() => {
+    vi.spyOn(factoryApi, "list").mockResolvedValue([]);
+    vi.spyOn(resourcesApi, "list").mockResolvedValue([ironNode]);
+    vi.spyOn(resourcesApi, "listWaterGroups").mockResolvedValue([]);
+    vi.spyOn(resourcesApi, "budget").mockResolvedValue({ assumptionLabel: "x", rows: [] });
+    vi.spyOn(logisticsApi, "list").mockResolvedValue([]);
+    vi.spyOn(powerApi, "listAll").mockResolvedValue([]);
+    vi.spyOn(plannerApi, "listUnsourcedInputs").mockResolvedValue([]);
+    vi.spyOn(libraryApi, "items").mockResolvedValue([]);
+    vi.spyOn(validationApi, "validate").mockResolvedValue(cleanValidationReport);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it("covers a wide container for the playthrough switched to, instead of reopening it at the fixed default scale", async () => {
+    // p1 opens with a saved view (scale 2) so its own load doesn't run
+    // through the "no saved transform" branch at all — the switch *to*
+    // p2, which has no saved view of its own, is what's under test.
+    // Before this fix, that switch always fell back to the fixed
+    // DEFAULT_SCALE regardless of window size, because the fitting
+    // effect was keyed only to mount-time state and its ResizeObserver
+    // had already disconnected by the time a later switch happened.
+    localStorage.setItem("specs:map:transform:p1", JSON.stringify({ scale: 2, x: 10, y: 20 }));
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      width: 2048,
+      height: 819.2, // wide window: height/MAP_H (0.4) < width/MAP_W (1) → cover = 1
+      top: 0,
+      left: 0,
+      right: 2048,
+      bottom: 819.2,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    vi.spyOn(playthroughApi, "current").mockResolvedValue({
+      id: "p1",
+      displayName: "Run 1",
+      gameVersion: "1.1",
+      createdAt: "2026-05-10T00:00:00Z",
+      currentTier: 0,
+      currentMilestoneProgress: 0,
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MapView />
+      </QueryClientProvider>,
+    );
+
+    // The exact marker title, not a substring — the resource filter row
+    // also has a chip titled "Hide Iron Ore · Alt/Option-click to show
+    // only Iron Ore" that a loose match would collide with.
+    const markerTitle = "Iron Ore · Normal · click to bind or drag onto a factory";
+    const markerBefore = await screen.findByTitle(markerTitle);
+    expect(markerBefore.closest(".specs-map-marker")).toHaveProperty(
+      "style.transform",
+      "translate(-50%, -50%) scale(0.3)", // DEFAULT_SCALE (0.6) / p1's saved scale (2)
+    );
+
+    act(() => {
+      client.setQueryData(queryKeys.playthrough.current, {
+        id: "p2",
+        displayName: "Run 2",
+        gameVersion: "1.1",
+        createdAt: "2026-05-10T00:00:00Z",
+        currentTier: 0,
+        currentMilestoneProgress: 0,
+      });
+    });
+
+    await waitFor(() => {
+      const markerAfter = screen.getByTitle(markerTitle);
+      // DEFAULT_SCALE (0.6) / coverFitScale (1) for p2's wide window —
+      // proof the switch rearmed the cover fit. The pre-fix behaviour
+      // would have read back "scale(1)" (DEFAULT_SCALE / DEFAULT_SCALE)
+      // regardless of window size.
+      expect(markerAfter.closest(".specs-map-marker")).toHaveProperty(
+        "style.transform",
+        "translate(-50%, -50%) scale(0.6)",
+      );
+    });
   });
 });
 

@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
-import { useBuildings, useItems } from "@/features/library/hooks/useLibrary";
 import { Icon } from "./Icon";
 
 interface IconPickerProps {
@@ -19,7 +18,17 @@ interface IconPickerProps {
    * a slice of ids is sensible (e.g. only buildings).
    */
   pool?: string[];
+  /**
+   * Id → display name, for search and grid titles. This is a branded
+   * primitive under `shared/ui`, so it doesn't fetch game data itself —
+   * the caller (which already has the item/building lookups) supplies
+   * this. Ids with no entry fall back to the raw id, same as the
+   * `<Icon>` primitive's own fallback.
+   */
+  nameById?: Map<string, string>;
 }
+
+const EMPTY_NAMES = new Map<string, string>();
 
 /**
  * Visual picker for `Desc_*_C` / `Build_*_C` icons. Surfaces the bundled
@@ -28,23 +37,19 @@ interface IconPickerProps {
  * The "no icon" pill clears the selection — the consumer is expected to
  * fall back to its own glyph when value is null.
  */
-export function IconPicker({ value, onChange, suggested = [], pool }: IconPickerProps) {
+export function IconPicker({
+  value,
+  onChange,
+  suggested = [],
+  pool,
+  nameById = EMPTY_NAMES,
+}: IconPickerProps) {
   const [query, setQuery] = useState("");
-  const items = useItems();
-  const buildings = useBuildings();
 
   // Every bundled icon is a game-data item or building id, but the grid
   // is keyed by the internal class name (`Desc_IronPlate_C`), which is
-  // meaningless to search by. Map ids to their display names so typing
-  // "Iron Plate" finds what typing "IronPlate" already could — a few
-  // equipment-only ids (Beacon) have no item/building record and fall
-  // back to the raw id, same as the `<Icon>` primitive's own fallback.
-  const nameById = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const i of items.data ?? []) m.set(i.id, i.name);
-    for (const b of buildings.data ?? []) m.set(b.id, b.name);
-    return m;
-  }, [items.data, buildings.data]);
+  // meaningless to search by. Resolve to display names so typing "Iron
+  // Plate" finds what typing "IronPlate" already could.
   const displayName = (id: string): string => nameById.get(id) ?? id;
 
   const everything = useMemo(() => {

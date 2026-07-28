@@ -7,6 +7,7 @@
 import type { Edge } from "@xyflow/react";
 
 import type { LogisticsLink, TransportKind } from "@/features/logistics/types";
+import { num } from "@/shared/format/rates";
 
 import type { LogisticsEdgeData } from "./types";
 
@@ -116,7 +117,7 @@ export function buildNetworkEdges(
       // Name the item on the edge itself — with two links between the
       // same pair, "5 ipm" on its own doesn't say which flow it is
       // (#71). Still terse: full detail lives in the Logistics tab.
-      label: `${itemName} · ${link.itemsPerMinute.toFixed(0)} ${unit}`,
+      label: `${itemName} · ${num(link.itemsPerMinute)} ${unit}`,
       labelBgPadding: [4, 2] as [number, number],
       labelBgBorderRadius: 4,
       style: {
