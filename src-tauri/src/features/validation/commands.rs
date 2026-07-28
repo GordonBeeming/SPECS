@@ -101,6 +101,13 @@ pub(crate) fn validate_impl(db: &PlaythroughDb, gd: &GameData) -> AppResult<Vali
         // no saved plan falls back to its machines' direct ingredient
         // draw below (see `has_plan_graph`) rather than staying empty.
         let mut machine_raw_demand: HashMap<String, f32> = HashMap::new();
+        // Just the graph's own portion of `machine_raw_demand` — the
+        // part `check_plan_graph`'s forwarded `RawShort` actually
+        // covers. Kept separate from `machine_raw_demand` once manual
+        // rows are folded in below, so the generator-fuel check can
+        // tell "already reported" apart from "just happens to share a
+        // HashMap entry with something that was".
+        let mut demand_reported_elsewhere: HashMap<String, f32> = HashMap::new();
         let mut has_plan_graph = false;
         match saved_plan_graph(db, gd, &f.id) {
             Err(e) => findings.push(Finding {
@@ -127,6 +134,30 @@ pub(crate) fn validate_impl(db: &PlaythroughDb, gd: &GameData) -> AppResult<Vali
                     domain::check_plan_graph(&fref, &graph, tier, &unlocked, gd, &mut findings);
                 domain::check_plan_graph_capacity(&fref, &graph, tier, gd, &mut findings);
                 machine_raw_demand = graph.raw_demand.clone();
+                demand_reported_elsewhere = graph.raw_demand.clone();
+                // The graph only accounts for the machines it generated
+                // — plan saves deliberately leave manual rows
+                // (`plan_node_key IS NULL`) untouched, so a manual
+                // foundry sitting alongside a computed plan is a real,
+                // separate claimant on the same supply that raw_demand
+                // never saw. Fold its direct ingredient draw into the
+                // total, but *not* into `demand_reported_elsewhere` —
+                // nothing has reported the manual portion anywhere, so
+                // it must never be skipped as "already covered".
+                let manual_machines = db.with(|c| {
+                    factory_repo::manual_machines_for_factory(c, &f.id).map_err(AppError::from)
+                })?;
+                if !manual_machines.is_empty() {
+                    let manual_ledger = compose_ledger_with_supply(
+                        &f.id, &manual_machines, gd, &HashMap::new(), &[], &HashMap::new(),
+                    );
+                    for flow in &manual_ledger.flows {
+                        if flow.consumed_per_minute > 0.0 {
+                            *machine_raw_demand.entry(flow.item_id.clone()).or_insert(0.0) +=
+                                flow.consumed_per_minute;
+                        }
+                    }
+                }
                 has_plan_graph = true;
             }
         }
@@ -201,10 +232,7 @@ pub(crate) fn validate_impl(db: &PlaythroughDb, gd: &GameData) -> AppResult<Vali
                 domain::check_generator_supply(
                     &fref,
                     &machine_demand,
-                    // Only a plan graph produces a `RawShort` finding
-                    // that would otherwise cover a machine-alone
-                    // shortfall — see `check_generator_supply`'s doc.
-                    has_plan_graph,
+                    &demand_reported_elsewhere,
                     &balance.fuel_flows,
                     &supply,
                     &mut findings,
@@ -791,6 +819,90 @@ mod tests {
                         && (*demand_ipm - 60.0).abs() < 0.01
                         && *claimed_ipm == 0.0)),
             "manual factory's coal shortfall must not be silently skipped: {:?}",
+            report.findings
+        );
+    }
+
+    #[test]
+    fn playthrough_validate_counts_manual_machine_demand_alongside_a_saved_plan_graph() {
+        // Codex P1, round 3: the plan-graph branch used only
+        // `graph.raw_demand`, so a manual machine sitting alongside a
+        // computed plan was invisible to the generator-fuel check even
+        // though plan saves deliberately leave manual rows untouched
+        // (`plan_node_key IS NULL`). A saved plan targeting Iron Plate,
+        // a manual Foundry (Steel Ingot, 45 Coal/min) and a Coal
+        // Generator (15/min) must all count against the same coal
+        // claim — whatever the solver's own chain draws (it's free to
+        // pick a coal-touching alt for Iron Plate at this tier) plus the
+        // manual 45 plus the generator's 15.
+        let db = open_test_db(3);
+        let gd = GameData::from_bundled().unwrap();
+        insert_factory(&db, "f1", "Mixed Factory");
+
+        crate::features::planner::commands::plan_save_impl(
+            &db,
+            &gd,
+            crate::features::planner::dto::SavePlanInput {
+                factory_id: "f1".to_string(),
+                targets: vec![crate::features::planner::dto::PlanTargetSpec {
+                    item_id: "Desc_IronPlate_C".to_string(),
+                    ipm: 60.0,
+                    export_ipm: None,
+                }],
+                imports: vec![],
+                recipe_overrides: Default::default(),
+                options: Default::default(),
+            },
+            NOW,
+        )
+        .expect("save must succeed even with zero claimed iron supply (warn, don't block)");
+        let graph_coal_demand = saved_plan_graph(&db, &gd, "f1")
+            .unwrap()
+            .unwrap()
+            .unwrap()
+            .raw_demand
+            .get("Desc_Coal_C")
+            .copied()
+            .unwrap_or(0.0);
+
+        db.with(|c| {
+            factory_repo::machine_insert(
+                c, "manual-1", "f1", "Build_FoundryMk1_C", "Recipe_IngotSteel_C", 1, 100.0, false,
+                0, 0, None, NOW,
+            )
+        })
+        .unwrap();
+        db.with(|c| {
+            crate::features::power::repo::power_gen_insert(
+                c, "g1", "f1", "Build_GeneratorCoal_C", "Desc_Coal_C", 1, 100.0, None, NOW,
+            )
+        })
+        .unwrap();
+        let coal = gd
+            .nodes()
+            .iter()
+            .find(|n| n.resource_item_id == "Desc_Coal_C"
+                && n.purity == crate::shared::gamedata::types::NodePurity::Normal)
+            .unwrap();
+        db.with(|c| {
+            nodes_repo::claim_upsert(
+                c, &coal.id, Some("Build_MinerMk1_C"), 80.0, Some("f1"), None, NOW,
+            )
+        })
+        .unwrap();
+
+        let report = validate_impl(&db, &gd).unwrap();
+        let ks = kinds(&report);
+        let expected_demand = graph_coal_demand + 45.0 + 15.0;
+        assert!(
+            ks.iter().any(|k| matches!(k,
+                FindingKind::GeneratorFuelShort { item_id, demand_ipm, claimed_ipm, .. }
+                    if item_id == "Desc_Coal_C"
+                        && (*demand_ipm - expected_demand).abs() < 0.01
+                        && (*claimed_ipm - 48.0).abs() < 0.01)),
+            "manual machine's coal draw ({} graph + 45 manual + 15 generator = {expected_demand}) \
+             must still count when a saved plan graph exists too: {:?}",
+            graph_coal_demand,
             report.findings
         );
     }

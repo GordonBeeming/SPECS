@@ -270,6 +270,24 @@ pub fn machine_delete(conn: &Connection, id: &str) -> Result<()> {
     Ok(())
 }
 
+fn map_machine_row(r: &rusqlite::Row) -> rusqlite::Result<FactoryMachine> {
+    let clock_x100: i64 = r.get(5)?;
+    let use_som: i64 = r.get(6)?;
+    Ok(FactoryMachine {
+        id: r.get(0)?,
+        factory_id: r.get(1)?,
+        building_id: r.get(2)?,
+        recipe_id: r.get(3)?,
+        count: r.get(4)?,
+        clock_pct: clock_pct_from_x100(clock_x100),
+        use_somersloop: use_som != 0,
+        somersloop_slots_filled: r.get(7)?,
+        power_shard_count: r.get(8)?,
+        created_at: r.get(9)?,
+        updated_at: r.get(10)?,
+    })
+}
+
 pub fn machines_for_factory(conn: &Connection, factory_id: &str) -> Result<Vec<FactoryMachine>> {
     let mut stmt = conn.prepare(
         "SELECT id, factory_id, building_id, recipe_id, count, clock_pct_x100,
@@ -279,23 +297,30 @@ pub fn machines_for_factory(conn: &Connection, factory_id: &str) -> Result<Vec<F
          WHERE factory_id = ?
          ORDER BY created_at ASC",
     )?;
-    let rows = stmt.query_map([factory_id], |r| {
-        let clock_x100: i64 = r.get(5)?;
-        let use_som: i64 = r.get(6)?;
-        Ok(FactoryMachine {
-            id: r.get(0)?,
-            factory_id: r.get(1)?,
-            building_id: r.get(2)?,
-            recipe_id: r.get(3)?,
-            count: r.get(4)?,
-            clock_pct: clock_pct_from_x100(clock_x100),
-            use_somersloop: use_som != 0,
-            somersloop_slots_filled: r.get(7)?,
-            power_shard_count: r.get(8)?,
-            created_at: r.get(9)?,
-            updated_at: r.get(10)?,
-        })
-    })?;
+    let rows = stmt.query_map([factory_id], map_machine_row)?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
+/// The subset of `machines_for_factory` a plan save never touches
+/// (`plan_node_key IS NULL`) — real machines a player added by hand
+/// that a saved plan's own graph knows nothing about. Validation needs
+/// this split: a plan graph's `raw_demand` only covers the machines it
+/// generated, so a manual foundry sitting alongside a computed plan is
+/// otherwise invisible to the generator-fuel check.
+pub fn manual_machines_for_factory(conn: &Connection, factory_id: &str) -> Result<Vec<FactoryMachine>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, factory_id, building_id, recipe_id, count, clock_pct_x100,
+                use_somersloop, somersloop_slots_filled, power_shard_count,
+                created_at, updated_at
+         FROM factory_machine
+         WHERE factory_id = ? AND plan_node_key IS NULL
+         ORDER BY created_at ASC",
+    )?;
+    let rows = stmt.query_map([factory_id], map_machine_row)?;
     let mut out = Vec::new();
     for row in rows {
         out.push(row?);

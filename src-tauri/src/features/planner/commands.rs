@@ -279,7 +279,11 @@ pub(crate) fn saved_plan_graph(
     }).map_err(|e| format!("{e:?}"))))
 }
 
-fn plan_save_impl(
+// `pub(crate)` rather than private: the validation sweep's tests need a
+// real saved plan on the books to exercise its "plan graph + manual
+// machines both present" branch, and this is the one path that
+// persists one the same way the command layer does.
+pub(crate) fn plan_save_impl(
     db: &PlaythroughDb,
     game_data: &GameData,
     input: SavePlanInput,
