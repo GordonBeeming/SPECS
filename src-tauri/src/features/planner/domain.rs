@@ -2551,7 +2551,7 @@ mod tests {
                 _ => None,
             })
             .expect("cable recipe node");
-        assert_eq!(cable.0, true);
+        assert!(cable.0);
         assert_eq!(cable.1, Some(60.0));
         assert!((cable.2 - 60.0).abs() < 0.05);
         assert!(graph.warnings.is_empty(), "supply covers demand: {:?}", graph.warnings);

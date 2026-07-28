@@ -280,7 +280,7 @@ mod tests {
         assert!(validate_name("").is_err());
         assert!(validate_name("   ").is_err());
         assert!(validate_name("Ore Loop").is_ok());
-        let too_long: String = std::iter::repeat('x').take(81).collect();
+        let too_long = "x".repeat(81);
         assert!(validate_name(&too_long).is_err());
     }
 }
