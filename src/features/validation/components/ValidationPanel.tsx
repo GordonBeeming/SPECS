@@ -3,7 +3,7 @@ import { CircleAlert, FlaskConical, RefreshCw, ShieldCheck, TriangleAlert, X } f
 import { Button } from "@/shared/ui/Button";
 import { openPlanDesigner, useNavStore } from "@/shared/nav-store";
 import type { PlanWarning } from "@/features/planner/types";
-import { coordChip } from "@/features/resources/display";
+import { nodeDisplayLabel } from "@/features/resources/display";
 
 import { floorClockPct } from "../clock";
 import { useValidation } from "../hooks/useValidation";
@@ -229,7 +229,13 @@ function findingText(f: Finding): string {
     case "claimOverPortCapacity": {
       const unit = f.isFluid ? " m³/min" : "/min";
       const carrier = f.isFluid ? "pipe" : "belt";
-      const label = `#${f.nodeIndex + 1} · ${coordChip(f.nodeX, f.nodeY)}`;
+      // Same helper the Resources row labels itself with — the index
+      // restarts per purity, so a hand-rolled `#${index + 1}` here named
+      // the node differently from the row the finding points at.
+      const label = nodeDisplayLabel(
+        { x: f.nodeX, y: f.nodeY, purity: f.nodePurity },
+        f.nodeIndex,
+      );
       return `${f.resourceItemName} node ${label}: ${f.extractorName} outputs ${f.outputIpm.toFixed(1)}${unit} — its port caps at ${f.capacityIpm.toFixed(1)}${unit} (Mk.${f.capacityMark} ${carrier}), clock to ${floorClockPct(f.maxFittingClockPct)}% to fit`;
     }
     case "unlockedAltAboveTier":

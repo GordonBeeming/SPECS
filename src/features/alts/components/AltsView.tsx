@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { CheckSquare, Lock, Search, Square } from "lucide-react";
+import { CheckSquare, Search, Square } from "lucide-react";
 
+import { TierBadge } from "@/features/library/components/TierBadge";
 import { useRecipes } from "@/features/library/hooks/useLibrary";
 import type { Recipe } from "@/features/library/types";
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
@@ -202,9 +203,10 @@ export function AltsView() {
             const tierAboveCurrent = tier > currentTier;
             return (
               <div key={tier}>
-                <div className="mb-1 flex items-center gap-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
-                  <span>Tier {tier}</span>
-                  {tierAboveCurrent && <span className="text-warning">not unlocked yet</span>}
+                <div className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
+                  {/* Reuses the Library tables' own tier indicator (#60)
+                      rather than a second "not unlocked yet" label. */}
+                  <TierBadge unlockTier={tier} />
                 </div>
                 <ul className="flex flex-col divide-y divide-border">
                   {rows.map((r) => (
@@ -240,11 +242,15 @@ function AltRow({
   // The screen deliberately doesn't block ticking an above-tier alt
   // (warn, don't block — someone may really have found the hard drive
   // early), but the pre-fix state was silent about it. Validate now
-  // flags it too (`UnlockedAltAboveTier`) — this badge is the up-front
-  // half of that fix, so ticking one is never a silent surprise. A row
-  // that's above tier and *not* ticked gets a quieter dimmed treatment
-  // instead — "you can't reach this yet" rather than "you did something
-  // unusual" — so the two above-tier states read differently at a glance.
+  // flags it too (`UnlockedAltAboveTier`) — the row tint below is the
+  // up-front half of that fix, so ticking one is never a silent
+  // surprise. A row that's above tier and *not* ticked gets a quieter
+  // dimmed treatment instead — "you can't reach this yet" rather than
+  // "you did something unusual" — so the two above-tier states read
+  // differently at a glance. The tier itself is already named once, on
+  // the group header directly above (`TierBadge`, shared with the
+  // Library tables) — repeating it per row would just be noise, so the
+  // row's own signal is this tint, not a second badge.
   return (
     <li
       className={`flex items-center gap-3 py-2 ${
@@ -268,18 +274,8 @@ function AltRow({
             primary output ("Pure Iron Ingot" → iron ingot icon). */}
         <Icon itemId={r.outputs[0]?.itemId ?? r.id} alt={r.name} className="h-7 w-7" />
         <div>
-          <div className="flex items-center gap-2 text-sm font-medium text-fg">
-            {r.name}
-            {aboveTier && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning">
-                {!isUnlocked && <Lock className="h-2.5 w-2.5" />}
-                above your tier
-              </span>
-            )}
-          </div>
-          <div className={`text-xs ${aboveTier ? "text-warning" : "text-fg-muted"}`}>
-            {r.id} · unlocks at T{r.unlockTier}
-          </div>
+          <div className="text-sm font-medium text-fg">{r.name}</div>
+          <div className="text-xs text-fg-muted">{r.id}</div>
         </div>
       </label>
     </li>

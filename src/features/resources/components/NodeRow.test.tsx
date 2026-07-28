@@ -347,6 +347,7 @@ describe("<NodeRow />", () => {
           nodeId: claimedMk2.id,
           resourceItemName: "Pure Iron Ore",
           nodeIndex: 0,
+          nodePurity: "Pure",
           nodeX: 0,
           nodeY: 0,
           extractorName: "Miner Mk.2",

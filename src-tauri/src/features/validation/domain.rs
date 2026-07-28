@@ -10,9 +10,11 @@ use crate::features::logistics::dto::{LogisticsLink, TransportPlan};
 use crate::features::planner::dto::{PlanGraph, PlanNode};
 use crate::features::planner::repo::PlanTargetRow;
 use crate::features::power::dto::PowerFuelFlow;
-use crate::features::resource_nodes::domain::{allowed_extractors, extractor_output_ipm};
+use crate::features::resource_nodes::domain::{
+    allowed_extractors, best_belt_tier, best_pipe_tier, extractor_output_ipm, port_capacity,
+    PortCapacity,
+};
 use crate::features::resource_nodes::repo::ClaimRow;
-use crate::shared::gamedata::types::{BeltTier, PipeTier};
 use crate::shared::gamedata::GameData;
 
 use super::dto::{AltToUnlock, Category, FactoryRef, Finding, FindingKind, Severity};
@@ -143,17 +145,6 @@ pub fn check_plan_graph(
         ));
     }
     locked_alts
-}
-
-/// Best belt/pipe tier unlocked at `tier`, ranked by capacity. `None`
-/// for pipes below Tier 3 (nothing unlocked yet); belts always resolve
-/// since Mk1 lands at Tier 0.
-fn best_belt_tier(tier: u8, gd: &GameData) -> Option<&BeltTier> {
-    gd.belt_tiers().iter().filter(|t| t.unlock_tier <= tier).max_by_key(|t| t.items_per_minute)
-}
-
-fn best_pipe_tier(tier: u8, gd: &GameData) -> Option<&PipeTier> {
-    gd.pipe_tiers().iter().filter(|t| t.unlock_tier <= tier).max_by_key(|t| t.cubic_meters_per_minute)
 }
 
 /// Plan-graph edges (within-factory segments) whose rate exceeds the
@@ -297,14 +288,19 @@ pub fn check_claims(
 /// parallel really does fix it) — so this only ever fires for a claim
 /// whose extractor is both a legal pick and tier-reachable, leaving the
 /// building-choice advice to `check_claims`.
+///
+/// Reads the **raw** `extractor_output_ipm`, never the port-capped
+/// `extractor_deliverable_ipm` that factory supply is derived from —
+/// the whole check is "raw exceeds cap", so feeding it the capped
+/// figure would make the test `cap > cap` and retire the warning with
+/// every test still green. The raw rate is also the honest thing to
+/// show the player: they're paying hardware and power for it.
 pub fn check_claim_port_capacity(
     claims: &HashMap<String, ClaimRow>,
     tier: u8,
     gd: &GameData,
     out: &mut Vec<Finding>,
 ) {
-    let best_belt = best_belt_tier(tier, gd);
-    let best_pipe = best_pipe_tier(tier, gd);
     for (node_id, claim) in claims {
         let Some(extractor_id) = claim.miner_id.as_deref() else { continue };
         let Some(node) = gd.node(node_id) else { continue }; // reported by check_claims
@@ -317,22 +313,14 @@ pub fn check_claim_port_capacity(
         if output_ipm <= EPS {
             continue;
         }
-        let is_fluid = gd.item(&node.resource_item_id).map(|i| i.is_fluid).unwrap_or(false);
-        let (cap, mark) = if is_fluid {
-            match best_pipe {
-                Some(p) => (p.cubic_meters_per_minute as f32, p.mark),
-                // No pipe tier unlocked yet: not reachable with the
-                // bundled dataset (oil/wells both unlock after Mk1
-                // pipes do), but a future dataset could change that —
-                // there's no "add a pipe" advice to give here yet, so
-                // stay silent rather than invent one.
-                None => continue,
-            }
-        } else {
-            match best_belt {
-                Some(b) => (b.items_per_minute as f32, b.mark),
-                None => continue,
-            }
+        // Same resolution `extractor_deliverable_ipm` caps against, so
+        // the warning and the supply figure can never disagree about
+        // where the ceiling sits. `None` (no pipe unlocked yet) means
+        // there's no cap to state and no "add a pipe" advice to give —
+        // deliverable leaves the rate uncapped there for the same
+        // reason this stays silent.
+        let Some(PortCapacity { ipm: cap, mark, is_fluid }) = port_capacity(node, tier, gd) else {
+            continue;
         };
         if output_ipm > cap + EPS {
             let resource_name = gd
@@ -362,6 +350,7 @@ pub fn check_claim_port_capacity(
                     node_id: node_id.clone(),
                     resource_item_name: resource_name,
                     node_index,
+                    node_purity: node.purity,
                     node_x: node.x,
                     node_y: node.y,
                     extractor_name: extractor.name.clone(),

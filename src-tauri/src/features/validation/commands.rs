@@ -149,7 +149,7 @@ pub(crate) fn validate_impl(db: &PlaythroughDb, gd: &GameData) -> AppResult<Vali
                 })?;
                 if !manual_machines.is_empty() {
                     let manual_ledger = compose_ledger_with_supply(
-                        &f.id, &manual_machines, gd, &HashMap::new(), &[], &HashMap::new(),
+                        &f.id, &manual_machines, gd, &HashMap::new(), &[], &HashMap::new(), tier,
                     );
                     for flow in &manual_ledger.flows {
                         if flow.consumed_per_minute > 0.0 {
@@ -180,7 +180,7 @@ pub(crate) fn validate_impl(db: &PlaythroughDb, gd: &GameData) -> AppResult<Vali
         // Power. `claims`/`water_groups` are already loaded once above
         // for the whole sweep — pass them through rather than letting
         // this re-query both whole-playthrough tables on every factory.
-        match power_balance_with_supply(db, gd, &f.id, &claims, &water_groups) {
+        match power_balance_with_supply(db, gd, &f.id, &claims, &water_groups, tier) {
             Ok(balance) => {
                 grid_generated += balance.generated_mw;
                 grid_consumed += balance.consumed_mw;
@@ -198,7 +198,7 @@ pub(crate) fn validate_impl(db: &PlaythroughDb, gd: &GameData) -> AppResult<Vali
                 // came off a node.
                 let link_supply = domain::incoming_link_supply(&links, &f.id);
                 let ledger = compose_ledger_with_supply(
-                    &f.id, &machines, gd, &claims, &water_groups, &link_supply,
+                    &f.id, &machines, gd, &claims, &water_groups, &link_supply, tier,
                 );
                 let supply: HashMap<String, f32> = ledger
                     .flows
@@ -693,6 +693,65 @@ mod tests {
                     && *capacity_mark == 1)),
             "missing port-capacity finding: {:?}",
             report.findings
+        );
+    }
+
+    #[test]
+    fn port_capped_supply_and_the_over_port_warning_both_hold_for_one_claim() {
+        // The trap #90 was split out for. `check_claim_port_capacity`
+        // fires on `output_ipm > cap`, so capping `extractor_output_ipm`
+        // in place turns its own test into `cap > cap` — the warning
+        // goes silent and every existing assertion still passes, because
+        // they only ever check that the *supply* number moved. This
+        // pins both halves against the same claim: the ledger reports
+        // the 60/min that leaves the port, and the finding still names
+        // the 300/min the player is paying 250% clock and 5 MW for.
+        // Reporting the capped figure without the warning would be worse
+        // than the original bug — the plan would quietly balance while
+        // the player believed they'd bought five times the ore.
+        let db = open_test_db(1);
+        let gd = GameData::from_bundled().unwrap();
+        insert_factory(&db, "f1", "Iron Works");
+        let iron = gd
+            .nodes()
+            .iter()
+            .find(|n| n.resource_item_id == "Desc_OreIron_C"
+                && n.purity == crate::shared::gamedata::types::NodePurity::Pure)
+            .unwrap();
+        db.with(|c| {
+            nodes_repo::claim_upsert(
+                c, &iron.id, Some("Build_MinerMk1_C"), 250.0, Some("f1"), None, NOW,
+            )
+        })
+        .unwrap();
+
+        let report = validate_impl(&db, &gd).unwrap();
+        assert!(
+            report.findings.iter().any(|f| matches!(&f.kind,
+                FindingKind::ClaimOverPortCapacity { node_id, output_ipm, capacity_ipm, .. }
+                    if *node_id == iron.id
+                        && (*output_ipm - 300.0).abs() < 0.01
+                        && (*capacity_ipm - 60.0).abs() < 0.01)),
+            "the warning must survive the cap — it reports the raw rate: {:?}",
+            report.findings
+        );
+
+        let machines = db
+            .with(|c| factory_repo::machines_for_factory(c, "f1").map_err(AppError::from))
+            .unwrap();
+        let claims = db.with(|c| nodes_repo::claims_all(c).map_err(AppError::from)).unwrap();
+        let ledger = compose_ledger_with_supply(
+            "f1", &machines, &gd, &claims, &[], &HashMap::new(), 1,
+        );
+        let ore = ledger
+            .flows
+            .iter()
+            .find(|f| f.item_id == "Desc_OreIron_C")
+            .expect("bound claim shows as a flow");
+        assert!(
+            (ore.from_nodes_per_minute - 60.0).abs() < 0.01,
+            "supply must be what the Mk1 belt carries off the port, got {}",
+            ore.from_nodes_per_minute
         );
     }
 

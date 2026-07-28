@@ -299,6 +299,7 @@ describe("<MapView /> — reaching a claimed node from the map", () => {
           nodeId: claimedNode.id,
           resourceItemName: "Iron Ore",
           nodeIndex: 0,
+          nodePurity: "Pure",
           nodeX: claimedNode.x,
           nodeY: claimedNode.y,
           extractorName: "Miner Mk.1",

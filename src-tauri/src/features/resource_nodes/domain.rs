@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use crate::features::factory::domain::machine_power_mw_amp;
 use crate::shared::gamedata::GameData;
-use crate::shared::gamedata::types::{MapNode, Miner, NodeKind, NodePurity};
+use crate::shared::gamedata::types::{BeltTier, MapNode, Miner, NodeKind, NodePurity, PipeTier};
 
 use super::dto::{ExtractorOption, PurityCount, ResourceBudget, ResourceBudgetRow};
 use super::repo::{ClaimRow, WaterGroupRow};
@@ -203,6 +203,102 @@ pub fn extractor_output_ipm(
     }
 }
 
+/// Highest-capacity belt unlocked at `tier`, ranked by capacity rather
+/// than by mark: mark order and capacity order agree in the current
+/// dataset, and nothing guarantees they always will. Always resolves —
+/// Mk1 lands at Tier 0.
+pub fn best_belt_tier(tier: u8, game_data: &GameData) -> Option<&BeltTier> {
+    game_data
+        .belt_tiers()
+        .iter()
+        .filter(|t| t.unlock_tier <= tier)
+        .max_by_key(|t| t.items_per_minute)
+}
+
+/// Highest-capacity pipe unlocked at `tier`. `None` below Tier 3, and
+/// that `None` means "no pipe exists yet", never a capacity of zero —
+/// collapsing it to `0.0` would read as "every fluid line is over
+/// capacity".
+pub fn best_pipe_tier(tier: u8, game_data: &GameData) -> Option<&PipeTier> {
+    game_data
+        .pipe_tiers()
+        .iter()
+        .filter(|t| t.unlock_tier <= tier)
+        .max_by_key(|t| t.cubic_meters_per_minute)
+}
+
+/// What one extractor's output port can pass at `tier`.
+pub struct PortCapacity {
+    pub ipm: f32,
+    /// Belt/pipe mark the capacity came from, for advice text.
+    pub mark: u8,
+    pub is_fluid: bool,
+}
+
+/// The hard ceiling on what a single extractor can deliver at `tier`:
+/// its one output port is one belt (or pipe) connection, so a splitter
+/// downstream can only divide what already made it through. This is the
+/// **port** question, not the segment one — aggregate flow inside a
+/// factory is genuinely fixed by running belts in parallel and must
+/// never be capped this way.
+///
+/// `None` means nothing in the carrier family is unlocked yet (fluids
+/// below Tier 3). Deliberately not a zero and deliberately not a
+/// fallback to Mk1: with no pipe there is no cap to state and no advice
+/// to give, so both this function's callers stay silent instead of
+/// inventing one. `check_claim_port_capacity` and
+/// `extractor_deliverable_ipm` share this resolution precisely so the
+/// warning and the arithmetic can never disagree about where the
+/// ceiling is.
+pub fn port_capacity(node: &MapNode, tier: u8, game_data: &GameData) -> Option<PortCapacity> {
+    let is_fluid = game_data
+        .item(&node.resource_item_id)
+        .map(|i| i.is_fluid)
+        .unwrap_or(false);
+    if is_fluid {
+        best_pipe_tier(tier, game_data).map(|p| PortCapacity {
+            ipm: p.cubic_meters_per_minute as f32,
+            mark: p.mark,
+            is_fluid,
+        })
+    } else {
+        best_belt_tier(tier, game_data).map(|b| PortCapacity {
+            ipm: b.items_per_minute as f32,
+            mark: b.mark,
+            is_fluid,
+        })
+    }
+}
+
+/// What one extractor actually puts on a belt: `extractor_output_ipm`
+/// clamped to what its output port can carry at `tier`. Clock a miner
+/// past its belt in game and it backs up, idles, and settles at belt
+/// rate — so this, not the raw arithmetic, is the number a factory can
+/// plan against.
+///
+/// **This does not replace `extractor_output_ipm`, and the two are not
+/// interchangeable.** The raw figure is what the player is paying
+/// hardware and power for, and it's what `check_claim_port_capacity`
+/// compares against the cap to raise `ClaimOverPortCapacity`. Capping
+/// in place would turn that comparison into `cap > cap`, silently
+/// retiring the warning: the plan would then quietly balance on 60/min
+/// while the player believes they bought 300, which is strictly worse
+/// than an unbalanced plan that says so. Cap the supply, keep the
+/// warning.
+pub fn extractor_deliverable_ipm(
+    node: &MapNode,
+    miner_building_id: Option<&str>,
+    clock_pct: f32,
+    tier: u8,
+    game_data: &GameData,
+) -> f32 {
+    let raw = extractor_output_ipm(node, miner_building_id, clock_pct, game_data);
+    match port_capacity(node, tier, game_data) {
+        Some(cap) => raw.min(cap.ipm),
+        None => raw,
+    }
+}
+
 /// MW a single extractor draws on `node` at the given clock. Extractors
 /// overclock on the same curve as manufacturing machines (there's no
 /// Somersloop slot on an extractor, so amp is always 0/0) — reuses
@@ -272,10 +368,22 @@ pub fn miner_node_ipm(
 /// or some default factory — crediting an unbound claim to any factory
 /// would just reintroduce a global pool from a different angle, which
 /// is the exact bug this function exists to prevent.
+///
+/// Each claim contributes its **deliverable** rate: what leaves the
+/// node's single output port at `tier`, not the theoretical clock rate.
+/// A plan that balanced on the raw figure balanced against ore that
+/// couldn't physically reach the machines. `check_claim_port_capacity`
+/// still reports the gap between the two, so an over-clock stays
+/// visible rather than being silently corrected here.
+///
+/// Water groups are **not** port-capped: a group is a bank of N pumps,
+/// each with its own port, so its total is an aggregate — and an
+/// aggregate is fixed by running another pipe, which is normal play.
 pub fn supply_for_factory(
     claims: &HashMap<String, ClaimRow>,
     water_groups: &[WaterGroupRow],
     factory_id: &str,
+    tier: u8,
     game_data: &GameData,
 ) -> HashMap<String, f32> {
     let mut out: HashMap<String, f32> = HashMap::new();
@@ -286,7 +394,13 @@ pub fn supply_for_factory(
         let Some(node) = game_data.node(node_id) else {
             continue;
         };
-        let ipm = extractor_output_ipm(node, claim.miner_id.as_deref(), claim.clock_pct, game_data);
+        let ipm = extractor_deliverable_ipm(
+            node,
+            claim.miner_id.as_deref(),
+            claim.clock_pct,
+            tier,
+            game_data,
+        );
         if ipm <= 0.0 {
             continue;
         }
@@ -510,6 +624,16 @@ pub fn node_max_ipm(
 /// stated assumption vs what's already claimed. "Remaining" is the
 /// unclaimed nodes' max — actual claim clocks don't pollute it; upgrade
 /// headroom on claimed nodes shows separately via `claimed_max_ipm`.
+///
+/// Every figure here is the theoretical `extractor_output_ipm` /
+/// `node_max_ipm` rate, **not** the port-capped deliverable one that
+/// factory supply uses. Two reasons, and both matter: the assumption
+/// this panel is stated at (`Mk3At250`, say) already declares belt caps
+/// out of scope, and `overcommitted` compares `claimed_ipm` against
+/// `world_max_ipm` — capping one side and not the other would silence
+/// the flag for exactly the hot claims it exists to catch. This panel
+/// answers "how much is left in the ground", which is a hardware
+/// question; the port ceiling is a logistics one.
 pub fn resource_budget(
     claims: &HashMap<String, ClaimRow>,
     game_data: &GameData,
@@ -909,6 +1033,140 @@ mod tests {
     }
 
     #[test]
+    fn deliverable_caps_at_the_best_belt_unlocked_while_raw_output_keeps_the_full_rate() {
+        // The #82 table's worst row: a Miner Mk.1 on a Pure node at 250%
+        // is 60 × 2 × 2.5 = 300/min of arithmetic, but at Tier 1 the only
+        // belt is Mk.1 at 60/min and that's what leaves the port. Both
+        // numbers have to stay reachable — the raw one is what
+        // `check_claim_port_capacity` compares against the cap, so if
+        // deliverable ever replaces it the warning goes silent.
+        let gd = GameData::from_bundled().unwrap();
+        let node = iron_node(NodePurity::Pure);
+        let raw = extractor_output_ipm(&node, Some("Build_MinerMk1_C"), 250.0, &gd);
+        assert!((raw - 300.0).abs() < 0.01, "got {raw}");
+        let at_t1 = extractor_deliverable_ipm(&node, Some("Build_MinerMk1_C"), 250.0, 1, &gd);
+        assert!((at_t1 - 60.0).abs() < 0.01, "Mk1 belt caps the port at 60, got {at_t1}");
+        // Mk2 belts (120/min, T2) lift the ceiling without touching the
+        // miner — same claim, more delivered.
+        let at_t2 = extractor_deliverable_ipm(&node, Some("Build_MinerMk1_C"), 250.0, 2, &gd);
+        assert!((at_t2 - 120.0).abs() < 0.01, "got {at_t2}");
+    }
+
+    #[test]
+    fn deliverable_leaves_an_under_cap_extractor_untouched() {
+        // The cap is a ceiling, never a target: a claim that already
+        // fits its belt reports exactly what it produces.
+        let gd = GameData::from_bundled().unwrap();
+        let node = iron_node(NodePurity::Normal);
+        let raw = extractor_output_ipm(&node, Some("Build_MinerMk1_C"), 50.0, &gd);
+        let deliverable =
+            extractor_deliverable_ipm(&node, Some("Build_MinerMk1_C"), 50.0, 0, &gd);
+        assert!((raw - 30.0).abs() < 0.01, "got {raw}");
+        assert!((deliverable - raw).abs() < 0.01, "got {deliverable}");
+    }
+
+    #[test]
+    fn deliverable_leaves_fluids_uncapped_while_no_pipe_is_unlocked() {
+        // Below Tier 3 there is no pipe, so there's no ceiling to state
+        // and `check_claim_port_capacity` stays silent — the rate must
+        // stay uncapped too, or supply would drop against a cap the app
+        // never told the player about.
+        let gd = GameData::from_bundled().unwrap();
+        let node = oil_node(NodePurity::Pure);
+        // 240 base on Pure × 250% = 600, well past the Mk1 pipe's 300.
+        let raw = extractor_output_ipm(&node, Some("Build_OilPump_C"), 250.0, &gd);
+        assert!((raw - 600.0).abs() < 0.01, "got {raw}");
+        assert!(port_capacity(&node, 2, &gd).is_none(), "no pipe below T3");
+        let no_pipe = extractor_deliverable_ipm(&node, Some("Build_OilPump_C"), 250.0, 2, &gd);
+        assert!((no_pipe - raw).abs() < 0.01, "got {no_pipe}");
+        // Once Mk1 pipes exist the same claim caps at their 300 m³/min.
+        let piped = extractor_deliverable_ipm(&node, Some("Build_OilPump_C"), 250.0, 3, &gd);
+        assert!((piped - 300.0).abs() < 0.01, "got {piped}");
+    }
+
+    #[test]
+    fn supply_for_factory_reports_the_deliverable_rate_not_the_clock_rate() {
+        // #90's whole point: a plan used to balance on ore that couldn't
+        // physically leave the node. One Pure iron node, Mk1 miner at
+        // 250%, bound to F1, at Tier 1 — supply is the 60/min the belt
+        // carries, not the 300/min the clock claims.
+        let gd = GameData::from_bundled().unwrap();
+        let iron = gd
+            .nodes()
+            .iter()
+            .find(|n| n.resource_item_id == "Desc_OreIron_C" && n.purity == NodePurity::Pure)
+            .unwrap();
+        let mut claims = HashMap::new();
+        claims.insert(iron.id.clone(), claim(&iron.id, "Build_MinerMk1_C", 250.0, Some("F1")));
+        let supply = supply_for_factory(&claims, &[], "F1", 1, &gd);
+        assert!(
+            (supply["Desc_OreIron_C"] - 60.0).abs() < 0.01,
+            "got {}",
+            supply["Desc_OreIron_C"]
+        );
+        // The same claim delivers more once Mk2 belts land at T2.
+        let later = supply_for_factory(&claims, &[], "F1", 2, &gd);
+        assert!((later["Desc_OreIron_C"] - 120.0).abs() < 0.01, "got {}", later["Desc_OreIron_C"]);
+    }
+
+    #[test]
+    fn supply_for_factory_never_port_caps_a_water_group() {
+        // A group is a bank of N pumps, each with its own port, so its
+        // total is an aggregate — and an aggregate is fixed by running
+        // another pipe, which is normal play. Capping it to one pipe's
+        // capacity would report a 40-pump farm as a single header.
+        let gd = GameData::from_bundled().unwrap();
+        let groups = vec![water_group(40, 100.0, None, Some("F1"))];
+        let supply = supply_for_factory(&HashMap::new(), &groups, "F1", 9, &gd);
+        assert!(
+            (supply["Desc_Water_C"] - 4800.0).abs() < 0.01,
+            "got {}",
+            supply["Desc_Water_C"]
+        );
+    }
+
+    #[test]
+    fn resource_budget_stays_on_theoretical_rates_so_overcommit_still_fires() {
+        // `overcommitted` compares `claimed_ipm` against `world_max_ipm`,
+        // and `world_max_ipm` is the assumption's theoretical ceiling
+        // with belts explicitly out of scope. Capping only the claimed
+        // side would silence the flag for exactly the hot claims it
+        // exists to catch: every iron node on Mk3 @ 250% against a Tier 0
+        // Mk1 @ 100% budget is 4× over, but belt-capped at Tier 0 it
+        // would read as 60/min per node and look comfortable.
+        let gd = GameData::from_bundled().unwrap();
+        let mut claims = HashMap::new();
+        for n in gd.nodes().iter().filter(|n| n.resource_item_id == "Desc_OreIron_C") {
+            claims.insert(n.id.clone(), claim(&n.id, "Build_MinerMk3_C", 250.0, Some("F1")));
+        }
+        let budget = resource_budget(&claims, &gd, 0, BudgetAssumption::CurrentTierBest);
+        let iron = budget
+            .rows
+            .iter()
+            .find(|r| r.resource_item_id == "Desc_OreIron_C")
+            .unwrap();
+        assert!(iron.overcommitted, "hot claims under a cold assumption must still flag");
+        let deliverable_at_t0: f32 = claims
+            .keys()
+            .map(|id| {
+                extractor_deliverable_ipm(
+                    gd.node(id).unwrap(),
+                    Some("Build_MinerMk3_C"),
+                    250.0,
+                    0,
+                    &gd,
+                )
+            })
+            .sum();
+        assert!(
+            iron.claimed_ipm > deliverable_at_t0,
+            "the budget panel must report the theoretical rate ({}), not the Tier 0 \
+             deliverable one ({deliverable_at_t0})",
+            iron.claimed_ipm
+        );
+    }
+
+    #[test]
     fn supply_for_factory_only_returns_bound_claims() {
         let gd = GameData::from_bundled().unwrap();
         let iron = gd
@@ -947,7 +1205,7 @@ mod tests {
                 updated_at: "n".into(),
             },
         );
-        let f1_supply = supply_for_factory(&claims, &[], "F1", &gd);
+        let f1_supply = supply_for_factory(&claims, &[], "F1", 9, &gd);
         assert!(f1_supply.contains_key("Desc_OreIron_C"));
         assert!(!f1_supply.contains_key("Desc_OreCopper_C"));
     }
@@ -1095,9 +1353,9 @@ mod tests {
             water_group(4, 100.0, None, Some("F1")),
             water_group(10, 100.0, None, None), // unbound
         ];
-        let f1 = supply_for_factory(&HashMap::new(), &groups, "F1", &gd);
+        let f1 = supply_for_factory(&HashMap::new(), &groups, "F1", 9, &gd);
         assert!((f1["Desc_Water_C"] - 480.0).abs() < 0.01, "only the bound group counts");
-        let f2 = supply_for_factory(&HashMap::new(), &groups, "F2", &gd);
+        let f2 = supply_for_factory(&HashMap::new(), &groups, "F2", 9, &gd);
         assert!(!f2.contains_key("Desc_Water_C"));
     }
 

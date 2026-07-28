@@ -230,10 +230,20 @@ fn list_power_balances_impl(
     // table scans.
     let claims = db.with(|c| nodes_repo::claims_all(c).map_err(AppError::from))?;
     let water_groups = db.with(|c| nodes_repo::water_groups_all(c).map_err(AppError::from))?;
+    let tier = current_tier(db)?;
     factories
         .iter()
-        .map(|f| power_balance_with_supply(db, game_data, &f.id, &claims, &water_groups))
+        .map(|f| power_balance_with_supply(db, game_data, &f.id, &claims, &water_groups, tier))
         .collect()
+}
+
+/// The playthrough's current tier — one read for the whole batch, for
+/// the same reason claims and water groups are loaded once above.
+fn current_tier(db: &crate::shared::db::playthrough_db::PlaythroughDb) -> AppResult<u8> {
+    let (tier, _progress) = db.with(|c| {
+        crate::features::playthrough::repo::progress_get(c).map_err(AppError::from)
+    })?;
+    Ok(tier.clamp(0, u8::MAX as i64) as u8)
 }
 
 /// Command-free balance composition so other slices (the validation
@@ -251,7 +261,8 @@ pub(crate) fn power_balance_impl(
 ) -> AppResult<FactoryPowerBalance> {
     let claims = db.with(|c| nodes_repo::claims_all(c).map_err(AppError::from))?;
     let water_groups = db.with(|c| nodes_repo::water_groups_all(c).map_err(AppError::from))?;
-    power_balance_with_supply(db, game_data, factory_id, &claims, &water_groups)
+    let tier = current_tier(db)?;
+    power_balance_with_supply(db, game_data, factory_id, &claims, &water_groups, tier)
 }
 
 /// Same math as `power_balance_impl`, but takes already-loaded claims
@@ -263,6 +274,7 @@ pub(crate) fn power_balance_with_supply(
     factory_id: &str,
     claims: &std::collections::HashMap<String, nodes_repo::ClaimRow>,
     water_groups: &[nodes_repo::WaterGroupRow],
+    tier: u8,
 ) -> AppResult<FactoryPowerBalance> {
     let machines = db.with(|c| {
         factory_repo::machines_for_factory(c, factory_id).map_err(AppError::from)
@@ -280,6 +292,7 @@ pub(crate) fn power_balance_with_supply(
         claims,
         water_groups,
         &std::collections::HashMap::new(),
+        tier,
     )
     .power_mw;
 
@@ -337,6 +350,17 @@ mod tests {
 
     const NOW: &str = "2026-06-11T00:00:00Z";
 
+    /// A balance now reads the playthrough's tier (a claim contributes
+    /// what its port can deliver at that tier), and every real
+    /// playthrough DB is created with a progress row — so seed one here
+    /// rather than exercising a shape the app can't be in.
+    fn open_test_db(tier: i64) -> PlaythroughDb {
+        let db = PlaythroughDb::open_in_memory().expect("open in-memory playthrough db");
+        db.with(|c| crate::features::playthrough::repo::progress_init(c, tier))
+            .expect("seed progress");
+        db
+    }
+
     #[test]
     fn power_balance_includes_bound_extractor_draw_alongside_machines() {
         // Tier-0 acceptance shape: a Cable constructor at 50% clock
@@ -344,7 +368,7 @@ mod tests {
         // to the same factory. Before this fix the miner contributed 0
         // MW and this factory's `consumed_mw` read 1.6 instead of 6.6 —
         // the exact hole issue #55 was filed against.
-        let db = PlaythroughDb::open_in_memory().expect("open in-memory playthrough db");
+        let db = open_test_db(9);
         let gd = GameData::from_bundled().unwrap();
         db.with(|c| factory_repo::factory_insert(c, "f1", "Copper Works", None, None, None, NOW))
             .expect("insert factory");
@@ -382,7 +406,7 @@ mod tests {
         // where its waste goes. Two plants at 50% burn 0.2 rods/min and
         // emit 10 ipm of Uranium Waste — half of two plants' 10/min
         // each.
-        let db = PlaythroughDb::open_in_memory().expect("open in-memory playthrough db");
+        let db = open_test_db(9);
         let gd = GameData::from_bundled().unwrap();
         db.with(|c| factory_repo::factory_insert(c, "f1", "Nuclear", None, None, None, NOW))
             .expect("insert factory");
@@ -412,7 +436,7 @@ mod tests {
     fn power_balance_reports_no_byproducts_for_a_clean_burner() {
         // Only nuclear emits anything; a coal bank must not grow an
         // empty-but-present waste row for the Power view to render.
-        let db = PlaythroughDb::open_in_memory().expect("open in-memory playthrough db");
+        let db = open_test_db(9);
         let gd = GameData::from_bundled().unwrap();
         db.with(|c| factory_repo::factory_insert(c, "f1", "Coal", None, None, None, NOW))
             .expect("insert factory");
@@ -434,7 +458,7 @@ mod tests {
         // for the one selected factory, so a generator-less factory
         // never rendered — this is the query the fixed screen uses to
         // show every factory (and its grid-wide total) at once.
-        let db = PlaythroughDb::open_in_memory().expect("open in-memory playthrough db");
+        let db = open_test_db(9);
         let gd = GameData::from_bundled().unwrap();
         db.with(|c| factory_repo::factory_insert(c, "powered", "Has Gens", None, None, None, NOW))
             .expect("insert factory");
@@ -468,7 +492,7 @@ mod tests {
         // them is the case that would leak if the threading mixed claims
         // up across factories instead of keeping the per-factory filter
         // `compose_ledger_with_supply` already applies.
-        let db = PlaythroughDb::open_in_memory().expect("open in-memory playthrough db");
+        let db = open_test_db(9);
         let gd = GameData::from_bundled().unwrap();
         db.with(|c| factory_repo::factory_insert(c, "f1", "Claims Iron", None, None, None, NOW))
             .expect("insert f1");

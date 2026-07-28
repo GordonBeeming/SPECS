@@ -8,6 +8,7 @@ import { playthroughApi } from "@/features/playthrough/api";
 import { factoryApi } from "@/features/factory/api";
 import { libraryApi } from "@/features/library/api";
 import { logisticsApi } from "@/features/logistics/api";
+import { useThemeMode } from "@/shared/theme/useThemeMode";
 
 function renderWithProviders(node: ReactNode) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -142,5 +143,37 @@ describe("<NetworkView />", () => {
 
     expect(await screen.findByText("Iron Works")).toBeInTheDocument();
     expect(screen.getByText("Elevator Yard")).toBeInTheDocument();
+  });
+
+  it("follows the app's dark theme instead of xyflow's light default (#61/#72)", async () => {
+    // Regresses: React Flow defaults to colorMode="light" and stamps a
+    // `light` class on its own wrapper. brand.css scopes every
+    // --color-* token under .light/.dark, so that wrapper class — not
+    // FactoryNode's own (already theme-aware) classes — was what forced
+    // the cards to render white-on-light inside an otherwise dark app.
+    const priorMode = useThemeMode.getState().mode;
+    useThemeMode.setState({ mode: "dark" });
+    try {
+      vi.spyOn(factoryApi, "list").mockResolvedValue([
+        {
+          id: "iron",
+          name: "Iron Works",
+          worldX: 0,
+          worldY: 0,
+          createdAt: "2026-05-10T00:00:00Z",
+          updatedAt: "2026-05-10T00:00:00Z",
+          machineCount: 4,
+        },
+      ]);
+      vi.spyOn(logisticsApi, "list").mockResolvedValue([]);
+
+      renderWithProviders(<NetworkView />);
+
+      const wrapper = await screen.findByTestId("rf__wrapper");
+      expect(wrapper).toHaveClass("dark");
+      expect(wrapper).not.toHaveClass("light");
+    } finally {
+      useThemeMode.setState({ mode: priorMode });
+    }
   });
 });

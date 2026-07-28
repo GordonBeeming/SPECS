@@ -1,10 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, MapPin } from "lucide-react";
 
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { useFactoryList } from "@/features/factory/hooks/useFactories";
 import type { FactoryPickerCandidate } from "@/features/map/transform";
-import { clampLoadoutMinerId, readLoadout } from "@/features/map/components/PlacementLoadout";
+import {
+  clampLoadoutMinerId,
+  readLoadout,
+  type MapLoadout,
+} from "@/features/map/components/PlacementLoadout";
 import { useValidation } from "@/features/validation/hooks/useValidation";
 import type { Finding } from "@/features/validation/types";
 import { Card } from "@/shared/ui/Card";
@@ -123,6 +127,7 @@ function groupNodes(rows: ResourceNodeRow[]): ResourceGroup[] {
 
 export function ResourcesView() {
   const playthrough = useCurrentPlaythrough();
+  const playthroughId = playthrough.data?.id ?? null;
   const nodes = useResourceNodes();
   const factories = useFactoryList();
   // Same sweep the Validate panel runs, reused here so the port-capacity
@@ -147,13 +152,25 @@ export function ResourcesView() {
   );
 
   // Same "what the map is placing right now" preference the map's
-  // quick-claim (drag-to-bind) already honours — read once so the
-  // list's own quick-claim `+` defaults to it too, instead of always
-  // falling back to a node's first allowed extractor (Mk1). Clamped
-  // against this tier's unlocked marks the same way the map does, so
-  // a stale localStorage preference from a higher-tier playthrough
-  // can't produce an illegal claim here either.
-  const [loadout] = useState(readLoadout);
+  // quick-claim (drag-to-bind) already honours, scoped to this
+  // playthrough the same way MapView scopes it (#64/#57: a mark
+  // chosen in a later-tier run has no business bleeding into a fresh
+  // playthrough through this key). Clamped against this tier's
+  // unlocked marks below, so a stale preference from a higher-tier
+  // playthrough can't produce an illegal claim here either.
+  const [loadout, setLoadout] = useState<MapLoadout>(() => readLoadout(playthroughId));
+  // `ResourcesView` doesn't remount on a playthrough switch (one
+  // instance lives under AppShell, same as MapView), so the `useState`
+  // initializer above only ever runs once, against whichever id was
+  // active — or still null — at first mount. Re-read the scoped key
+  // whenever the active playthrough actually changes, mirroring
+  // MapView's own playthrough-switch effect for this same loadout.
+  const prevPlaythroughIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (playthroughId === prevPlaythroughIdRef.current) return;
+    prevPlaythroughIdRef.current = playthroughId;
+    setLoadout(readLoadout(playthroughId));
+  }, [playthroughId]);
   const minerMarkOptions = useMemo(() => {
     const sample = (nodes.data ?? []).find((n) =>
       n.allowedExtractors.some((e) => e.id.startsWith("Build_MinerMk")),

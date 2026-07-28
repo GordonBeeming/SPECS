@@ -8,7 +8,7 @@ use crate::shared::error::{AppError, AppResult};
 use crate::shared::gamedata::GameData;
 
 use super::domain::{
-    BudgetAssumption, allowed_extractors, extractor_output_ipm, resource_budget,
+    BudgetAssumption, allowed_extractors, extractor_deliverable_ipm, resource_budget,
     tier_eligible_extractors, water_group_output_ipm,
 };
 use super::dto::{
@@ -74,8 +74,17 @@ fn list_resource_nodes_impl(
                 "Desc_Geyser_C" => "Geothermal Vent".to_string(),
                 other => other.to_string(),
             });
+        // Deliverable, not theoretical: this row's rate is summed into
+        // the Resources screen's per-resource total and read as "what
+        // this node gives me", the same question the factory ledger's
+        // supply chip answers — the two must not print different
+        // numbers for the same claim. The gap between the two figures
+        // is what the row's own "over port cap" chip states, sourced
+        // from `ClaimOverPortCapacity`, so nothing goes unexplained.
         let ipm = claim_row
-            .map(|c| extractor_output_ipm(node, c.miner_id.as_deref(), c.clock_pct, game_data))
+            .map(|c| {
+                extractor_deliverable_ipm(node, c.miner_id.as_deref(), c.clock_pct, tier, game_data)
+            })
             .unwrap_or(0.0);
         // Family truth, unfiltered — `claim_invalid_extractor` must stay
         // about "wrong building for this node", not "not unlocked yet",
@@ -424,10 +433,49 @@ mod tests {
             !row.claim_invalid_extractor,
             "an above-tier but same-family claim isn't an invalid extractor"
         );
-        // The stored claim's real rate still shows (Mk2 @ Normal = 120
-        // ipm) — the picker's narrowed options don't retroactively
-        // change what's already built.
-        assert!((row.items_per_minute - 120.0).abs() < 0.01);
+        // The row reports what the node delivers, and at Tier 0 the only
+        // belt is Mk1 at 60/min — the Mk2's 120 can't leave the port.
+        // The picker's narrowed options still don't retroactively change
+        // what's already built: the extractor is honoured (a Mk1 claim
+        // here would read 60 too, but from 60 produced, not from a cap),
+        // and validation reports both the above-tier building and the
+        // over-port clock separately.
+        assert!(
+            (row.items_per_minute - 60.0).abs() < 0.01,
+            "got {}",
+            row.items_per_minute
+        );
+    }
+
+    #[test]
+    fn list_resource_nodes_reports_the_deliverable_rate_and_lifts_it_as_belts_unlock() {
+        // A Mk2 miner on Normal iron is 120/min of arithmetic. At Tier 1
+        // the only belt is Mk1's 60/min, so that's what the row shows;
+        // Mk2 belts land at Tier 2 and let the same claim through in
+        // full. The row's rate is summed into the Resources screen's
+        // per-resource total and read as supply, so it has to agree with
+        // the factory ledger's figure for the same claim rather than
+        // quoting the clock rate.
+        let gd = GameData::from_bundled().unwrap();
+        let iron = gd
+            .nodes()
+            .iter()
+            .find(|n| {
+                n.resource_item_id == "Desc_OreIron_C"
+                    && n.purity == crate::shared::gamedata::types::NodePurity::Normal
+            })
+            .unwrap();
+        let rate_at = |tier: i64| {
+            let db = open_test_db(tier);
+            db.with(|c| {
+                repo::claim_upsert(c, &iron.id, Some("Build_MinerMk2_C"), 100.0, None, None, "n")
+            })
+            .unwrap();
+            let rows = list_resource_nodes_impl(&db, &gd).unwrap();
+            rows.iter().find(|r| r.id == iron.id).unwrap().items_per_minute
+        };
+        assert!((rate_at(1) - 60.0).abs() < 0.01, "got {}", rate_at(1));
+        assert!((rate_at(2) - 120.0).abs() < 0.01, "got {}", rate_at(2));
     }
 
     #[test]

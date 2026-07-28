@@ -87,7 +87,8 @@ fn gather_plan_context(
     let alts = tier_reachable_alts(tier, game_data);
     let claims = db.with(|c| nodes_repo::claims_all(c).map_err(AppError::from))?;
     let water_groups = db.with(|c| nodes_repo::water_groups_all(c).map_err(AppError::from))?;
-    let supply = nodes_domain::supply_for_factory(&claims, &water_groups, factory_id, game_data);
+    let supply =
+        nodes_domain::supply_for_factory(&claims, &water_groups, factory_id, tier, game_data);
     Ok(PlanContext { alts, current_tier: tier, supply, claims, water_groups })
 }
 

@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 use crate::features::planner::dto::PlanWarning;
+use crate::shared::gamedata::types::NodePurity;
 
 /// How loud a finding is. Errors mean "you can't actually build this at
 /// your tier / the numbers don't add up"; warnings mean "buildable, but
@@ -216,11 +217,17 @@ pub enum FindingKind {
         node_id: String,
         resource_item_name: String,
         /// Position within this node's (resource, purity) bucket, same
-        /// order Resources lists them in — pairs with `node_x`/`node_y`
-        /// to reproduce that screen's "#N · 1.7km W · 1.5km N" label so
-        /// the finding names a specific node among several of the same
-        /// resource, instead of leaving it ambiguous.
+        /// order Resources lists them in — pairs with `node_purity` and
+        /// `node_x`/`node_y` to reproduce that screen's
+        /// "#P1 · 1.7km W · 1.5km N" label so the finding names a
+        /// specific node among several of the same resource, instead of
+        /// leaving it ambiguous.
         node_index: u32,
+        /// Carried purely so this finding can render the same label the
+        /// Resources row does: the index restarts at 1 per purity, so
+        /// "Iron Ore #1" alone names either a Pure or a Normal node and
+        /// the purity initial is what separates them.
+        node_purity: NodePurity,
         node_x: f32,
         node_y: f32,
         extractor_name: String,

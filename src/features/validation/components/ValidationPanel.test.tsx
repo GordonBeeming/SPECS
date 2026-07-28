@@ -7,6 +7,7 @@ import { ValidationPanel } from "./ValidationPanel";
 import { validationApi } from "../api";
 import { playthroughApi } from "@/features/playthrough/api";
 import { useNavStore } from "@/shared/nav-store";
+import { nodeDisplayLabel } from "@/features/resources/display";
 import type { ValidationReport } from "../types";
 
 const cleanReport: ValidationReport = {
@@ -250,6 +251,7 @@ describe("<ValidationPanel />", () => {
           nodeId: "n1",
           resourceItemName: "Pure Iron Ore",
           nodeIndex: 5,
+          nodePurity: "Pure",
           nodeX: -170000,
           nodeY: -150000,
           extractorName: "Miner Mk.2",
@@ -265,7 +267,7 @@ describe("<ValidationPanel />", () => {
     const onClose = vi.fn();
     renderWithProviders(<ValidationPanel onClose={onClose} />);
     const row = await screen.findByText(
-      /Pure Iron Ore node #6 · 1\.7km W · 1\.5km N: Miner Mk\.2 outputs 240\.0\/min — its port caps at 60\.0\/min \(Mk\.1 belt\), clock to 25% to fit/,
+      /Pure Iron Ore node #P6 · 1\.7km W · 1\.5km N: Miner Mk\.2 outputs 240\.0\/min — its port caps at 60\.0\/min \(Mk\.1 belt\), clock to 25% to fit/,
     );
     fireEvent.click(row.closest("button")!);
     await waitFor(() => {
@@ -290,6 +292,7 @@ describe("<ValidationPanel />", () => {
           nodeId: "n2",
           resourceItemName: "Pure Raw Quartz",
           nodeIndex: 0,
+          nodePurity: "Pure",
           nodeX: 37926,
           nodeY: 120939,
           extractorName: "Miner Mk.3",
@@ -308,4 +311,47 @@ describe("<ValidationPanel />", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/clock to 163% to fit/)).not.toBeInTheDocument();
   });
+
+  it("names a node exactly as the Resources row does, purity initial included", async () => {
+    // The node index restarts at 1 within each purity, so `#1` alone
+    // names either a Pure or a Normal node. Resources rows carry the
+    // initial (`#N1`); this panel used to build its own `#${index + 1}`,
+    // so the same node read `#1` here and `#N1` there — two labels, one
+    // node, and no way to tell they matched.
+    const nodeX = -170000;
+    const nodeY = -150000;
+    const report: ValidationReport = {
+      ...cleanReport,
+      findings: [
+        {
+          severity: "warning",
+          category: "capacity",
+          kind: "claimOverPortCapacity",
+          nodeId: "n3",
+          resourceItemName: "Iron Ore",
+          nodeIndex: 0,
+          nodePurity: "Normal",
+          nodeX,
+          nodeY,
+          extractorName: "Miner Mk.1",
+          outputIpm: 120,
+          capacityIpm: 60,
+          isFluid: false,
+          capacityMark: 1,
+          maxFittingClockPct: 50,
+        },
+      ],
+    };
+    vi.spyOn(validationApi, "validate").mockResolvedValue(report);
+    renderWithProviders(<ValidationPanel onClose={() => {}} />);
+    const rowLabel = nodeDisplayLabel({ x: nodeX, y: nodeY, purity: "Normal" }, 0);
+    expect(rowLabel).toContain("#N1");
+    expect(
+      await screen.findByText(new RegExp(`Iron Ore node ${escapeRegExp(rowLabel)}:`)),
+    ).toBeInTheDocument();
+  });
 });
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
