@@ -95,7 +95,24 @@ fn list_resource_nodes_impl(
         // already-claimed or fresh node with its one extractor pickable
         // — the tier just shows through in the option's own
         // `unlock_tier` instead of being silently absorbed.
-        let picker_extractors = tier_eligible_extractors(&allowed, tier);
+        let mut picker_extractors = tier_eligible_extractors(&allowed, tier);
+        // A claim is allowed to carry an extractor above the picker's
+        // tier cap on purpose — retaining an above-tier claim and
+        // reporting it separately (`ClaimExtractorAboveTier`) is
+        // deliberate, not a bug to hide by narrowing the list. Both
+        // claim editors default through `claimDefaultExtractor`, which
+        // falls back to the first option whenever the stored value
+        // isn't present in it — so dropping a stored Mk2-at-T0 claim
+        // from this list silently downgraded it to Mk1 the moment its
+        // clock or factory got edited, since only the family (not the
+        // exact extractor) round-trips separately from this option list.
+        if let Some(stored_id) = claim_row.and_then(|c| c.miner_id.as_deref()) {
+            if !picker_extractors.iter().any(|e| e.id == stored_id) {
+                if let Some(stored_option) = allowed.iter().find(|e| e.id == stored_id) {
+                    picker_extractors.push(stored_option.clone());
+                }
+            }
+        }
         out.push(ResourceNodeRow {
             id: node.id.clone(),
             resource_item_id: node.resource_item_id.clone(),
@@ -411,5 +428,71 @@ mod tests {
         // ipm) — the picker's narrowed options don't retroactively
         // change what's already built.
         assert!((row.items_per_minute - 120.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn list_resource_nodes_keeps_the_stored_extractor_in_the_picker_even_above_tier() {
+        // Codex P2: both claim editors default through
+        // `claimDefaultExtractor`, which falls back to the picker's
+        // first option whenever the stored value isn't present in it.
+        // Before this, an above-tier stored extractor was dropped from
+        // `allowedExtractors` entirely, so editing only the clock or
+        // factory on a stored Mk2-at-T0 claim would silently rewrite it
+        // to Mk1 the moment the form re-derived a default — changing its
+        // supply and power figures behind the player's back. Retaining
+        // and separately reporting an above-tier claim is deliberate; the
+        // picker options have to agree with that.
+        let gd = GameData::from_bundled().unwrap();
+        let db = open_test_db(0);
+        let iron = gd
+            .nodes()
+            .iter()
+            .find(|n| {
+                n.resource_item_id == "Desc_OreIron_C"
+                    && n.purity == crate::shared::gamedata::types::NodePurity::Normal
+            })
+            .unwrap();
+        db.with(|c| {
+            repo::claim_upsert(c, &iron.id, Some("Build_MinerMk2_C"), 100.0, None, None, "n")
+        })
+        .unwrap();
+        let rows = list_resource_nodes_impl(&db, &gd).unwrap();
+        let row = rows.iter().find(|r| r.id == iron.id).unwrap();
+        assert!(
+            row.allowed_extractors.iter().any(|e| e.id == "Build_MinerMk2_C"),
+            "the stored Mk2 must survive in the picker options even though only Mk1 is tier-eligible \
+             at T0: {:?}",
+            row.allowed_extractors
+        );
+        // Mk1 is still there too — a fresh pick at this node's tier
+        // still wants its normal option, the stored extractor is an
+        // addition, not a replacement of the tier-eligible set.
+        assert!(row.allowed_extractors.iter().any(|e| e.id == "Build_MinerMk1_C"));
+    }
+
+    #[test]
+    fn list_resource_nodes_does_not_duplicate_a_stored_extractor_already_tier_eligible() {
+        // The merge only needs to add the stored extractor when it's
+        // missing — a claim whose stored building is already within
+        // tier must not show up twice in the picker.
+        let gd = GameData::from_bundled().unwrap();
+        let db = open_test_db(0);
+        let iron = gd
+            .nodes()
+            .iter()
+            .find(|n| n.resource_item_id == "Desc_OreIron_C")
+            .unwrap();
+        db.with(|c| {
+            repo::claim_upsert(c, &iron.id, Some("Build_MinerMk1_C"), 100.0, None, None, "n")
+        })
+        .unwrap();
+        let rows = list_resource_nodes_impl(&db, &gd).unwrap();
+        let row = rows.iter().find(|r| r.id == iron.id).unwrap();
+        assert_eq!(
+            row.allowed_extractors.iter().filter(|e| e.id == "Build_MinerMk1_C").count(),
+            1,
+            "a tier-eligible stored extractor must not be duplicated: {:?}",
+            row.allowed_extractors
+        );
     }
 }
