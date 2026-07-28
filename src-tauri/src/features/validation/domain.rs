@@ -439,14 +439,20 @@ pub fn incoming_link_supply(links: &[LogisticsLink], factory_id: &str) -> HashMa
 /// generator draw alone: a coal claim shared between a smelter and a
 /// generator bank is one pool, not two independent checks.
 ///
-/// Skips an item where machine demand alone already exceeds supply —
-/// that shortfall is already reported (conservatively, since it won't
-/// include the generator draw on top) by the forwarded `RawShort`
-/// above, and re-reporting it here under a second finding kind would
-/// just be noise for the same root cause.
+/// Skips an item where machine demand alone already exceeds supply
+/// *when `machine_demand_reported_elsewhere` is true* — that shortfall
+/// is already covered (conservatively, since it won't include the
+/// generator draw on top) by the forwarded `RawShort` above, and
+/// re-reporting it here under a second finding kind would just be noise
+/// for the same root cause. That's only true when `machine_raw_demand`
+/// came from a computed plan graph, which is what produces `RawShort`
+/// in the first place — a factory with manual machines and no saved
+/// plan has no `RawShort` check anywhere, so skipping there would drop
+/// the shortage entirely rather than defer it to another finding.
 pub fn check_generator_supply(
     factory: &FactoryRef,
     machine_raw_demand: &HashMap<String, f32>,
+    machine_demand_reported_elsewhere: bool,
     fuel_flows: &[PowerFuelFlow],
     supply: &HashMap<String, f32>,
     out: &mut Vec<Finding>,
@@ -457,7 +463,7 @@ pub fn check_generator_supply(
         }
         let machine_demand = machine_raw_demand.get(&flow.item_id).copied().unwrap_or(0.0);
         let claimed = supply.get(&flow.item_id).copied().unwrap_or(0.0);
-        if machine_demand > claimed + EPS {
+        if machine_demand_reported_elsewhere && machine_demand > claimed + EPS {
             continue;
         }
         let total_demand = machine_demand + flow.per_minute;
@@ -644,7 +650,7 @@ mod tests {
         // dataset), against a factory that claimed neither.
         let fuel_flows = vec![fuel_flow("Desc_Coal_C", "Coal", 210.0), fuel_flow("Desc_Water_C", "Water", 630.0)];
         let mut findings = Vec::new();
-        check_generator_supply(&fref(), &HashMap::new(), &fuel_flows, &HashMap::new(), &mut findings);
+        check_generator_supply(&fref(), &HashMap::new(), true, &fuel_flows, &HashMap::new(), &mut findings);
 
         assert_eq!(findings.len(), 2, "got {findings:?}");
         for (item_id, demand) in [("Desc_Coal_C", 210.0_f32), ("Desc_Water_C", 630.0_f32)] {
@@ -677,7 +683,7 @@ mod tests {
         let fuel_flows = vec![fuel_flow("Desc_Coal_C", "Coal", 15.0)];
 
         let mut findings = Vec::new();
-        check_generator_supply(&fref(), &machine_demand, &fuel_flows, &supply, &mut findings);
+        check_generator_supply(&fref(), &machine_demand, true, &fuel_flows, &supply, &mut findings);
 
         assert_eq!(findings.len(), 1, "got {findings:?}");
         match &findings[0].kind {
@@ -690,10 +696,12 @@ mod tests {
     }
 
     #[test]
-    fn machine_demand_already_over_supply_is_not_double_reported() {
+    fn machine_demand_already_over_supply_is_not_double_reported_when_a_plan_graph_covers_it() {
         // Machine draw alone (80) already exceeds the 50 claimed — that
         // shortfall belongs to the forwarded `RawShort` finding
-        // upstream. Piling a second, differently-worded finding on the
+        // upstream, but only when `machine_raw_demand` actually came
+        // from a computed plan graph (`machine_demand_reported_elsewhere
+        // = true`). Piling a second, differently-worded finding on the
         // exact same root cause would just be noise.
         let mut machine_demand = HashMap::new();
         machine_demand.insert("Desc_Coal_C".to_string(), 80.0);
@@ -702,8 +710,34 @@ mod tests {
         let fuel_flows = vec![fuel_flow("Desc_Coal_C", "Coal", 15.0)];
 
         let mut findings = Vec::new();
-        check_generator_supply(&fref(), &machine_demand, &fuel_flows, &supply, &mut findings);
+        check_generator_supply(&fref(), &machine_demand, true, &fuel_flows, &supply, &mut findings);
         assert!(findings.is_empty(), "got {findings:?}");
+    }
+
+    #[test]
+    fn manual_machine_over_supply_still_reports_when_nothing_else_covers_it() {
+        // Codex P1: a factory with manual machine rows and no saved plan
+        // graph has no `RawShort` check anywhere — the plan-graph skip
+        // above would silently drop this shortage instead of deferring
+        // it to a finding that doesn't exist. Same numbers as the
+        // plan-graph test, but `machine_demand_reported_elsewhere =
+        // false` must still produce the combined shortfall.
+        let mut machine_demand = HashMap::new();
+        machine_demand.insert("Desc_Coal_C".to_string(), 80.0);
+        let mut supply = HashMap::new();
+        supply.insert("Desc_Coal_C".to_string(), 50.0);
+        let fuel_flows = vec![fuel_flow("Desc_Coal_C", "Coal", 15.0)];
+
+        let mut findings = Vec::new();
+        check_generator_supply(&fref(), &machine_demand, false, &fuel_flows, &supply, &mut findings);
+        assert_eq!(findings.len(), 1, "got {findings:?}");
+        match &findings[0].kind {
+            FindingKind::GeneratorFuelShort { demand_ipm, claimed_ipm, .. } => {
+                assert_eq!(*demand_ipm, 95.0, "80 machine + 15 generator");
+                assert_eq!(*claimed_ipm, 50.0);
+            }
+            other => panic!("expected GeneratorFuelShort, got {other:?}"),
+        }
     }
 
     #[test]
@@ -712,7 +746,7 @@ mod tests {
         let mut supply = HashMap::new();
         supply.insert("Desc_Coal_C".to_string(), 300.0);
         let mut findings = Vec::new();
-        check_generator_supply(&fref(), &HashMap::new(), &fuel_flows, &supply, &mut findings);
+        check_generator_supply(&fref(), &HashMap::new(), true, &fuel_flows, &supply, &mut findings);
         assert!(findings.is_empty(), "got {findings:?}");
     }
 

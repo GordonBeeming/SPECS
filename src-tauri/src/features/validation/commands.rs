@@ -181,7 +181,7 @@ pub(crate) fn validate_impl(db: &PlaythroughDb, gd: &GameData) -> AppResult<Vali
                         )
                     })
                     .collect();
-                // A factory without a saved plan graph still has
+                // A factory without a saved plan graph has no
                 // `raw_demand` (there's no graph to compute it from), but
                 // its manual machine rows are real claimants on the same
                 // supply pool — `ledger` above already folds their direct
@@ -201,6 +201,10 @@ pub(crate) fn validate_impl(db: &PlaythroughDb, gd: &GameData) -> AppResult<Vali
                 domain::check_generator_supply(
                     &fref,
                     &machine_demand,
+                    // Only a plan graph produces a `RawShort` finding
+                    // that would otherwise cover a machine-alone
+                    // shortfall — see `check_generator_supply`'s doc.
+                    has_plan_graph,
                     &balance.fuel_flows,
                     &supply,
                     &mut findings,
@@ -746,6 +750,47 @@ mod tests {
                         && (*demand_ipm - 60.0).abs() < 0.01
                         && (*claimed_ipm - 48.0).abs() < 0.01)),
             "manual machine's coal draw must count against the generator's shared supply: {:?}",
+            report.findings
+        );
+    }
+
+    #[test]
+    fn playthrough_validate_flags_manual_machine_fuel_short_even_when_machine_demand_alone_exceeds_claim() {
+        // Codex P1, round 2: the skip inside `check_generator_supply`
+        // ("machine demand alone already exceeds supply, so it's
+        // reported by the forwarded RawShort") only holds when there's a
+        // plan graph to produce that RawShort. A manual-machine factory
+        // with no saved plan has no RawShort check anywhere, so with a
+        // fully unclaimed coal node the old code silently skipped this
+        // factory's coal shortfall instead of reporting it. Same
+        // fixture as the test above but with zero coal claimed, so
+        // machine demand (45) alone already exceeds supply (0).
+        let db = open_test_db(3);
+        let gd = GameData::from_bundled().unwrap();
+        insert_factory(&db, "f1", "Steel Mill");
+        db.with(|c| {
+            factory_repo::machine_insert(
+                c, "m1", "f1", "Build_FoundryMk1_C", "Recipe_IngotSteel_C", 1, 100.0, false, 0, 0,
+                None, NOW,
+            )
+        })
+        .unwrap();
+        db.with(|c| {
+            crate::features::power::repo::power_gen_insert(
+                c, "g1", "f1", "Build_GeneratorCoal_C", "Desc_Coal_C", 1, 100.0, None, NOW,
+            )
+        })
+        .unwrap();
+
+        let report = validate_impl(&db, &gd).unwrap();
+        let ks = kinds(&report);
+        assert!(
+            ks.iter().any(|k| matches!(k,
+                FindingKind::GeneratorFuelShort { item_id, demand_ipm, claimed_ipm, .. }
+                    if item_id == "Desc_Coal_C"
+                        && (*demand_ipm - 60.0).abs() < 0.01
+                        && *claimed_ipm == 0.0)),
+            "manual factory's coal shortfall must not be silently skipped: {:?}",
             report.findings
         );
     }
