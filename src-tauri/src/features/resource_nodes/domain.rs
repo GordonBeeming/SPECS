@@ -1,7 +1,7 @@
 //! Pure throughput math for resource nodes. Kept out of `commands.rs`
 //! so the planner can call it without going through Tauri state.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::Deserialize;
 
@@ -208,11 +208,17 @@ pub fn extractor_output_ipm(
 /// Somersloop slot on an extractor, so amp is always 0/0) — reuses
 /// `machine_power_mw_amp` rather than a fourth power formula.
 ///
-/// Mirrors `extractor_output_ipm`'s node-kind dispatch: oil and
-/// fracking nodes always charge their family's one extractor building
-/// regardless of what a legacy claim's `miner_id` says, for the same
-/// reason the ipm side does — there's only one building per family.
-/// Purity doesn't affect power, only throughput, so it's absent here.
+/// Mirrors `extractor_output_ipm`'s node-kind dispatch for oil: the Oil
+/// Extractor always charges its one building regardless of what a legacy
+/// claim's `miner_id` says, for the same reason the ipm side does —
+/// there's only one building per family. Purity doesn't affect power,
+/// only throughput, so it's absent here.
+///
+/// A Resource Well satellite is unpowered — only the well's shared
+/// Pressuriser draws power, once per well rather than once per
+/// satellite — so this always returns 0 for `FrackingWell`. Callers that
+/// aggregate a factory's claimed satellites (`power_for_factory`) add
+/// the Pressuriser's draw themselves, once per distinct `core_id`.
 pub fn extractor_power_mw(
     node: &MapNode,
     miner_building_id: Option<&str>,
@@ -237,10 +243,7 @@ pub fn extractor_power_mw(
                 let Some(id) = miner_building_id else { return 0.0 };
                 game_data.building(id).map(|b| b.power_mw).unwrap_or(0.0)
             }
-            NodeKind::FrackingWell => game_data
-                .building("Build_FrackingExtractor_C")
-                .map(|b| b.power_mw)
-                .unwrap_or(0.0),
+            NodeKind::FrackingWell => return 0.0,
             NodeKind::Geyser => 0.0,
         }
     };
@@ -319,6 +322,13 @@ pub fn power_for_factory(
     game_data: &GameData,
 ) -> f32 {
     let mut total = 0.0_f32;
+    // A well's satellites share one Pressuriser, so claiming N satellites
+    // from the same well must charge its power once, not N times —
+    // `extractor_power_mw` already returns 0 for a `FrackingWell` node;
+    // this tracks which wells (by `core_id`, falling back to the node's
+    // own id for a satellite the map data never grouped) this factory
+    // has an active claim on, and adds the Pressuriser once per well.
+    let mut fracking_cores_seen: HashSet<String> = HashSet::new();
     for (node_id, claim) in claims {
         if claim.factory_id.as_deref() != Some(factory_id) {
             continue;
@@ -327,6 +337,18 @@ pub fn power_for_factory(
             continue;
         };
         total += extractor_power_mw(node, claim.miner_id.as_deref(), claim.clock_pct, game_data);
+        if node.kind == NodeKind::FrackingWell
+            && claim.clock_pct > 0.0
+            && claim.clock_pct.is_finite()
+        {
+            let core = node.core_id.clone().unwrap_or_else(|| node.id.clone());
+            if fracking_cores_seen.insert(core) {
+                total += game_data
+                    .building("Build_FrackingSmasher_C")
+                    .map(|b| b.power_mw)
+                    .unwrap_or(0.0);
+            }
+        }
     }
     for group in water_groups {
         if group.factory_id.as_deref() != Some(factory_id) {
@@ -779,7 +801,10 @@ mod tests {
     }
 
     #[test]
-    fn extractor_power_mw_charges_resource_well_extractor_wattage() {
+    fn extractor_power_mw_charges_no_wattage_for_a_resource_well_satellite() {
+        // Codex P1: a Resource Well satellite is unpowered — only the
+        // well's shared Pressuriser draws power, and only once per well.
+        // `power_for_factory` adds that separately, keyed by `core_id`.
         let gd = GameData::from_bundled().unwrap();
         let well = MapNode {
             id: "w".into(),
@@ -792,7 +817,7 @@ mod tests {
             core_id: None,
         };
         let mw = extractor_power_mw(&well, None, 100.0, &gd);
-        assert!((mw - 150.0).abs() < 0.01, "got {mw}");
+        assert_eq!(mw, 0.0);
     }
 
     #[test]
@@ -898,6 +923,41 @@ mod tests {
         assert!((f1_mw - 5.0).abs() < 0.01, "only the bound Mk1 counts, got {f1_mw}");
         let f2_mw = power_for_factory(&claims, &[], "F2", &gd);
         assert_eq!(f2_mw, 0.0);
+    }
+
+    #[test]
+    fn power_for_factory_charges_one_pressuriser_per_well_not_per_satellite() {
+        // Codex P1: claiming N satellites off the same well used to add N
+        // Resource Well Extractor loads (150 MW each). Satellites are
+        // unpowered; the well's shared Pressuriser (300 MW) is charged
+        // once per distinct `core_id`, however many of its satellites
+        // this factory has claimed.
+        let gd = GameData::from_bundled().unwrap();
+        let satellites: Vec<_> = gd
+            .nodes()
+            .iter()
+            .filter(|n| n.kind == NodeKind::FrackingWell && n.core_id.is_some())
+            .fold(std::collections::HashMap::<String, Vec<&crate::shared::gamedata::types::MapNode>>::new(), |mut acc, n| {
+                acc.entry(n.core_id.clone().unwrap()).or_default().push(n);
+                acc
+            })
+            .into_values()
+            .find(|group| group.len() >= 3)
+            .expect("bundled map data has a well with at least 3 satellites");
+
+        let mut claims = HashMap::new();
+        for sat in satellites.iter().take(3) {
+            claims.insert(
+                sat.id.clone(),
+                claim(&sat.id, "Build_FrackingSmasher_C", 100.0, Some("F1")),
+            );
+        }
+        let pressuriser_mw = gd.building("Build_FrackingSmasher_C").unwrap().power_mw;
+        let mw = power_for_factory(&claims, &[], "F1", &gd);
+        assert!(
+            (mw - pressuriser_mw).abs() < 0.01,
+            "3 satellites off one well should charge the Pressuriser once ({pressuriser_mw} MW), got {mw}"
+        );
     }
 
     // ---------- water extractor group tests ----------
