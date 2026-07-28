@@ -14,6 +14,7 @@ export const queryKeys = {
     milestones: ["library", "milestones"] as const,
     beltTiers: ["library", "belt-tiers"] as const,
     pipeTiers: ["library", "pipe-tiers"] as const,
+    extractedResources: ["library", "extracted-resources"] as const,
   },
   playthrough: {
     list: ["playthrough", "list"] as const,
@@ -53,6 +54,7 @@ export const queryKeys = {
     list: ["resources", "list"] as const,
     budget: (assumption: string) => ["resources", "budget", assumption] as const,
     waterGroups: ["resources", "water-groups"] as const,
+    waterPumpIpm: ["resources", "water-pump-ipm"] as const,
   },
   elevator: {
     overview: ["elevator", "overview"] as const,

@@ -14,7 +14,7 @@ use crate::features::resource_nodes::repo as nodes_repo;
 use crate::shared::error::{AppError, AppResult};
 use crate::shared::gamedata::GameData;
 
-use super::domain::{generator_fuel_flows, generator_power_mw};
+use super::domain::{generator_byproduct_flow, generator_fuel_flows, generator_power_mw};
 use super::dto::{
     CreatePowerGenInput, FactoryPowerBalance, PowerFuelFlow, PowerGen, SetPowerGenPositionInput,
     UpdatePowerGenInput,
@@ -230,10 +230,20 @@ fn list_power_balances_impl(
     // table scans.
     let claims = db.with(|c| nodes_repo::claims_all(c).map_err(AppError::from))?;
     let water_groups = db.with(|c| nodes_repo::water_groups_all(c).map_err(AppError::from))?;
+    let tier = current_tier(db)?;
     factories
         .iter()
-        .map(|f| power_balance_with_supply(db, game_data, &f.id, &claims, &water_groups))
+        .map(|f| power_balance_with_supply(db, game_data, &f.id, &claims, &water_groups, tier))
         .collect()
+}
+
+/// The playthrough's current tier — one read for the whole batch, for
+/// the same reason claims and water groups are loaded once above.
+fn current_tier(db: &crate::shared::db::playthrough_db::PlaythroughDb) -> AppResult<u8> {
+    let (tier, _progress) = db.with(|c| {
+        crate::features::playthrough::repo::progress_get(c).map_err(AppError::from)
+    })?;
+    Ok(tier.clamp(0, u8::MAX as i64) as u8)
 }
 
 /// Command-free balance composition so other slices (the validation
@@ -251,7 +261,8 @@ pub(crate) fn power_balance_impl(
 ) -> AppResult<FactoryPowerBalance> {
     let claims = db.with(|c| nodes_repo::claims_all(c).map_err(AppError::from))?;
     let water_groups = db.with(|c| nodes_repo::water_groups_all(c).map_err(AppError::from))?;
-    power_balance_with_supply(db, game_data, factory_id, &claims, &water_groups)
+    let tier = current_tier(db)?;
+    power_balance_with_supply(db, game_data, factory_id, &claims, &water_groups, tier)
 }
 
 /// Same math as `power_balance_impl`, but takes already-loaded claims
@@ -263,6 +274,7 @@ pub(crate) fn power_balance_with_supply(
     factory_id: &str,
     claims: &std::collections::HashMap<String, nodes_repo::ClaimRow>,
     water_groups: &[nodes_repo::WaterGroupRow],
+    tier: u8,
 ) -> AppResult<FactoryPowerBalance> {
     let machines = db.with(|c| {
         factory_repo::machines_for_factory(c, factory_id).map_err(AppError::from)
@@ -280,12 +292,61 @@ pub(crate) fn power_balance_with_supply(
         claims,
         water_groups,
         &std::collections::HashMap::new(),
+        tier,
     )
     .power_mw;
 
-    let gens = db.with(|c| repo::power_gens_for_factory(c, factory_id).map_err(AppError::from))?;
     let mut generated_mw = 0.0_f32;
     let mut fuel_totals: BTreeMap<String, f32> = BTreeMap::new();
+    let mut byproduct_totals: BTreeMap<String, f32> = BTreeMap::new();
+
+    // A nuclear waste recipe is materialized as an ordinary
+    // `factory_machine` row so the planner can chain through it — its
+    // building is `Build_GeneratorNuclear_C`, whose `power_mw` is
+    // authored as 0 because a generator's draw side is nothing (see
+    // convert-game-data.ts). Left uncounted here, a plan that produces
+    // nuclear waste builds a Nuclear Power Plant that contributes
+    // neither its generation nor its fuel/byproduct flows to the grid,
+    // and the only way to see them was to re-declare the same physical
+    // plant as a manual `power_gen` row — double-counting it.
+    //
+    // Fuel and byproduct flows are credited here too, the same as
+    // generation. This does not double-count `consumed_mw`: that's a
+    // single MW scalar from `compose_ledger_with_supply`, not a sum of
+    // these per-item totals, so the two never touch. The one thing this
+    // does duplicate is *display*, not counting — the factory's own
+    // ledger table already lists the fuel rod and waste as the recipe's
+    // ordinary inputs/outputs, and the Power view's fuel/byproduct cards
+    // now show the same fact from a different angle (what this factory
+    // draws from and emits into the grid). Showing the same real number
+    // on two screens for two different questions is fine; the failure
+    // mode this avoids is a plant reading 1,250 MW generated with an
+    // empty fuel-demand card, which is what a reader distrusts.
+    for m in &machines {
+        let Some(gen) = game_data.generator(&m.building_id) else {
+            continue;
+        };
+        let Some(fuel_item_id) = game_data
+            .recipe(&m.recipe_id)
+            .and_then(|r| r.inputs.first())
+            .map(|i| i.item_id.as_str())
+        else {
+            continue;
+        };
+        if let Some(fuel) = gen.fuels.iter().find(|f| f.fuel_item_id == fuel_item_id) {
+            generated_mw += generator_power_mw(gen, fuel, m.count, m.clock_pct);
+            let (main, supp) = generator_fuel_flows(fuel, m.count, m.clock_pct);
+            *fuel_totals.entry(main.0).or_insert(0.0) += main.1;
+            if let Some((id, rate)) = supp {
+                *fuel_totals.entry(id).or_insert(0.0) += rate;
+            }
+            if let Some((id, rate)) = generator_byproduct_flow(fuel, m.count, m.clock_pct) {
+                *byproduct_totals.entry(id).or_insert(0.0) += rate;
+            }
+        }
+    }
+
+    let gens = db.with(|c| repo::power_gens_for_factory(c, factory_id).map_err(AppError::from))?;
     for g in &gens {
         // Don't silently drop rows whose generator/fuel id doesn't
         // resolve — that would mask data corruption (or a dataset
@@ -300,26 +361,32 @@ pub(crate) fn power_balance_with_supply(
         if let Some((id, rate)) = supp {
             *fuel_totals.entry(id).or_insert(0.0) += rate;
         }
+        if let Some((id, rate)) = generator_byproduct_flow(fuel, g.count, g.clock_pct) {
+            *byproduct_totals.entry(id).or_insert(0.0) += rate;
+        }
     }
 
-    let fuel_flows = fuel_totals
-        .into_iter()
-        .filter(|(_, v)| *v > 0.0)
-        .map(|(item_id, per_minute)| {
-            let (item_name, is_fluid) = game_data
-                .item(&item_id)
-                .map(|it| (it.name.clone(), it.is_fluid))
-                .unwrap_or((item_id.clone(), false));
-            PowerFuelFlow { item_id, item_name, is_fluid, per_minute }
-        })
-        .collect();
+    let to_flows = |totals: BTreeMap<String, f32>| -> Vec<PowerFuelFlow> {
+        totals
+            .into_iter()
+            .filter(|(_, v)| *v > 0.0)
+            .map(|(item_id, per_minute)| {
+                let (item_name, is_fluid) = game_data
+                    .item(&item_id)
+                    .map(|it| (it.name.clone(), it.is_fluid))
+                    .unwrap_or((item_id.clone(), false));
+                PowerFuelFlow { item_id, item_name, is_fluid, per_minute }
+            })
+            .collect()
+    };
 
     Ok(FactoryPowerBalance {
         factory_id: factory_id.to_string(),
         generated_mw,
         consumed_mw,
         net_mw: generated_mw - consumed_mw,
-        fuel_flows,
+        fuel_flows: to_flows(fuel_totals),
+        byproduct_flows: to_flows(byproduct_totals),
     })
 }
 
@@ -330,6 +397,17 @@ mod tests {
 
     const NOW: &str = "2026-06-11T00:00:00Z";
 
+    /// A balance now reads the playthrough's tier (a claim contributes
+    /// what its port can deliver at that tier), and every real
+    /// playthrough DB is created with a progress row — so seed one here
+    /// rather than exercising a shape the app can't be in.
+    fn open_test_db(tier: i64) -> PlaythroughDb {
+        let db = PlaythroughDb::open_in_memory().expect("open in-memory playthrough db");
+        db.with(|c| crate::features::playthrough::repo::progress_init(c, tier))
+            .expect("seed progress");
+        db
+    }
+
     #[test]
     fn power_balance_includes_bound_extractor_draw_alongside_machines() {
         // Tier-0 acceptance shape: a Cable constructor at 50% clock
@@ -337,7 +415,7 @@ mod tests {
         // to the same factory. Before this fix the miner contributed 0
         // MW and this factory's `consumed_mw` read 1.6 instead of 6.6 —
         // the exact hole issue #55 was filed against.
-        let db = PlaythroughDb::open_in_memory().expect("open in-memory playthrough db");
+        let db = open_test_db(9);
         let gd = GameData::from_bundled().unwrap();
         db.with(|c| factory_repo::factory_insert(c, "f1", "Copper Works", None, None, None, NOW))
             .expect("insert factory");
@@ -369,12 +447,117 @@ mod tests {
     }
 
     #[test]
+    fn power_balance_reports_the_waste_a_nuclear_bank_emits() {
+        // The plant's panel used to list its fuel and water and no
+        // output of any kind, so a nuclear factory had nowhere to state
+        // where its waste goes. Two plants at 50% burn 0.2 rods/min and
+        // emit 10 ipm of Uranium Waste — half of two plants' 10/min
+        // each.
+        let db = open_test_db(9);
+        let gd = GameData::from_bundled().unwrap();
+        db.with(|c| factory_repo::factory_insert(c, "f1", "Nuclear", None, None, None, NOW))
+            .expect("insert factory");
+        db.with(|c| {
+            repo::power_gen_insert(
+                c, "g1", "f1", "Build_GeneratorNuclear_C", "Desc_NuclearFuelRod_C", 2, 50.0,
+                None, NOW,
+            )
+        })
+        .expect("insert generator");
+
+        let balance = power_balance_impl(&db, &gd, "f1").expect("balance computes");
+        let waste = balance
+            .byproduct_flows
+            .iter()
+            .find(|f| f.item_id == "Desc_NuclearWaste_C")
+            .expect("the bank emits Uranium Waste");
+        assert_eq!(waste.item_name, "Uranium Waste");
+        assert!((waste.per_minute - 10.0).abs() < 0.01, "got {}", waste.per_minute);
+        assert!(
+            balance.fuel_flows.iter().any(|f| f.item_id == "Desc_NuclearFuelRod_C"),
+            "the consumed side still reports the rods"
+        );
+    }
+
+    #[test]
+    fn power_balance_counts_generation_and_flows_from_a_plan_saved_nuclear_plant() {
+        // A plan that produces nuclear waste materializes the burn
+        // recipe as an ordinary factory_machine (Build_GeneratorNuclear_C
+        // / Recipe_NuclearWaste_C) so the planner can chain through it.
+        // Before this fix that machine's generation, fuel demand and
+        // byproduct output never reached the balance — only manual
+        // power_gen rows did — so the Power view showed a plant
+        // generating nothing, burning nothing and emitting nothing, on a
+        // building whose power_mw is deliberately authored as 0 (a
+        // generator's draw side is nothing; see convert-game-data.ts).
+        // One plant at 50% clock: 2,500 × 0.5 = 1,250 MW, 0.2 × 0.5 =
+        // 0.1 rods/min, 240 × 0.5 = 120 m³/min water, 10 × 0.5 = 5
+        // Uranium Waste/min.
+        let db = open_test_db(9);
+        let gd = GameData::from_bundled().unwrap();
+        db.with(|c| factory_repo::factory_insert(c, "f1", "Nuclear", None, None, None, NOW))
+            .expect("insert factory");
+        db.with(|c| {
+            factory_repo::machine_insert(
+                c, "m1", "f1", "Build_GeneratorNuclear_C", "Recipe_NuclearWaste_C", 1, 50.0,
+                false, 0, 0, None, NOW,
+            )
+        })
+        .expect("insert machine");
+
+        let balance = power_balance_impl(&db, &gd, "f1").expect("balance computes");
+        assert!(
+            (balance.generated_mw - 1250.0).abs() < 0.01,
+            "expected 1,250 MW from one plant at 50%, got {}",
+            balance.generated_mw
+        );
+        let rod = balance
+            .fuel_flows
+            .iter()
+            .find(|f| f.item_id == "Desc_NuclearFuelRod_C")
+            .expect("fuel demand shows the rod, not just an empty card");
+        assert!((rod.per_minute - 0.1).abs() < 0.001, "got {}", rod.per_minute);
+        let water = balance
+            .fuel_flows
+            .iter()
+            .find(|f| f.item_id == "Desc_Water_C")
+            .expect("fuel demand shows the coolant too");
+        assert!((water.per_minute - 120.0).abs() < 0.01, "got {}", water.per_minute);
+        let waste = balance
+            .byproduct_flows
+            .iter()
+            .find(|f| f.item_id == "Desc_NuclearWaste_C")
+            .expect("byproducts show the waste, not just an empty card");
+        assert!((waste.per_minute - 5.0).abs() < 0.01, "got {}", waste.per_minute);
+    }
+
+    #[test]
+    fn power_balance_reports_no_byproducts_for_a_clean_burner() {
+        // Only nuclear emits anything; a coal bank must not grow an
+        // empty-but-present waste row for the Power view to render.
+        let db = open_test_db(9);
+        let gd = GameData::from_bundled().unwrap();
+        db.with(|c| factory_repo::factory_insert(c, "f1", "Coal", None, None, None, NOW))
+            .expect("insert factory");
+        db.with(|c| {
+            repo::power_gen_insert(
+                c, "g1", "f1", "Build_GeneratorCoal_C", "Desc_Coal_C", 1, 100.0, None, NOW,
+            )
+        })
+        .expect("insert generator");
+
+        let balance = power_balance_impl(&db, &gd, "f1").expect("balance computes");
+        assert!(balance.byproduct_flows.is_empty());
+        assert!(!balance.fuel_flows.is_empty());
+    }
+
+    #[test]
     fn list_power_balances_includes_factories_with_no_generators() {
         // The Power view's old data source only ever fetched a balance
         // for the one selected factory, so a generator-less factory
         // never rendered — this is the query the fixed screen uses to
         // show every factory (and its grid-wide total) at once.
-        let db = PlaythroughDb::open_in_memory().expect("open in-memory playthrough db");
+        let db = open_test_db(9);
         let gd = GameData::from_bundled().unwrap();
         db.with(|c| factory_repo::factory_insert(c, "powered", "Has Gens", None, None, None, NOW))
             .expect("insert factory");
@@ -408,7 +591,7 @@ mod tests {
         // them is the case that would leak if the threading mixed claims
         // up across factories instead of keeping the per-factory filter
         // `compose_ledger_with_supply` already applies.
-        let db = PlaythroughDb::open_in_memory().expect("open in-memory playthrough db");
+        let db = open_test_db(9);
         let gd = GameData::from_bundled().unwrap();
         db.with(|c| factory_repo::factory_insert(c, "f1", "Claims Iron", None, None, None, NOW))
             .expect("insert f1");

@@ -1,4 +1,4 @@
-import type { ExtractorOption, ResourceNodeRow } from "./types";
+import type { Purity, ResourceNodeRow } from "./types";
 
 /**
  * The extractor a fresh claim should default to: the caller's preferred
@@ -19,24 +19,74 @@ export function claimDefaultExtractor(
 }
 
 /**
- * Extractor option label for pickers — same shape as the generator
- * picker's "Biomass Burner — 30 MW · T0" hint, so a Miner Mk2 reads
- * "Miner Mk.2 · T4" instead of leaving the tier invisible.
- */
-export function extractorOptionLabel(option: Pick<ExtractorOption, "name" | "unlockTier">): string {
-  return `${option.name} · T${option.unlockTier}`;
-}
-
-/**
  * Human-friendly label for a resource node. The bundled catalog ids
  * (e.g. `BP_ResourceNode114`) are unique-stable but mean nothing to a
  * player; show a sequential index within the node's (resource, purity)
  * bucket plus a coarse coordinate hint instead. The raw id stays on
  * the row's `title` so we can still trace which entry the user is
  * pointing at.
+ *
+ * The index resets at 1 for each purity within a resource (Pure/Normal/
+ * Impure each number their own nodes), so "Iron Ore #1" alone can name
+ * either a Pure or a Normal node — the purity initial in front of the
+ * number is what keeps the two apart when the label is read on its own,
+ * without renumbering (and without touching the index math the Rust
+ * side mirrors for `claimOverPortCapacity` findings).
  */
-export function nodeDisplayLabel(node: ResourceNodeRow, index: number): string {
-  return `#${index + 1} · ${coordChip(node.x, node.y)}`;
+export function nodeDisplayLabel(
+  node: Pick<ResourceNodeRow, "x" | "y" | "purity">,
+  index: number,
+): string {
+  return `#${purityInitial(node.purity)}${index + 1} · ${coordChip(node.x, node.y)}`;
+}
+
+function purityInitial(purity: Purity): string {
+  switch (purity) {
+    case "Pure":
+      return "P";
+    case "Normal":
+      return "N";
+    case "Impure":
+      return "I";
+  }
+}
+
+/**
+ * Satisfactory's purity multiplier — mirrors `NodePurity::multiplier()`
+ * on the Rust side (`shared/gamedata/types.rs`). Every *saved* extractor
+ * rate is meant to come from Rust over IPC (`extractor_output_ipm`), not
+ * be recomputed here — this exists only for `previewExtractorIpm` below,
+ * where there's no saved rate yet to read.
+ */
+function purityMultiplier(purity: Purity): number {
+  switch (purity) {
+    case "Impure":
+      return 0.5;
+    case "Normal":
+      return 1;
+    case "Pure":
+      return 2;
+  }
+}
+
+/**
+ * Live preview of an extractor's output while the clock editor is open
+ * and still unsaved — `base × purity × clock`, the same formula
+ * `extractor_output_ipm` uses server-side to produce the row's own ipm
+ * chip once a claim is saved. A claim mid-edit has no saved rate to
+ * read yet, which is the one case where re-deriving this on the
+ * TypeScript side is the right call rather than a drift risk: the
+ * alternative is a round trip to the backend per keystroke/drag tick,
+ * or no feedback at all until Save.
+ *
+ * Deliberately the *theoretical* rate, not belt-capped — the row
+ * already has a separate "over port cap" flag for that, and a preview
+ * that silently caps itself would hide the exact thing dragging the
+ * clock is trying to avoid.
+ */
+export function previewExtractorIpm(baseIpm: number, purity: Purity, clockPct: number): number {
+  if (!Number.isFinite(clockPct) || clockPct <= 0) return 0;
+  return baseIpm * purityMultiplier(purity) * (clockPct / 100);
 }
 
 /**

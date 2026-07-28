@@ -138,6 +138,8 @@ export function usePlanDesigner(factoryId: string) {
           rawDemand: {},
           warnings: [],
           samForced: false,
+          uncollectedAlts: [],
+          existingProducers: [],
         },
       });
       return;

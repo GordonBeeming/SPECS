@@ -383,8 +383,15 @@ fn finalise_plans(mut plans: Vec<TransportPlan>) -> Vec<TransportPlan> {
 fn rank_plan(a: &TransportPlan, b: &TransportPlan) -> std::cmp::Ordering {
     let total_a: u32 = a.segments.iter().map(|s| s.count).sum();
     let total_b: u32 = b.segments.iter().map(|s| s.count).sum();
-    total_a
-        .cmp(&total_b)
+    // Buildable beats unbuildable before any of the "which is the nicer
+    // plan" criteria get a vote — `false < true`, so an unlocked plan
+    // (locked: false) always sorts ahead of a locked one. Without this,
+    // a tidy single-segment locked vehicle plan (e.g. a Tier 3 Explorer)
+    // could out-rank every belt/pipe option the player can actually
+    // build at their tier, on segment count and utilisation alone.
+    a.locked
+        .cmp(&b.locked)
+        .then_with(|| total_a.cmp(&total_b))
         .then_with(|| {
             b.utilisation_pct
                 .partial_cmp(&a.utilisation_pct)
@@ -584,6 +591,52 @@ mod tests {
                 .iter()
                 .map(|p| (p.locked, p.min_unlock_tier))
                 .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn locked_plan_never_outranks_a_buildable_plan_on_stats_alone() {
+        // Regression for #71: a locked Tier 3 vehicle plan with a tidy
+        // single-segment, 100%-utilisation shape used to sort ahead of a
+        // messier-but-buildable belt plan, because `rank_plan` compared
+        // segment count and utilisation before ever looking at `locked`.
+        // The transport picker then showed an Explorer the player
+        // couldn't build above the Mk2 belts they could.
+        let locked_explorer = TransportPlan {
+            kind: TransportKind::Truck,
+            segments: vec![TransportSegment {
+                mark: 0,
+                count: 1,
+                per_unit_capacity: 100.0,
+                unlock_tier: 3,
+            }],
+            total_capacity_per_minute: 100.0,
+            utilisation_pct: 100.0,
+            min_unlock_tier: 3,
+            locked: true,
+            vehicle_id: Some("Build_Explorer_C".into()),
+            battery_per_minute: None,
+        };
+        let unlocked_belts = TransportPlan {
+            kind: TransportKind::Belt,
+            segments: vec![TransportSegment {
+                mark: 2,
+                count: 2,
+                per_unit_capacity: 60.0,
+                unlock_tier: 2,
+            }],
+            total_capacity_per_minute: 120.0,
+            utilisation_pct: 83.3,
+            min_unlock_tier: 2,
+            locked: false,
+            vehicle_id: None,
+            battery_per_minute: None,
+        };
+        let ranked = finalise_plans_public(vec![locked_explorer, unlocked_belts]);
+        assert!(
+            !ranked[0].locked,
+            "the buildable plan must rank first even with a worse segment count/utilisation shape; got {:?}",
+            ranked.iter().map(|p| (p.locked, p.kind)).collect::<Vec<_>>()
         );
     }
 

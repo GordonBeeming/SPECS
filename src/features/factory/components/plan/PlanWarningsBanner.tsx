@@ -1,7 +1,7 @@
-import { TriangleAlert } from "lucide-react";
+import { FlaskConical, TriangleAlert } from "lucide-react";
 
 import type { PlanWarning, PlannerError } from "@/features/planner/types";
-import { rate } from "./rates";
+import { rate } from "@/shared/format/rates";
 
 export function warningLine(w: PlanWarning): string {
   switch (w.kind) {
@@ -64,6 +64,32 @@ export function PlanWarningsBanner({ warnings }: { warnings: PlanWarning[] }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * Alt recipes this solve leans on that the playthrough hasn't scanned
+ * yet. Deliberately not a `PlanWarning`: the chain is sound and
+ * buildable in principle — "unlocked at its tier" and "collected" are
+ * different questions, and this only answers the second. A hard drive
+ * closes it, not a plan edit, which is why it reads calmer than the
+ * amber warning block above rather than sharing it.
+ */
+export function UncollectedAltsBanner({ names }: { names: string[] }) {
+  if (names.length === 0) return null;
+  return (
+    <div
+      role="status"
+      className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-xs text-fg"
+    >
+      <div className="flex items-center gap-1.5 font-semibold text-accent">
+        <FlaskConical className="h-3.5 w-3.5" />
+        Leans on {names.length} uncollected {names.length === 1 ? "alt" : "alts"}
+      </div>
+      <p className="mt-1 text-fg-muted">
+        {names.join(", ")} — unlocked at their tier, not scanned into your Alts list yet.
+      </p>
     </div>
   );
 }

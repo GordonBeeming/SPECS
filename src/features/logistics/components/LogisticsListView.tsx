@@ -3,7 +3,7 @@ import { ArrowRight, Pencil, Plus } from "lucide-react";
 import { ConfirmDeleteButton } from "@/shared/ui/ConfirmDeleteButton";
 
 import { useFactoryList } from "@/features/factory/hooks/useFactories";
-import { useItems } from "@/features/library/hooks/useLibrary";
+import { useItems, useTransportVehicles } from "@/features/library/hooks/useLibrary";
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
@@ -11,12 +11,14 @@ import { Card } from "@/shared/ui/Card";
 import { useDeleteLogisticsLink, useLogisticsLinks } from "../hooks/useLogistics";
 import type { LogisticsLink } from "../types";
 import { LogisticsLinkEditor } from "./LogisticsLinkEditor";
+import { parseTransportPlanJson, summariseSegments } from "./TransportPlanPicker";
 
 export function LogisticsListView() {
   const playthrough = useCurrentPlaythrough();
   const list = useLogisticsLinks();
   const factories = useFactoryList();
   const items = useItems();
+  const vehicles = useTransportVehicles();
   const deleteMut = useDeleteLogisticsLink();
 
   const [showCreate, setShowCreate] = useState(false);
@@ -39,6 +41,11 @@ export function LogisticsListView() {
     (items.data ?? []).forEach((i) => map.set(i.id, i.isFluid));
     return (id: string) => map.get(id) ?? false;
   }, [items.data]);
+
+  const vehicleNames = useMemo(
+    () => new Map(vehicles.data?.map((v) => [v.id, v.name]) ?? []),
+    [vehicles.data],
+  );
 
   if (!playthrough.data) {
     return (
@@ -100,6 +107,7 @@ export function LogisticsListView() {
                 toName={factoryName(link.toFactoryId)}
                 itemLabel={itemName(link.itemId)}
                 isFluid={itemIsFluid(link.itemId)}
+                vehicleNames={vehicleNames}
                 onEdit={() => setEditing(link)}
                 onDelete={() => deleteMut.mutate(link.id)}
               />
@@ -131,14 +139,22 @@ interface LinkRowProps {
   toName: string;
   itemLabel: string;
   isFluid: boolean;
+  vehicleNames: Map<string, string>;
   onEdit: () => void;
   onDelete: () => void;
 }
 
-function LinkRow({ link, fromName, toName, itemLabel, isFluid, onEdit, onDelete }: LinkRowProps) {
+function LinkRow({ link, fromName, toName, itemLabel, isFluid, vehicleNames, onEdit, onDelete }: LinkRowProps) {
   // Fluids ride pipes and the planner reports m³/min for them — match that
   // unit in the row so the editor / picker / list all speak the same units.
   const unit = isFluid ? "m³/min" : "ipm";
+  // `link.transportKind` alone reads as "belt" for every mark alike,
+  // and the mark is the one figure a belt-cap audit needs. The
+  // persisted plan JSON carries it; fall back to the bare kind only for
+  // a row saved before plan validation existed, where the JSON might
+  // not parse.
+  const plan = parseTransportPlanJson(link.transportPlanJson);
+  const transportLabel = plan ? summariseSegments(plan, vehicleNames) : link.transportKind;
   return (
     <li className="flex items-center gap-3 py-3">
       <div className="flex-1">
@@ -148,7 +164,7 @@ function LinkRow({ link, fromName, toName, itemLabel, isFluid, onEdit, onDelete 
           <span className="truncate">{toName}</span>
         </div>
         <div className="mt-0.5 text-xs text-fg-muted tabular-nums">
-          {link.itemsPerMinute.toFixed(2)} {unit} · {itemLabel} · {link.transportKind}
+          {link.itemsPerMinute.toFixed(2)} {unit} · {itemLabel} · {transportLabel}
           {link.distanceM != null ? ` · ${link.distanceM} m` : ""}
         </div>
       </div>

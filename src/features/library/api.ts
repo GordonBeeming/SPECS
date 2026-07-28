@@ -21,4 +21,5 @@ export const libraryApi = {
   pipeTiers: () => invoke<PipeTier[]>("library_pipe_tiers"),
   generators: () => invoke<Generator[]>("library_generators"),
   transportVehicles: () => invoke<TransportVehicle[]>("library_transport_vehicles"),
+  extractedResources: () => invoke<string[]>("library_extracted_resources"),
 };

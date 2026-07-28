@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coordChip, nodeKindLabel } from "./display";
+import { coordChip, nodeDisplayLabel, nodeKindLabel } from "./display";
 
 describe("coordChip", () => {
   it("prints west and north for negative x/y, not signed east/north", () => {
@@ -14,6 +14,24 @@ describe("coordChip", () => {
 
   it("defaults to east/south at the origin", () => {
     expect(coordChip(0, 0)).toBe("0.0km E · 0.0km S");
+  });
+});
+
+describe("nodeDisplayLabel", () => {
+  const at = { x: -150000, y: -50000 };
+
+  it("prefixes the position number with a purity initial so it's unique across purities (#51)", () => {
+    // The index resets to 0 inside each (resource, purity) bucket, so a
+    // Pure node and a Normal node of the same resource can land on the
+    // same bare position — the same shape as the bug report ("Iron Ore
+    // #1" naming both a Pure node and a Normal node).
+    expect(nodeDisplayLabel({ ...at, purity: "Pure" }, 0)).toBe("#P1 · 1.5km W · 0.5km N");
+    expect(nodeDisplayLabel({ ...at, purity: "Normal" }, 0)).toBe("#N1 · 1.5km W · 0.5km N");
+    expect(nodeDisplayLabel({ ...at, purity: "Impure" }, 0)).toBe("#I1 · 1.5km W · 0.5km N");
+  });
+
+  it("still increments the visible number from the 0-based index", () => {
+    expect(nodeDisplayLabel({ ...at, purity: "Pure" }, 4)).toBe("#P5 · 1.5km W · 0.5km N");
   });
 });
 

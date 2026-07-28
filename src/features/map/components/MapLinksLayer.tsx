@@ -149,3 +149,109 @@ export function MapLinksLayer({
     </svg>
   );
 }
+
+export interface NodeBindingLinesLayerProps {
+  nodes: Array<{
+    id: string;
+    x: number;
+    y: number;
+    claim?: { factoryId?: string | null } | null;
+  }>;
+  waterGroups: Array<{ id: string; worldX: number; worldY: number; factoryId?: string | null }>;
+  factories: Array<{ id: string; worldX: number; worldY: number }>;
+  /** The selected factory's own bindings already render, emphasized
+   * with detach buttons, via the map's `InputLinesLayer` — skipped
+   * here so the two layers don't paint the same line twice. */
+  selectedFactoryId: string | null;
+  mapW: number;
+  mapH: number;
+}
+
+/**
+ * A faint line from every claimed node and bound water group to the
+ * factory it feeds — the factory↔node relationship the map never drew
+ * on its own (issue #59: "Show factory links" only ever meant
+ * factory→factory logistics, so this spatial fact was invisible
+ * unless you'd already clicked into a factory). Drawn for *every*
+ * binding, not just the selected factory's, so "where does this
+ * factory's stuff come from" is readable at a glance at every tier.
+ */
+export function NodeBindingLinesLayer({
+  nodes,
+  waterGroups,
+  factories,
+  selectedFactoryId,
+  mapW,
+  mapH,
+}: NodeBindingLinesLayerProps) {
+  const lines = useMemo(() => {
+    const factoryById = new Map(factories.map((f) => [f.id, f]));
+    const out: Array<{ key: string; x1: number; y1: number; x2: number; y2: number; factoryId: string }> = [];
+    for (const n of nodes) {
+      const factoryId = n.claim?.factoryId;
+      if (!factoryId) continue;
+      const f = factoryById.get(factoryId);
+      if (!f) continue;
+      const p = worldToPct(n.x, n.y);
+      const t = worldToPct(f.worldX, f.worldY);
+      out.push({
+        key: `n-${n.id}`,
+        x1: p.xPct * mapW,
+        y1: p.yPct * mapH,
+        x2: t.xPct * mapW,
+        y2: t.yPct * mapH,
+        factoryId,
+      });
+    }
+    for (const g of waterGroups) {
+      if (!g.factoryId) continue;
+      const f = factoryById.get(g.factoryId);
+      if (!f) continue;
+      const p = worldToPct(g.worldX, g.worldY);
+      const t = worldToPct(f.worldX, f.worldY);
+      out.push({
+        key: `w-${g.id}`,
+        x1: p.xPct * mapW,
+        y1: p.yPct * mapH,
+        x2: t.xPct * mapW,
+        y2: t.yPct * mapH,
+        factoryId: g.factoryId,
+      });
+    }
+    return out;
+  }, [nodes, waterGroups, factories, mapW, mapH]);
+
+  const visible = useMemo(
+    () => lines.filter((l) => l.factoryId !== selectedFactoryId),
+    [lines, selectedFactoryId],
+  );
+
+  if (visible.length === 0) return null;
+
+  return (
+    <svg
+      className="pointer-events-none absolute inset-0"
+      width={mapW}
+      height={mapH}
+      viewBox={`0 0 ${mapW} ${mapH}`}
+      aria-hidden="true"
+    >
+      {visible.map((l) => (
+        <line
+          key={l.key}
+          x1={l.x1}
+          y1={l.y1}
+          x2={l.x2}
+          y2={l.y2}
+          stroke="var(--color-fg-muted, currentColor)"
+          strokeWidth={1.5}
+          // Fainter still once a (different) factory is selected — the
+          // selected one's own bindings already own the emphasis, the
+          // rest just need to stay legible as background context.
+          strokeOpacity={selectedFactoryId === null ? 0.28 : 0.1}
+          strokeDasharray="3 5"
+        />
+      ))}
+    </svg>
+  );
+}

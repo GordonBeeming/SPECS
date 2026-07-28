@@ -21,6 +21,8 @@ function graphWith(nodes: PlanNode[]): PlanGraph {
     rawDemand: {},
     warnings: [],
     samForced: false,
+    uncollectedAlts: [],
+    existingProducers: [],
   };
 }
 

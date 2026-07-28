@@ -1,5 +1,18 @@
 import { useEffect, useState } from "react";
 
+/**
+ * Round-trip-safe text for a clock percent, matching the two-decimal
+ * on-disk precision with trailing zeros trimmed (`37.5`, not `37.50`
+ * or `38`). A read-only "badge" showing a clock value — the collapsed
+ * state before a claim's editor opens, say — should render through this
+ * rather than its own `.toFixed(0)`: rounding 37.5 to "38" looks more
+ * disciplined but breaks the round trip, because typing the displayed
+ * 38 back in commits a clock the user never actually set.
+ */
+export function formatClockPct(pct: number): string {
+  return Number(pct.toFixed(2)).toString();
+}
+
 export interface ClockInputProps {
   value: number;
   onChange: (next: number) => void;

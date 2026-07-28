@@ -91,4 +91,42 @@ describe("SpaceElevatorView", () => {
     });
     expect(screen.getByText(/2 shipped out/)).toBeInTheDocument();
   });
+
+  it("notes when a part's free rate is the same supply shared with another phase (#72)", async () => {
+    // Regresses: Phase 1 and Phase 2 both needing Smart Plating rendered
+    // the identical "X/min free" figure under each phase with nothing
+    // saying it's one shared production line, not double the capacity.
+    const sharedOverview: ElevatorOverview = {
+      phases: [
+        overview.phases[0],
+        {
+          phase: 2,
+          name: "Construction Dock",
+          unlocksTiers: [5, 6],
+          parts: [
+            // Same itemId as Phase 1's Smart Plating part.
+            { ...overview.phases[0].parts[0], requiredQuantity: 100 },
+          ],
+        },
+      ],
+    };
+    vi.spyOn(elevatorApi, "overview").mockResolvedValue(sharedOverview);
+
+    renderView(<SpaceElevatorView />);
+    await screen.findByText(/Phase 2 — Construction Dock/);
+
+    const notes = screen.getAllByText(/Same Smart Plating supply also shows under Phase/);
+    // Both phases carry the cross-reference, pointing at each other.
+    expect(notes).toHaveLength(2);
+    expect(notes[0]).toHaveTextContent("Phase 2");
+    expect(notes[1]).toHaveTextContent("Phase 1");
+  });
+
+  it("doesn't add a cross-phase note for a part that only appears once", async () => {
+    renderView(<SpaceElevatorView />);
+    await screen.findByText("Automated Wiring");
+    expect(
+      screen.queryByText(/Same .* supply also shows under Phase/),
+    ).not.toBeInTheDocument();
+  });
 });

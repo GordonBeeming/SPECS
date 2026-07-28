@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Rocket } from "lucide-react";
 import { Card } from "@/shared/ui/Card";
 import { Badge } from "@/shared/ui/Badge";
@@ -48,6 +48,26 @@ export function SpaceElevatorView() {
   const phases = overview.data?.phases ?? [];
   const nextPhaseIdx = phases.findIndex((p) => !phaseDone(p, currentTier));
 
+  // `availablePerMinute` is a live production-rate surplus, not a
+  // per-phase allocation — the same Smart Plating line shows the same
+  // free rate under every phase that happens to need Smart Plating,
+  // because it genuinely is the same supply, not two separate pools.
+  // Phase cards render independently, so without this a phase further
+  // down the list reads as having its own untouched capacity when
+  // delivering to an earlier phase first would draw down the same
+  // number shown here.
+  const phaseNumbersByItem = useMemo(() => {
+    const m = new Map<string, number[]>();
+    for (const phase of phases) {
+      for (const part of phase.parts) {
+        const arr = m.get(part.itemId) ?? [];
+        arr.push(phase.phase);
+        m.set(part.itemId, arr);
+      }
+    }
+    return m;
+  }, [phases]);
+
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto">
       <Card>
@@ -93,6 +113,7 @@ export function SpaceElevatorView() {
               key={phase.phase}
               phase={phase}
               state={done ? "done" : isNext ? "active" : isFuture ? "future" : "active"}
+              phaseNumbersByItem={phaseNumbersByItem}
             />
           );
         })
@@ -103,7 +124,15 @@ export function SpaceElevatorView() {
 
 type PhaseState = "done" | "active" | "future";
 
-function PhaseCard({ phase, state }: { phase: ElevatorPhase; state: PhaseState }) {
+function PhaseCard({
+  phase,
+  state,
+  phaseNumbersByItem,
+}: {
+  phase: ElevatorPhase;
+  state: PhaseState;
+  phaseNumbersByItem: Map<string, number[]>;
+}) {
   return (
     <Card className={state === "future" ? "opacity-60" : undefined}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -129,7 +158,13 @@ function PhaseCard({ phase, state }: { phase: ElevatorPhase; state: PhaseState }
       </div>
       <ul className="mt-3 flex flex-col divide-y divide-border">
         {phase.parts.map((part) => (
-          <PartRow key={part.itemId} part={part} />
+          <PartRow
+            key={part.itemId}
+            part={part}
+            sharedWithPhases={(phaseNumbersByItem.get(part.itemId) ?? []).filter(
+              (p) => p !== phase.phase,
+            )}
+          />
         ))}
       </ul>
     </Card>
@@ -146,7 +181,14 @@ function partStatus(part: ElevatorPartProgress): { tone: "success" | "warning" |
   return { tone: "success", label: `${rate(free)}/min free` };
 }
 
-function PartRow({ part }: { part: ElevatorPartProgress }) {
+function PartRow({
+  part,
+  sharedWithPhases,
+}: {
+  part: ElevatorPartProgress;
+  /** Other phase numbers that also list this same item. */
+  sharedWithPhases: number[];
+}) {
   const [open, setOpen] = useState(false);
   const status = partStatus(part);
   const hasProducers = part.producers.length > 0;
@@ -180,6 +222,19 @@ function PartRow({ part }: { part: ElevatorPartProgress }) {
           <Badge tone={status.tone}>{status.label}</Badge>
         </span>
       </button>
+      {sharedWithPhases.length > 0 && (
+        // `availablePerMinute` is a live surplus rate, not a reservation —
+        // the same producers show the same free rate under every phase
+        // that needs this item, because it's the same supply counted
+        // once, not a separate pool per phase (#72). Without this note,
+        // two phases both reading "5/min free" looks like double the
+        // real capacity.
+        <p className="ml-7 mt-0.5 text-[11px] text-fg-muted">
+          Same {part.itemName} supply also shows under Phase{" "}
+          {sharedWithPhases.join(", ")} — the free rate above isn't reserved
+          for this phase alone.
+        </p>
+      )}
       {open && hasProducers ? (
         <ul className="mt-2 ml-7 flex flex-col gap-1.5 border-l border-border pl-4">
           {part.producers.map((p) => (

@@ -22,9 +22,23 @@ export const DEFAULT_LOADOUT: MapLoadout = {
 
 const LOADOUT_STORAGE = "specs:map:loadout";
 
-export function readLoadout(): MapLoadout {
+/**
+ * The mark + clock a player is placing with is a fact about *this*
+ * playthrough's current tier, not a personal preference — a mark
+ * chosen in a later-tier run has no business surviving into a fresh
+ * one (that was #64/#57's actual bug: a Mk.2 default bleeding into a
+ * brand-new Tier 0 playthrough via this exact key). `playthroughId`
+ * is optional so callers that haven't threaded one through yet (or
+ * the very first render, before the active playthrough has loaded)
+ * still get a working, if unscoped, loadout instead of a crash.
+ */
+function loadoutStorageKey(playthroughId?: string | null): string {
+  return playthroughId ? `${LOADOUT_STORAGE}:${playthroughId}` : LOADOUT_STORAGE;
+}
+
+export function readLoadout(playthroughId?: string | null): MapLoadout {
   try {
-    const v = localStorage.getItem(LOADOUT_STORAGE);
+    const v = localStorage.getItem(loadoutStorageKey(playthroughId));
     if (!v) return DEFAULT_LOADOUT;
     const p: unknown = JSON.parse(v);
     if (typeof p !== "object" || p === null) return DEFAULT_LOADOUT;
@@ -50,9 +64,9 @@ export function readLoadout(): MapLoadout {
   }
 }
 
-export function writeLoadout(loadout: MapLoadout): void {
+export function writeLoadout(loadout: MapLoadout, playthroughId?: string | null): void {
   try {
-    localStorage.setItem(LOADOUT_STORAGE, JSON.stringify(loadout));
+    localStorage.setItem(loadoutStorageKey(playthroughId), JSON.stringify(loadout));
   } catch {}
 }
 
@@ -94,6 +108,10 @@ export interface PlacementLoadoutProps {
   markOptions: ExtractorOption[];
 }
 
+// Deliberately *not* scoped by playthrough, unlike the loadout above:
+// whether this panel is pinned open is a personal UI preference, not
+// a fact about any one save file, so it should follow the player
+// everywhere rather than reset every time they switch playthroughs.
 const COLLAPSE_STORAGE = "specs:map:loadout:collapsed";
 
 function fmtClock(n: number): string {

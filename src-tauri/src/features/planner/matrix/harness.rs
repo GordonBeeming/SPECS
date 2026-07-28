@@ -14,6 +14,7 @@ use crate::features::planner::commands::tier_reachable_alts;
 use crate::features::planner::domain::compute_plan_graph;
 use crate::features::planner::dto::{PlanComputeOptions, PlanGraph, PlanTargetSpec, PlannerError};
 use crate::features::planner::tier::{self, TierTable};
+use crate::features::resource_nodes::domain::{best_belt_tier, best_pipe_tier};
 use crate::shared::gamedata::GameData;
 
 pub(crate) use crate::features::planner::tier::AltMode;
@@ -53,25 +54,24 @@ pub(crate) struct CaseResult {
     pub pipe_cap_ipm: Option<f32>,
 }
 
-/// Best belt throughput unlocked by `tier`, derived from
-/// `belt_tiers` — Mk1 is unlocked at Tier 0, so this is always defined
-/// for any `u8` tier.
+/// Best belt throughput unlocked by `tier` — Mk1 is unlocked at Tier 0,
+/// so this is always defined for any `u8` tier.
+///
+/// Resolved through `best_belt_tier` rather than folded here on
+/// purpose: this harness is the test oracle for the whole planner
+/// matrix and every case's `target_ipm` comes from it, so a private
+/// copy that drifted from the lookup Validate uses would certify plans
+/// sized against a capacity the app then flags.
 pub(crate) fn belt_cap(gd: &GameData, tier: u8) -> f32 {
-    gd.belt_tiers()
-        .iter()
-        .filter(|b| b.unlock_tier <= tier)
-        .map(|b| b.items_per_minute as f32)
-        .fold(0.0_f32, f32::max)
+    best_belt_tier(tier, gd).map(|b| b.items_per_minute as f32).unwrap_or(0.0)
 }
 
 /// Best pipe throughput unlocked by `tier`, or `None` when no pipe
-/// tier is unlocked yet (there is no pipe below Tier 3).
+/// tier is unlocked yet (there is no pipe below Tier 3). Same lookup as
+/// `belt_cap`, and `None` here is the same "no carrier exists yet" that
+/// `best_pipe_tier` means by it — never a capacity of zero.
 pub(crate) fn pipe_cap(gd: &GameData, tier: u8) -> Option<f32> {
-    gd.pipe_tiers()
-        .iter()
-        .filter(|p| p.unlock_tier <= tier)
-        .map(|p| p.cubic_meters_per_minute as f32)
-        .fold(None, |best, v| Some(best.map_or(v, |b: f32| b.max(v))))
+    best_pipe_tier(tier, gd).map(|p| p.cubic_meters_per_minute as f32)
 }
 
 /// Earliest tier `item_id`'s chain fully grounds out under `alts`, or
@@ -218,6 +218,27 @@ mod tests {
         assert_eq!(pipe_cap(&gd, 3), Some(300.0));
         assert_eq!(pipe_cap(&gd, 6), Some(600.0));
         assert_eq!(pipe_cap(&gd, 9), Some(600.0), "no pipe past Mk2 in this dataset");
+    }
+
+    /// The matrix sizes every case at `belt_cap(gd, tier)` and Validate
+    /// flags a claim at `port_capacity`. If the two ever answered
+    /// differently the suite would certify plans built against a
+    /// capacity the app then warns about — green tests, wrong app.
+    #[test]
+    fn caps_agree_with_the_lookup_validate_uses_at_every_tier() {
+        let gd = GameData::from_bundled().unwrap();
+        for tier in 0..=10u8 {
+            assert_eq!(
+                belt_cap(&gd, tier),
+                best_belt_tier(tier, &gd).map(|b| b.items_per_minute as f32).unwrap_or(0.0),
+                "belt cap disagrees at tier {tier}"
+            );
+            assert_eq!(
+                pipe_cap(&gd, tier),
+                best_pipe_tier(tier, &gd).map(|p| p.cubic_meters_per_minute as f32),
+                "pipe cap disagrees at tier {tier}"
+            );
+        }
     }
 
     #[test]

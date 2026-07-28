@@ -418,9 +418,21 @@ pub fn factory_ledger(
     })?;
     let link_supply =
         db.with(|c| incoming_link_supply(c, &factory_id).map_err(AppError::from))?;
+    let tier = current_tier(&db)?;
     Ok(compose_ledger_with_supply(
-        &factory_id, &machines, &game_data, &claims, &water_groups, &link_supply,
+        &factory_id, &machines, &game_data, &claims, &water_groups, &link_supply, tier,
     ))
+}
+
+/// The playthrough's current tier, clamped into the `u8` every
+/// tier-taking domain function expects. Ledger callers need it because
+/// a claim's contribution is capped by what its output port can carry
+/// at that tier.
+fn current_tier(db: &crate::shared::db::playthrough_db::PlaythroughDb) -> AppResult<u8> {
+    let (tier, _progress) = db.with(|c| {
+        crate::features::playthrough::repo::progress_get(c).map_err(AppError::from)
+    })?;
+    Ok(tier.clamp(0, u8::MAX as i64) as u8)
 }
 
 #[tauri::command]
@@ -441,8 +453,9 @@ pub fn get_factory_detail(
         crate::features::resource_nodes::repo::water_groups_all(c).map_err(AppError::from)
     })?;
     let link_supply = db.with(|c| incoming_link_supply(c, &id).map_err(AppError::from))?;
+    let tier = current_tier(&db)?;
     let ledger = compose_ledger_with_supply(
-        &id, &machines, &game_data, &claims, &water_groups, &link_supply,
+        &id, &machines, &game_data, &claims, &water_groups, &link_supply, tier,
     );
     Ok(FactoryDetail {
         factory,
@@ -511,6 +524,9 @@ pub fn compose_ledger(
         &std::collections::HashMap::new(),
         &[],
         &std::collections::HashMap::new(),
+        // Tier only reaches the extractor port cap, and there are no
+        // claims here to cap — any value produces the same ledger.
+        0,
     )
 }
 
@@ -525,6 +541,12 @@ pub fn compose_ledger(
 /// consumer of a real `FactoryLedger` gets the true total by
 /// construction; `claims`/`water_groups` empty (as `compose_ledger`
 /// passes) is the only way to get the machine-only figure back.
+///
+/// `tier` is the playthrough's current tier, and it's here for exactly
+/// one reason: a claim contributes what its output port can deliver at
+/// that tier, not its theoretical clock rate. Every caller building a
+/// real ledger has to pass the live tier — hardcoding one would let a
+/// factory plan against ore it can't belt out.
 pub fn compose_ledger_with_supply(
     factory_id: &str,
     machines: &[FactoryMachine],
@@ -532,8 +554,10 @@ pub fn compose_ledger_with_supply(
     claims: &std::collections::HashMap<String, ClaimRow>,
     water_groups: &[WaterGroupRow],
     link_supply: &std::collections::HashMap<String, f32>,
+    tier: u8,
 ) -> FactoryLedger {
-    let node_supply = nodes_domain::supply_for_factory(claims, water_groups, factory_id, game_data);
+    let node_supply =
+        nodes_domain::supply_for_factory(claims, water_groups, factory_id, tier, game_data);
     let mut produced: BTreeMap<String, f32> = BTreeMap::new();
     let mut consumed: BTreeMap<String, f32> = BTreeMap::new();
     let mut power_mw = nodes_domain::power_for_factory(claims, water_groups, factory_id, game_data);
@@ -769,6 +793,7 @@ mod tests {
             &std::collections::HashMap::new(),
             &[],
             &link_supply,
+            9,
         );
         let wire = ledger.flows.iter().find(|f| f.item_id == "Desc_Wire_C").unwrap();
         assert!((wire.from_links_per_minute - 120.0).abs() < 0.001);
@@ -817,6 +842,7 @@ mod tests {
             &claims,
             &[],
             &std::collections::HashMap::new(),
+            9,
         )
         .power_mw;
         // A Mk1 miner draws a fixed 5 MW regardless of the node it sits

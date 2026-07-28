@@ -1,14 +1,17 @@
 import { useState } from "react";
 import { Check, Pencil, Plus, X } from "lucide-react";
 
+import { TierBadge } from "@/features/library/components/TierBadge";
 import { Button } from "@/shared/ui/Button";
-import { ClockInput } from "@/shared/ui/ClockInput";
+import { ClockInput, formatClockPct } from "@/shared/ui/ClockInput";
+import { ConfirmDeleteButton } from "@/shared/ui/ConfirmDeleteButton";
 import { FilterSelect } from "@/shared/ui/FilterSelect";
 import { factoryPickerOptions, type FactoryPickerCandidate } from "@/features/map/transform";
 import { floorClockPct } from "@/features/validation/clock";
 import type { Finding } from "@/features/validation/types";
+import { num } from "@/shared/format/rates";
 
-import { claimDefaultExtractor, extractorOptionLabel, nodeDisplayLabel, nodeKindLabel } from "../display";
+import { claimDefaultExtractor, nodeDisplayLabel, nodeKindLabel, previewExtractorIpm } from "../display";
 import { useClearNodeClaim, useSetNodeClaim } from "../hooks/useResources";
 import type { ResourceNodeRow } from "../types";
 
@@ -120,7 +123,7 @@ function ClaimChip({
         </span>
       )}
       <span className="rounded-full border border-border bg-bg px-2 py-0.5 text-fg-muted">
-        {(row.claim?.clockPct ?? 100).toFixed(0)}%
+        {formatClockPct(row.claim?.clockPct ?? 100)}%
       </span>
       {ipmLabel && (
         <span className="font-medium text-fg">{ipmLabel}</span>
@@ -198,14 +201,17 @@ function ClaimButton({
       >
         {editing ? <X className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
       </Button>
-      <Button
-        variant="ghost"
-        onClick={() => void clearClaim.mutate(row.id)}
-        aria-label="Release node"
-        className="px-2 py-1"
-      >
-        <X className="h-3.5 w-3.5" />
-      </Button>
+      {/* Same two-click arm/confirm pattern every other destructive
+          action in the app uses (Tauri's webview swallows
+          window.confirm()) — it also gives the release action its own
+          trash icon + red arm state, so it no longer reads as a second,
+          unlabelled copy of the edit toggle's ✕. */}
+      <ConfirmDeleteButton
+        onConfirm={() => void clearClaim.mutate(row.id)}
+        label="Release node"
+        confirmLabel="Release"
+        disabled={clearClaim.isPending}
+      />
     </div>
   );
 }
@@ -233,28 +239,43 @@ function ClaimEditor({
   // `set_node_claim` validates against. Geysers come back empty (they
   // feed the power slice).
   const minerOptions = row.allowedExtractors;
+  // Live rate for whatever's currently dragged/picked, not yet saved —
+  // without this the row above kept showing the *last saved* clock's
+  // ipm the whole time the slider moved, so landing on an exact target
+  // rate was guess → save → check → reopen.
+  const selectedExtractor = minerOptions.find((m) => m.id === minerId);
+  const previewIpm = selectedExtractor
+    ? previewExtractorIpm(selectedExtractor.baseIpm, row.purity, clockPct)
+    : 0;
 
   return (
     <div className="grid grid-cols-1 gap-2 rounded-md border border-border bg-bg/50 p-3 md:grid-cols-4">
       {row.kind !== "geyser" && (
         <label className="flex flex-col gap-1 text-xs">
           <span className="text-fg-muted">Extractor</span>
-          <select
-            value={minerId}
-            onChange={(e) => setMinerId(e.target.value)}
-            className="h-8 rounded-md border border-border bg-bg px-2 text-sm text-fg outline-none focus:border-primary"
-          >
-            {minerOptions.map((m) => (
-              <option key={m.id} value={m.id}>
-                {extractorOptionLabel(m)}
-              </option>
-            ))}
-          </select>
+          <FilterSelect
+            compact
+            ariaLabel="Extractor"
+            clearable={false}
+            placeholder="Select extractor…"
+            options={minerOptions.map((m) => ({
+              value: m.id,
+              label: m.name,
+              badge: <TierBadge unlockTier={m.unlockTier} />,
+            }))}
+            value={minerId === "" ? null : minerId}
+            onChange={(next) => setMinerId(next ?? "")}
+          />
         </label>
       )}
       <label className="flex flex-col gap-1 text-xs">
         <span className="text-fg-muted">Clock</span>
         <ClockInput value={clockPct} onChange={setClockPct} ariaLabel="Claim clock percent" />
+        {row.kind !== "geyser" && (
+          <span className="text-[11px] font-medium text-fg">
+            {num(previewIpm)} ipm at this clock
+          </span>
+        )}
       </label>
       <label className="flex flex-col gap-1 text-xs">
         <span className="text-fg-muted">Factory</span>
@@ -302,7 +323,6 @@ function ClaimEditor({
 function extractorChipLabel(buildingId: string, row: ResourceNodeRow): string {
   const mk = buildingId.match(/^Build_MinerMk(\d)_C$/);
   if (mk) return `Mk${mk[1]}`;
-  if (buildingId === "Build_FrackingSmasher_C") return "Well Extractor";
   return (
     row.allowedExtractors.find((e) => e.id === buildingId)?.name ?? buildingId
   );

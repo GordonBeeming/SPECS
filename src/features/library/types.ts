@@ -91,6 +91,10 @@ export interface GeneratorFuel {
   supplementalItemId?: string;
   supplementalPerMinute?: number;
   powerMwOverride?: number;
+  /** What the generator emits while burning this fuel — nuclear waste
+   * from a fuel rod. Absent for every fuel that burns clean. */
+  byproductItemId?: string;
+  byproductPerMinute?: number;
 }
 
 export interface Generator {

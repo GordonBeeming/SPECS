@@ -59,6 +59,30 @@ pub fn generator_fuel_flows(
     (fuel_pair, supplemental)
 }
 
+/// Items per minute the generator/fuel combo *emits* — the other half of
+/// [`generator_fuel_flows`], which only covers what goes in. Nuclear is
+/// the one family that emits anything: a Uranium Fuel Rod leaves Uranium
+/// Waste behind, a Plutonium one leaves Plutonium Waste, and burning a
+/// rod is the game's only source of either. `None` for a fuel that burns
+/// clean, and for a bank that's switched off — the same `count`/`clock`
+/// collapse the supplemental side uses, so a disabled bank doesn't
+/// advertise waste it isn't making.
+pub fn generator_byproduct_flow(
+    fuel: &GeneratorFuel,
+    count: i64,
+    clock_pct: f32,
+) -> Option<(String, f32)> {
+    if count <= 0 || clock_pct <= 0.0 {
+        return None;
+    }
+    match (&fuel.byproduct_item_id, fuel.byproduct_per_minute) {
+        (Some(id), Some(rate)) if rate > 0.0 => {
+            Some((id.clone(), rate * (count as f32) * (clock_pct / 100.0)))
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,6 +106,20 @@ mod tests {
             supplemental_item_id: Some("Desc_Water_C".into()),
             supplemental_per_minute: Some(45.0),
             power_mw_override: None,
+            byproduct_item_id: None,
+            byproduct_per_minute: None,
+        }
+    }
+
+    fn uranium_fuel() -> GeneratorFuel {
+        GeneratorFuel {
+            fuel_item_id: "Desc_NuclearFuelRod_C".into(),
+            fuel_per_minute: 0.2,
+            supplemental_item_id: Some("Desc_Water_C".into()),
+            supplemental_per_minute: Some(240.0),
+            power_mw_override: None,
+            byproduct_item_id: Some("Desc_NuclearWaste_C".into()),
+            byproduct_per_minute: Some(10.0),
         }
     }
 
@@ -147,5 +185,19 @@ mod tests {
         let (main, supp) = generator_fuel_flows(&coal_fuel(), 0, 100.0);
         assert_eq!(main.1, 0.0);
         assert!(supp.is_none(), "supplemental should be None when mult is 0");
+    }
+
+    #[test]
+    fn byproduct_flow_scales_with_count_and_clock() {
+        // 4 plants at 50% = 10 × 4 × 0.5 = 20 ipm of Uranium Waste.
+        let flow = generator_byproduct_flow(&uranium_fuel(), 4, 50.0);
+        assert_eq!(flow, Some(("Desc_NuclearWaste_C".to_string(), 20.0)));
+    }
+
+    #[test]
+    fn byproduct_flow_is_none_for_a_clean_fuel_or_a_disabled_bank() {
+        assert!(generator_byproduct_flow(&coal_fuel(), 1, 100.0).is_none());
+        assert!(generator_byproduct_flow(&uranium_fuel(), 0, 100.0).is_none());
+        assert!(generator_byproduct_flow(&uranium_fuel(), 1, 0.0).is_none());
     }
 }

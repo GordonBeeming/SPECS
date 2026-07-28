@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MapPin, Minus, Plus, RotateCcw } from "lucide-react";
+import { Check, LocateFixed, MapPin, Minus, Plus, RotateCcw } from "lucide-react";
 import {
   TransformComponent,
   TransformWrapper,
@@ -13,7 +13,12 @@ import {
   useFactoryList,
   useUnsourcedInputs,
 } from "@/features/factory/hooks/useFactories";
-import { useItems, useRecipes } from "@/features/library/hooks/useLibrary";
+import {
+  useExtractedResources,
+  useItems,
+  useRecipes,
+} from "@/features/library/hooks/useLibrary";
+import { TierBadge } from "@/features/library/components/TierBadge";
 import { traceRawDemand } from "@/features/factory/traceRaw";
 import { useLogisticsLinks } from "@/features/logistics/hooks/useLogistics";
 import { useAllPowerGens } from "@/features/power/hooks/usePower";
@@ -24,6 +29,7 @@ import {
   useSetNodeClaim,
   useSetWaterGroup,
   useWaterExtractorGroups,
+  useWaterPumpIpm,
 } from "@/features/resources/hooks/useResources";
 import { factoryApi } from "@/features/factory/api";
 import { plannerApi } from "@/features/planner/api";
@@ -46,7 +52,7 @@ import {
   Zap,
 } from "lucide-react";
 
-import { MapLinksLayer } from "./MapLinksLayer";
+import { MapLinksLayer, NodeBindingLinesLayer } from "./MapLinksLayer";
 import {
   clampLoadoutMinerId,
   PlacementLoadout,
@@ -64,7 +70,7 @@ import { ClockInput } from "@/shared/ui/ClockInput";
 import mapAsset from "@/assets/map/satisfactory-map.webp";
 
 import { factoryPickerOptions, pctToWorld, worldToPct, type FactoryPickerCandidate } from "../transform";
-import { claimDefaultExtractor, coordChip, extractorOptionLabel, nodeKindLabel } from "@/features/resources/display";
+import { claimDefaultExtractor, coordChip, nodeKindLabel } from "@/features/resources/display";
 import type { ResourceNodeRow, WaterExtractorGroup } from "@/features/resources/types";
 import { FilterSelect } from "@/shared/ui/FilterSelect";
 
@@ -130,6 +136,12 @@ const WATER_CURSOR = `url("data:image/svg+xml;charset=utf-8,${encodeURIComponent
   '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="%2338bdf8" stroke="white" stroke-width="1.5"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></svg>'.replace('%2338bdf8', '#38bdf8'),
 )}") 12 22, crosshair`;
 
+// Every one of these is about "what this playthrough's map looks
+// like right now" — pan/zoom position, which resources/links/water
+// are on screen — not a personal tool preference, so each key gets
+// suffixed with the active playthrough id (see `scopedKey`). Without
+// that, opening a fresh playthrough reopens the previous one's view:
+// scrolled to its factories, filtered to what it was filtered to.
 const STORAGE = {
   showClaimed: "specs:map:showClaimedToo",
   hiddenResources: "specs:map:hiddenResources",
@@ -139,15 +151,31 @@ const STORAGE = {
   transform: "specs:map:transform",
 } as const;
 
-// Where the map starts when there's no saved view (and where the
-// Reset button returns to).
+function scopedKey(base: string, playthroughId: string | null): string {
+  return playthroughId ? `${base}:${playthroughId}` : base;
+}
+
+// Where the Reset button returns to, and the initial value used for a
+// frame or two before the fit-to-container effect further down
+// measures the real container and replaces it.
 const DEFAULT_SCALE = 0.6;
+
+/** Scale that covers a container of the given size with the map image,
+ * rather than fitting inside it — the map is meant to be panned, so
+ * it's fine to run past the container in one axis as long as neither
+ * axis leaves bare canvas showing. Shared by the mount-time
+ * ResizeObserver (below) and the playthrough-switch effect, which both
+ * need it for a playthrough with no saved view of its own. */
+function coverFitScale(width: number, height: number): number {
+  const cover = Math.max(width / MAP_W, height / MAP_H);
+  return Math.min(Math.max(cover, 0.4), 6); // matches TransformWrapper's own min/maxScale
+}
 
 /** Last pan/zoom state, restored on mount so leaving the tab and
  * coming back continues exactly where the user was. */
-function readTransform(): { scale: number; x: number; y: number } | null {
+function readTransform(key: string): { scale: number; x: number; y: number } | null {
   try {
-    const v = localStorage.getItem(STORAGE.transform);
+    const v = localStorage.getItem(key);
     if (!v) return null;
     const p: unknown = JSON.parse(v);
     if (
@@ -197,6 +225,24 @@ function writeStringArray(key: string, value: string[]): void {
 
 export function MapView() {
   const playthrough = useCurrentPlaythrough();
+  // Every STORAGE.* key above is read/written scoped to this id (see
+  // `scopedKey`) — `null` while the query is still loading, which is
+  // fine, since nothing that reads it renders until `playthrough.data`
+  // exists (the early return below). A plain const, not state: it
+  // only has to be current at the moment each callback runs, and
+  // recomputing it every render keeps every inline reader (event
+  // handlers, the persist-on-change effects below) trivially fresh
+  // without a stale-closure risk.
+  const playthroughId = playthrough.data?.id ?? null;
+  // Effects that persist-on-change (as opposed to callbacks that write
+  // inline) can't depend on `playthroughId` directly — if they did,
+  // switching playthroughs would fire them with the *previous*
+  // playthrough's still-in-state value, writing it into the *new*
+  // playthrough's key before the reset effect below gets a chance to
+  // load the new key's own value. This ref lets them read the current
+  // id without depending on it.
+  const playthroughIdRef = useRef(playthroughId);
+  playthroughIdRef.current = playthroughId;
   const factories = useFactoryList();
   const nodes = useResourceNodes();
   const links = useLogisticsLinks();
@@ -204,6 +250,7 @@ export function MapView() {
   const powerGens = useAllPowerGens();
   const unsourcedInputs = useUnsourcedInputs();
   const waterGroups = useWaterExtractorGroups();
+  const waterPumpIpm = useWaterPumpIpm();
   const setClaim = useSetNodeClaim();
   const clearClaim = useClearNodeClaim();
   const setWaterGroup = useSetWaterGroup();
@@ -214,15 +261,21 @@ export function MapView() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Saved pan/zoom — read once on mount; every transform change
   // (throttled) writes it back so returning to the tab restores the
-  // exact view.
-  const [initialTransform] = useState(readTransform);
+  // exact view. `playthroughId` is usually still null on the very
+  // first render (the query hasn't resolved), which is harmless: the
+  // "no playthrough" early return means nothing reads this value
+  // until the playthrough-switch effect below has already corrected
+  // it for the real id.
+  const [initialTransform] = useState(() =>
+    readTransform(scopedKey(STORAGE.transform, playthroughId)),
+  );
   const saveTransformTimer = useRef<number | null>(null);
   const persistTransform = (state: { scale: number; positionX: number; positionY: number }) => {
     if (saveTransformTimer.current) window.clearTimeout(saveTransformTimer.current);
     saveTransformTimer.current = window.setTimeout(() => {
       try {
         localStorage.setItem(
-          STORAGE.transform,
+          scopedKey(STORAGE.transform, playthroughIdRef.current),
           JSON.stringify({ scale: state.scale, x: state.positionX, y: state.positionY }),
         );
       } catch {}
@@ -235,11 +288,40 @@ export function MapView() {
   // imperceptible.
   const [zoomScale, setZoomScale] = useState(initialTransform?.scale ?? DEFAULT_SCALE);
 
-  // Filter state survives reloads via localStorage — the player set
-  // these to suit how they're working, surfacing a fresh default
-  // every launch would be a step back. Stored globally (not per-
-  // playthrough) because filter intent travels with the user, not
-  // their save file.
+  // A fresh map (no saved pan/zoom for this playthrough) opened at the
+  // fixed DEFAULT_SCALE regardless of window size — on a typical
+  // widescreen window the 2048px map rendered at 0.6x (~1229px) didn't
+  // reach the canvas's right edge, leaving several hundred px of bare
+  // canvas visible. Covering the container (rather than fitting inside
+  // it, the way `PlanGraphCanvas`'s `fitView` does) is the right model
+  // here — unlike a plan graph, the map is meant to be panned, so it's
+  // fine for the map to run past the container in one axis as long as
+  // neither axis leaves canvas showing. A ResizeObserver rather than a
+  // plain effect: the container can still be 0×0 on this component's
+  // first render (e.g. the playthrough query hasn't resolved yet, which
+  // renders the empty-state Card below instead of this one), the same
+  // measurement problem `useNodesInitialized` exists for over there.
+  useEffect(() => {
+    if (initialTransform) return; // a saved view always wins
+    const el = containerRef.current;
+    if (!el) return;
+    let applied = false;
+    const observer = new ResizeObserver(([entry]) => {
+      if (applied) return;
+      const { width, height } = entry.contentRect;
+      if (width <= 0 || height <= 0) return;
+      applied = true;
+      wrapRef.current?.setTransform(0, 0, coverFitScale(width, height), 0);
+      observer.disconnect();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [initialTransform]);
+
+  // Filter state survives reloads via localStorage, scoped per
+  // playthrough (see the STORAGE comment above) — this is what's on
+  // screen for *this* factory network, not a personal tool
+  // preference, so a fresh playthrough must not inherit it.
   //
   // Claimed nodes default to visible: hiding them by default made a
   // claim disappear from the map — and therefore unreachable to view,
@@ -248,31 +330,40 @@ export function MapView() {
   // toggle survives as an opt-out for players who want to declutter
   // while hunting fresh nodes.
   const [showClaimedToo, setShowClaimedToo] = useState(() =>
-    readBool(STORAGE.showClaimed, true),
+    readBool(scopedKey(STORAGE.showClaimed, playthroughId), true),
   );
   const [hiddenResources, setHiddenResourcesState] = useState<Set<string>>(() =>
-    new Set(readStringArray(STORAGE.hiddenResources)),
+    new Set(readStringArray(scopedKey(STORAGE.hiddenResources, playthroughId))),
   );
   const [hiddenPurities, setHiddenPuritiesState] = useState<Set<string>>(() =>
-    new Set(readStringArray(STORAGE.hiddenPurities)),
+    new Set(readStringArray(scopedKey(STORAGE.hiddenPurities, playthroughId))),
   );
   const setHiddenResources: typeof setHiddenResourcesState = (action) => {
     setHiddenResourcesState((prev) => {
       const next = typeof action === "function" ? action(prev) : action;
-      writeStringArray(STORAGE.hiddenResources, Array.from(next));
+      writeStringArray(scopedKey(STORAGE.hiddenResources, playthroughId), Array.from(next));
       return next;
     });
   };
   const setHiddenPurities: typeof setHiddenPuritiesState = (action) => {
     setHiddenPuritiesState((prev) => {
       const next = typeof action === "function" ? action(prev) : action;
-      writeStringArray(STORAGE.hiddenPurities, Array.from(next));
+      writeStringArray(scopedKey(STORAGE.hiddenPurities, playthroughId), Array.from(next));
       return next;
     });
   };
   useEffect(() => {
+    // Nothing interactive renders before a playthrough is open (see
+    // the early return below), so the only way this fires with a null
+    // id is the initial mount's default value, before the switch
+    // effect has had a chance to load the real one — skip it rather
+    // than stamping the default onto the unscoped legacy key.
+    if (playthroughIdRef.current === null) return;
     try {
-      localStorage.setItem(STORAGE.showClaimed, showClaimedToo ? "1" : "0");
+      localStorage.setItem(
+        scopedKey(STORAGE.showClaimed, playthroughIdRef.current),
+        showClaimedToo ? "1" : "0",
+      );
     } catch {}
   }, [showClaimedToo]);
 
@@ -280,11 +371,13 @@ export function MapView() {
   const [selectedFactoryId, setSelectedFactoryId] = useState<string | null>(null);
   const [selectedWaterGroupId, setSelectedWaterGroupId] = useState<string | null>(null);
   // "What I'm currently placing": miner mark + clock for claims, count
-  // + clock defaults for water groups. Survives reloads.
-  const [loadout, setLoadoutState] = useState<MapLoadout>(readLoadout);
+  // + clock defaults for water groups. Scoped per playthrough — the
+  // bug this fixes (#64/#57) was a higher-tier run's mark bleeding
+  // into a fresh Tier 0 one through this exact key.
+  const [loadout, setLoadoutState] = useState<MapLoadout>(() => readLoadout(playthroughId));
   const setLoadout = (next: MapLoadout) => {
     setLoadoutState(next);
-    writeLoadout(next);
+    writeLoadout(next, playthroughId);
   };
   // Tier-eligible miner marks for the placement loadout, sourced from
   // any real miner-ore row's (already tier-filtered server-side)
@@ -324,23 +417,70 @@ export function MapView() {
     return () => window.removeEventListener("keydown", onKey);
   }, [placingWater, placingFactory]);
   const [showAllLinks, setShowAllLinks] = useState(() =>
-    readBool(STORAGE.showAllLinks, true),
+    readBool(scopedKey(STORAGE.showAllLinks, playthroughId), true),
   );
   // Bound water groups hide unless their factory is selected — same
   // rule as claimed nodes. This toggle force-shows them all.
   const [showWaterExtractors, setShowWaterExtractors] = useState(() =>
-    readBool(STORAGE.showWater, false),
+    readBool(scopedKey(STORAGE.showWater, playthroughId), false),
   );
   useEffect(() => {
+    if (playthroughIdRef.current === null) return;
     try {
-      localStorage.setItem(STORAGE.showWater, showWaterExtractors ? "1" : "0");
+      localStorage.setItem(
+        scopedKey(STORAGE.showWater, playthroughIdRef.current),
+        showWaterExtractors ? "1" : "0",
+      );
     } catch {}
   }, [showWaterExtractors]);
   useEffect(() => {
+    if (playthroughIdRef.current === null) return;
     try {
-      localStorage.setItem(STORAGE.showAllLinks, showAllLinks ? "1" : "0");
+      localStorage.setItem(
+        scopedKey(STORAGE.showAllLinks, playthroughIdRef.current),
+        showAllLinks ? "1" : "0",
+      );
     } catch {}
   }, [showAllLinks]);
+  // Re-reads every playthrough-scoped piece of state above (plus the
+  // live pan/zoom, applied imperatively since it isn't React state)
+  // whenever the active playthrough actually changes — including the
+  // very first time `playthroughId` resolves from `null`. The
+  // `useState(fn)` initializers above only ever run once, at mount,
+  // so without this a playthrough switch (no remount — see
+  // AppShell's single `<MapView />`) would leave every filter and the
+  // camera showing the *previous* playthrough's view.
+  const prevPlaythroughIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (playthroughId === prevPlaythroughIdRef.current) return;
+    prevPlaythroughIdRef.current = playthroughId;
+    setShowClaimedToo(readBool(scopedKey(STORAGE.showClaimed, playthroughId), true));
+    setHiddenResourcesState(new Set(readStringArray(scopedKey(STORAGE.hiddenResources, playthroughId))));
+    setHiddenPuritiesState(new Set(readStringArray(scopedKey(STORAGE.hiddenPurities, playthroughId))));
+    setShowAllLinks(readBool(scopedKey(STORAGE.showAllLinks, playthroughId), true));
+    setShowWaterExtractors(readBool(scopedKey(STORAGE.showWater, playthroughId), false));
+    setLoadoutState(readLoadout(playthroughId));
+    const t = readTransform(scopedKey(STORAGE.transform, playthroughId));
+    if (t) {
+      setZoomScale(t.scale);
+      wrapRef.current?.setTransform(t.x, t.y, t.scale, 0);
+    } else {
+      // No saved view for the playthrough being switched to — the
+      // mount-time ResizeObserver already disconnected by now, so
+      // without this the map fell back to the fixed DEFAULT_SCALE
+      // regardless of window size, reopening with the same bare-canvas
+      // margins the mount-time cover fit exists to remove. The
+      // container is already measurable here (the map has already
+      // rendered once), so this can read it synchronously instead of
+      // needing another observer.
+      const rect = containerRef.current?.getBoundingClientRect();
+      const scale =
+        rect && rect.width > 0 && rect.height > 0 ? coverFitScale(rect.width, rect.height) : DEFAULT_SCALE;
+      setZoomScale(scale);
+      wrapRef.current?.setTransform(0, 0, scale, 0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playthroughId]);
   // Right-click quick-create: where the popover renders (container-
   // relative screen px) and where the factory lands (map px).
   const [quickCreate, setQuickCreate] = useState<{
@@ -495,6 +635,35 @@ export function MapView() {
     return Array.from(m.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [nodes.data]);
 
+  // Drives "Jump to my claims" (#50): four claims among hundreds of
+  // nodes means panning by hand to find your own network otherwise.
+  const claimedNodes = useMemo(
+    () => (nodes.data ?? []).filter((n) => n.claim),
+    [nodes.data],
+  );
+  const jumpToClaims = () => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect || claimedNodes.length === 0) return;
+    // Frame every claim's bounding box, not just the first one — a
+    // network usually spans more than one node by the time this
+    // button matters.
+    const xs = claimedNodes.map((n) => n.x);
+    const ys = claimedNodes.map((n) => n.y);
+    const center = worldToPct((Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2);
+    // Same centering the library's own recenter would do — solved
+    // from `clientToMap`'s inverse: pick positionX/Y so the target
+    // map-pixel lands in the middle of the visible container at the
+    // current zoom, rather than resetting zoom (which would also
+    // fight a player who's mid-zoom on their own network already).
+    const scale = wrapRef.current?.state.scale ?? DEFAULT_SCALE;
+    wrapRef.current?.setTransform(
+      rect.width / 2 - center.xPct * MAP_W * scale,
+      rect.height / 2 - center.yPct * MAP_H * scale,
+      scale,
+      300,
+    );
+  };
+
   const visibleNodes = useMemo(() => {
     const data = nodes.data ?? [];
     return data.filter((n) => {
@@ -545,8 +714,7 @@ export function MapView() {
             </h1>
             <p className="text-xs text-fg-muted">
               Scroll to zoom, drag to pan. Click a node to claim it; drag a
-              factory pin to place it. The planner uses these coords for
-              "nearest claimed node" hints.
+              factory pin to place it.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -558,13 +726,16 @@ export function MapView() {
               />
               Show claimed nodes too
             </label>
-            <label className="flex items-center gap-2 text-xs text-fg-muted">
+            <label
+              className="flex items-center gap-2 text-xs text-fg-muted"
+              title="Item flows between factories via logistics links — not the lines from claimed nodes to the factory they feed, which are always shown"
+            >
               <input
                 type="checkbox"
                 checked={showAllLinks}
                 onChange={(e) => setShowAllLinks(e.target.checked)}
               />
-              Show factory links
+              Show factory→factory links
             </label>
             <label className="flex items-center gap-2 text-xs text-fg-muted">
               <input
@@ -579,19 +750,56 @@ export function MapView() {
 
         <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">
           <span className="mr-1 text-fg-muted">Resources:</span>
+          {/* Isolating one resource used to cost a click per *other*
+              resource (#59) — with 15+ resource types that's over a
+              dozen clicks for what should be a two-click "just show me
+              iron" gesture. */}
+          <button
+            type="button"
+            onClick={() => setHiddenResources(new Set())}
+            className="rounded-full border border-border px-2 py-0.5 text-fg-muted hover:border-primary hover:text-fg"
+          >
+            Show all
+          </button>
+          <button
+            type="button"
+            onClick={() => setHiddenResources(new Set(resourceTypes.map((r) => r.id)))}
+            className="rounded-full border border-border px-2 py-0.5 text-fg-muted hover:border-primary hover:text-fg"
+          >
+            Hide all
+          </button>
           {resourceTypes.map((r) => {
             const hidden = hiddenResources.has(r.id);
             return (
               <button
                 key={r.id}
                 type="button"
-                onClick={() => setHiddenResources((s) => toggleSet(s, r.id))}
+                onClick={(e) => {
+                  // Plain click toggles this one resource. Alt/Option-
+                  // click "solos" it — hide every other resource in one
+                  // gesture, the fast path the issue asked for. A second
+                  // Alt-click on an already-soloed resource undoes it
+                  // (shows every resource again) rather than hiding the
+                  // last one and leaving the map blank.
+                  if (e.altKey) {
+                    const isSoloed =
+                      !hidden && resourceTypes.every((o) => o.id === r.id || hiddenResources.has(o.id));
+                    setHiddenResources(
+                      isSoloed
+                        ? new Set()
+                        : new Set(resourceTypes.filter((o) => o.id !== r.id).map((o) => o.id)),
+                    );
+                    return;
+                  }
+                  setHiddenResources((s) => toggleSet(s, r.id));
+                }}
+                aria-pressed={!hidden}
                 className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 ${
                   hidden
                     ? "border-border bg-bg text-fg-muted line-through"
                     : "border-primary/50 bg-primary/10 text-fg"
                 }`}
-                title={hidden ? `Show ${r.name}` : `Hide ${r.name}`}
+                title={`${hidden ? `Show ${r.name}` : `Hide ${r.name}`} · Alt/Option-click to show only ${r.name}`}
               >
                 <Icon itemId={markerIconId(r.id)} alt="" className="h-3.5 w-3.5" />
                 {r.name}
@@ -608,6 +816,7 @@ export function MapView() {
                 key={p}
                 type="button"
                 onClick={() => setHiddenPurities((s) => toggleSet(s, p))}
+                aria-pressed={!hidden}
                 className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 ${
                   hidden
                     ? "border-border bg-bg text-fg-muted line-through"
@@ -670,6 +879,20 @@ export function MapView() {
             </button>
             <button
               type="button"
+              aria-label="Jump to my claims"
+              disabled={claimedNodes.length === 0}
+              onClick={jumpToClaims}
+              title={
+                claimedNodes.length === 0
+                  ? "No claimed nodes yet"
+                  : `Jump to your ${claimedNodes.length} claimed node${claimedNodes.length === 1 ? "" : "s"}`
+              }
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-bg-raised/90 text-fg hover:bg-bg-raised disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-bg-raised/90"
+            >
+              <LocateFixed className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
               aria-label={placingFactory ? "Cancel factory placement" : "Place a factory"}
               aria-pressed={placingFactory}
               title={
@@ -712,15 +935,22 @@ export function MapView() {
               miss — it's a small border/background tint on a button
               that's already one of several in the same corner. This
               banner is the state's unmissable record: present exactly
-              while a click will place water, gone the instant it
+              while a click will place something, gone the instant it
               won't (Esc, a second click on the tool, or a completed
-              placement), so losing the mode is never silent. */}
-          {placingWater && (
+              placement), so losing the mode is never silent. Factory
+              placement got the same cursor change water placement
+              always had (#59) but no banner of its own — folded in
+              here rather than duplicating the mechanism. */}
+          {(placingWater || placingFactory) && (
             <div
               role="status"
-              className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 whitespace-nowrap rounded-full border border-accent bg-accent px-3 py-1.5 text-xs font-medium text-white shadow-lg"
+              className={`pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium text-white shadow-lg ${
+                placingWater ? "border-accent bg-accent" : "border-primary bg-primary"
+              }`}
             >
-              Placing water extractors — click the map · Esc to cancel
+              {placingWater
+                ? "Placing water extractors — click the map · Esc to cancel"
+                : "Placing a factory — click the map · Esc to cancel"}
             </div>
           )}
 
@@ -834,6 +1064,21 @@ export function MapView() {
                     />
                   )}
 
+                  {/* Every claimed node/water group's own line to the
+                      factory it feeds — the map's other spatial fact,
+                      always on (unlike the flows above) so it's readable
+                      without clicking into each factory first. The
+                      selected factory's own bindings render emphasized,
+                      with detach buttons, via InputLinesLayer below. */}
+                  <NodeBindingLinesLayer
+                    nodes={nodes.data ?? []}
+                    waterGroups={waterGroups.data ?? []}
+                    factories={factories.data ?? []}
+                    selectedFactoryId={selectedFactoryId}
+                    mapW={MAP_W}
+                    mapH={MAP_H}
+                  />
+
                   {visibleNodes.map((node) => {
                     const { xPct, yPct } = worldToPct(node.x, node.y);
                     const selected = selectedNodeId === node.id;
@@ -861,13 +1106,42 @@ export function MapView() {
                           // size marker no longer covers its
                           // neighbour.
                           transform: `translate(-50%, -50%) scale(${DEFAULT_SCALE / zoomScale})`,
+                          // A factory pin's rendered footprint (icon +
+                          // name label) is routinely several times a
+                          // node's 24×24 box, and factories are meant
+                          // to sit right on the cluster they claim
+                          // from — so without an explicit stacking
+                          // order, a pin fully swallows every click on
+                          // the nodes underneath it. Nodes need to win
+                          // that contest: claiming/inspecting a node is
+                          // the finer-grained, more frequent action,
+                          // and the factory pin stays reachable from
+                          // whatever part of its box isn't covered by a
+                          // node. Factory/water pins are left at the
+                          // default stacking level, so this only
+                          // changes node-vs-pin priority, not their
+                          // order relative to each other.
+                          //
+                          // This has to live here, on the wrapper — the
+                          // `transform` above already starts a new
+                          // stacking context for this marker, so a
+                          // z-index on the *button* inside it only ever
+                          // competes against its own (nonexistent)
+                          // siblings and never reaches the pin's
+                          // separate stacking context to outrank it.
+                          // `elementFromPoint` at a covered node's
+                          // center kept resolving to the pin with the
+                          // z-index down on the button; moving it here,
+                          // onto the element actually siblinged against
+                          // the pin's own wrapper, is what makes it win.
+                          zIndex: 2,
                         }}
                       >
                         <button
                           type="button"
                           aria-label={tooltip}
                           title={tooltip}
-                          className="inline-flex items-center justify-center rounded-full bg-bg-raised transition-transform hover:scale-125"
+                          className="relative inline-flex items-center justify-center rounded-full bg-bg-raised transition-transform hover:scale-125"
                           onClick={(e) => {
                             // mousedown→up already toggles the popover
                             // — stop the synthetic click bubbling so the
@@ -885,22 +1159,6 @@ export function MapView() {
                               ? "2px solid var(--color-primary)"
                               : undefined,
                             outlineOffset: 3,
-                            // A factory pin's rendered footprint (icon +
-                            // name label) is routinely several times a
-                            // node's 24×24 box, and factories are meant
-                            // to sit right on the cluster they claim
-                            // from — so without an explicit stacking
-                            // order, a pin fully swallows every click on
-                            // the nodes underneath it. Nodes need to win
-                            // that contest: claiming/inspecting a node is
-                            // the finer-grained, more frequent action,
-                            // and the factory pin stays reachable from
-                            // whatever part of its box isn't covered by a
-                            // node. Factory/water pins are left at the
-                            // default stacking level, so this only
-                            // changes node-vs-pin priority, not their
-                            // order relative to each other.
-                            zIndex: 2,
                           }}
                           onMouseDown={(e) => {
                             e.preventDefault();
@@ -1006,6 +1264,21 @@ export function MapView() {
                             alt=""
                             className="h-4 w-4"
                           />
+                          {node.claim && (
+                            // Claim state used to be opacity 1 vs 0.78 —
+                            // the only difference between claimed and
+                            // unclaimed markers, and too subtle on a 14px
+                            // dot to read at a glance (#59). A shape-based
+                            // cue (badge present or absent) reads reliably
+                            // regardless of screen brightness/contrast;
+                            // the opacity dip stays as a secondary hint.
+                            <span
+                              aria-hidden="true"
+                              className="absolute -bottom-0.5 -right-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full bg-success ring-1 ring-bg-raised"
+                            >
+                              <Check className="h-2 w-2 text-white" strokeWidth={3} />
+                            </span>
+                          )}
                         </button>
                       </div>
                     );
@@ -1089,6 +1362,7 @@ export function MapView() {
                             setLinkHoverFactoryId(null);
                         }}
                         currentScale={() => wrapRef.current?.state.scale ?? 1}
+                        zoomScale={zoomScale}
                         onPanBy={(dxScreen, dyScreen) => {
                           const state = wrapRef.current?.state;
                           if (!state) return;
@@ -1205,6 +1479,7 @@ export function MapView() {
                           });
                         }}
                         currentScale={() => wrapRef.current?.state.scale ?? 1}
+                        pinScale={DEFAULT_SCALE / zoomScale}
                       />
                     );
                   })}
@@ -1306,7 +1581,12 @@ export function MapView() {
                 key={selectedWaterGroup.id}
                 group={selectedWaterGroup}
                 factories={factories.data ?? []}
-                pending={setWaterGroup.isPending || deleteWaterGroup.isPending}
+                pumpIpm={waterPumpIpm.data ?? 0}
+                pending={
+                  setWaterGroup.isPending ||
+                  deleteWaterGroup.isPending ||
+                  waterPumpIpm.data === undefined
+                }
                 onSave={(patch) => {
                   setWaterGroup.mutate(
                     {
@@ -1458,6 +1738,11 @@ interface FactoryPinProps {
   /** Reads the current zoom scale from the wrapper so pixel deltas
       from drag events translate into world deltas correctly. */
   currentScale: () => number;
+  /** Live zoom scale, rounded — unlike `currentScale()` (an imperative
+      getter for drag math) this is React state, so the pin's own
+      counter-scale (see the render below) actually re-renders as the
+      map zooms, the same mechanism #96 gave node markers. */
+  zoomScale: number;
   /** Pans the map by a raw screen-pixel delta. The pin sits on the
    * wrapper's `panning.excluded` list (a pin has to win clicks over
    * the pan gesture), so a plain drag starting here would otherwise
@@ -1622,6 +1907,7 @@ function FactoryPin({
   onLinkHoverEnter,
   onLinkHoverLeave,
   currentScale,
+  zoomScale,
   onPanBy,
 }: FactoryPinProps) {
   const { xPct, yPct } = worldToPct(factory.worldX, factory.worldY);
@@ -1640,14 +1926,27 @@ function FactoryPin({
   const py = hoverPos?.y ?? baseY;
 
   return (
+    <div
+      className="absolute"
+      style={{
+        left: `${px}px`,
+        top: `${py}px`,
+        // Same counter-scale node markers got from #96: cancels the
+        // map's own zoom transform so a factory pin's on-screen size
+        // holds constant instead of growing with it. Placement puts
+        // factories right on the resource clusters feeding them, so
+        // without this a dense playthrough's pins outgrow the nodes
+        // underneath them at every zoom level except the default one.
+        transform: `translate(-50%, -50%) scale(${DEFAULT_SCALE / zoomScale})`,
+      }}
+    >
     <button
       type="button"
-      className={`specs-map-pin absolute -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-md border-2 px-2 py-1 text-[11px] font-medium text-fg shadow-sm active:cursor-grabbing ${
+      className={`specs-map-pin relative cursor-grab rounded-md border-2 px-2 py-1 text-[11px] font-medium text-fg shadow-sm active:cursor-grabbing ${
         linkHover
           ? "border-success bg-success/30 scale-110"
           : "border-primary bg-bg-raised/95 hover:bg-bg-raised"
       }`}
-      style={{ left: `${px}px`, top: `${py}px` }}
       title={`${factory.name} — click for details, double-click to open the plan, drag to pan the map, Alt/Option-drag to move`}
       onDoubleClick={(e) => {
         e.stopPropagation();
@@ -1758,6 +2057,7 @@ function FactoryPin({
         </span>
       )}
     </button>
+    </div>
   );
 }
 
@@ -1860,6 +2160,12 @@ function FactoryPopover({
 }: FactoryPopoverProps) {
   const detail = useFactoryDetail(factoryId);
   const recipes = useRecipes();
+  const items = useItems();
+  const extracted = useExtractedResources();
+  const itemNames = useMemo(
+    () => new Map(items.data?.map((i) => [i.id, i.name]) ?? []),
+    [items.data],
+  );
   // Small by default; the expand toggle is remembered so planning
   // sessions that live in this card keep it big.
   const [large, setLarge] = useState(
@@ -1885,7 +2191,7 @@ function FactoryPopover({
   // the telemetry. Intermediates (Iron Rod, Screw, …) never bind
   // from nodes so the rollup is the only useful demand view.
   const requires = useMemo(() => {
-    if (!ledger || !recipes.data) return [] as Array<{
+    if (!ledger || !recipes.data || !extracted.data) return [] as Array<{
       itemId: string;
       required: number;
       bound: number;
@@ -1906,7 +2212,7 @@ function FactoryPopover({
       .filter((d) => d.ratePerMin > 0.001);
     const raw = grossDeficits.length === 0
       ? {}
-      : traceRawDemand(grossDeficits, recipes.data);
+      : traceRawDemand(grossDeficits, recipes.data, new Set(extracted.data));
     // Map raw item id → bound supply from the factory's flow rows.
     const boundFor = (itemId: string): number => {
       const flow = ledger.flows.find((f) => f.itemId === itemId);
@@ -1923,7 +2229,7 @@ function FactoryPopover({
         };
       })
       .sort((a, b) => b.required - a.required);
-  }, [ledger, recipes.data]);
+  }, [ledger, recipes.data, extracted.data]);
   // Bound supply for items the factory doesn't actually need (so a
   // wired-up node never silently disappears from the UI).
   const unusedBindings = useMemo(() => {
@@ -2034,7 +2340,7 @@ function FactoryPopover({
                             className="h-3.5 w-3.5"
                           />
                           <span className="truncate">
-                            {r.itemId.replace(/^Desc_/, "").replace(/_C$/, "")}
+                            {itemNames.get(r.itemId) ?? r.itemId}
                           </span>
                         </span>
                         <span className="flex items-center gap-1 tabular-nums">
@@ -2228,17 +2534,21 @@ function NodePopover({ node, loadout, factories, onClaim, onRelease, onClose, po
         <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
           <label className="block">
             <span className="text-fg-muted">Extractor</span>
-            <select
-              value={minerId}
-              onChange={(e) => setMinerId(e.target.value)}
-              className="mt-1 h-7 w-full rounded-md border border-border bg-bg px-1.5 text-[12px] text-fg outline-none focus:border-primary"
-            >
-              {node.allowedExtractors.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {extractorOptionLabel(e)}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1">
+              <FilterSelect
+                compact
+                ariaLabel="Extractor"
+                clearable={false}
+                placeholder="Select extractor…"
+                options={node.allowedExtractors.map((e) => ({
+                  value: e.id,
+                  label: e.name,
+                  badge: <TierBadge unlockTier={e.unlockTier} />,
+                }))}
+                value={minerId === "" ? null : minerId}
+                onChange={(next) => setMinerId(next ?? "")}
+              />
+            </div>
           </label>
           <label className="block">
             <span className="text-fg-muted">Clock</span>

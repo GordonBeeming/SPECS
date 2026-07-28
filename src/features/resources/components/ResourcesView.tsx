@@ -1,10 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, MapPin } from "lucide-react";
 
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { useFactoryList } from "@/features/factory/hooks/useFactories";
 import type { FactoryPickerCandidate } from "@/features/map/transform";
-import { clampLoadoutMinerId, readLoadout } from "@/features/map/components/PlacementLoadout";
+import {
+  clampLoadoutMinerId,
+  readLoadout,
+  type MapLoadout,
+} from "@/features/map/components/PlacementLoadout";
 import { useValidation } from "@/features/validation/hooks/useValidation";
 import type { Finding } from "@/features/validation/types";
 import { Card } from "@/shared/ui/Card";
@@ -48,6 +52,33 @@ const RESOURCE_ORDER: string[] = [
 ];
 
 const PURITY_ORDER: Purity[] = ["Pure", "Normal", "Impure"];
+
+const OPEN_GROUPS_STORAGE = "specs:resources:openGroups";
+
+// Persisted the same way ResourceBudgetPanel remembers its own
+// collapse state — localStorage can throw in hardened webviews /
+// privacy modes, so a read/write failure degrades to "nothing open"
+// instead of crashing the page.
+function loadOpenGroups(): Set<string> {
+  try {
+    const v = localStorage.getItem(OPEN_GROUPS_STORAGE);
+    if (!v) return new Set();
+    const parsed: unknown = JSON.parse(v);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((id): id is string => typeof id === "string"));
+  } catch (err) {
+    console.warn("resources: localStorage unavailable", err);
+    return new Set();
+  }
+}
+
+function persistOpenGroups(open: Set<string>) {
+  try {
+    localStorage.setItem(OPEN_GROUPS_STORAGE, JSON.stringify(Array.from(open)));
+  } catch (err) {
+    console.warn("resources: couldn't persist open groups", err);
+  }
+}
 
 function orderResource(a: string, b: string): number {
   const ai = RESOURCE_ORDER.indexOf(a);
@@ -96,6 +127,7 @@ function groupNodes(rows: ResourceNodeRow[]): ResourceGroup[] {
 
 export function ResourcesView() {
   const playthrough = useCurrentPlaythrough();
+  const playthroughId = playthrough.data?.id ?? null;
   const nodes = useResourceNodes();
   const factories = useFactoryList();
   // Same sweep the Validate panel runs, reused here so the port-capacity
@@ -107,7 +139,12 @@ export function ResourcesView() {
     () => portWarningsByNode(validation.data?.findings ?? []),
     [validation.data],
   );
-  const [open, setOpen] = useState<Set<string>>(new Set(["Desc_OreIron_C"]));
+  // Nothing pre-opened: Iron Ore alone can carry well over a hundred
+  // nodes, and forcing it open on every mount meant reaching any other
+  // resource started with scrolling past a wall of Iron Ore rows. Each
+  // group instead remembers whether the user opened it, across remounts
+  // of this view.
+  const [open, setOpen] = useState<Set<string>>(loadOpenGroups);
 
   const groups = useMemo(
     () => (nodes.data ? groupNodes(nodes.data) : []),
@@ -115,13 +152,25 @@ export function ResourcesView() {
   );
 
   // Same "what the map is placing right now" preference the map's
-  // quick-claim (drag-to-bind) already honours — read once so the
-  // list's own quick-claim `+` defaults to it too, instead of always
-  // falling back to a node's first allowed extractor (Mk1). Clamped
-  // against this tier's unlocked marks the same way the map does, so
-  // a stale localStorage preference from a higher-tier playthrough
-  // can't produce an illegal claim here either.
-  const [loadout] = useState(readLoadout);
+  // quick-claim (drag-to-bind) already honours, scoped to this
+  // playthrough the same way MapView scopes it (#64/#57: a mark
+  // chosen in a later-tier run has no business bleeding into a fresh
+  // playthrough through this key). Clamped against this tier's
+  // unlocked marks below, so a stale preference from a higher-tier
+  // playthrough can't produce an illegal claim here either.
+  const [loadout, setLoadout] = useState<MapLoadout>(() => readLoadout(playthroughId));
+  // `ResourcesView` doesn't remount on a playthrough switch (one
+  // instance lives under AppShell, same as MapView), so the `useState`
+  // initializer above only ever runs once, against whichever id was
+  // active — or still null — at first mount. Re-read the scoped key
+  // whenever the active playthrough actually changes, mirroring
+  // MapView's own playthrough-switch effect for this same loadout.
+  const prevPlaythroughIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (playthroughId === prevPlaythroughIdRef.current) return;
+    prevPlaythroughIdRef.current = playthroughId;
+    setLoadout(readLoadout(playthroughId));
+  }, [playthroughId]);
   const minerMarkOptions = useMemo(() => {
     const sample = (nodes.data ?? []).find((n) =>
       n.allowedExtractors.some((e) => e.id.startsWith("Build_MinerMk")),
@@ -152,6 +201,7 @@ export function ResourcesView() {
       const next = new Set(s);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      persistOpenGroups(next);
       return next;
     });
 

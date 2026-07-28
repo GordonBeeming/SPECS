@@ -26,6 +26,7 @@ function renderPopover(overrides: Partial<Parameters<typeof WaterExtractorPopove
     <WaterExtractorPopover
       group={group}
       factories={[]}
+      pumpIpm={120}
       pending={false}
       onSave={vi.fn()}
       onToggleLock={vi.fn()}

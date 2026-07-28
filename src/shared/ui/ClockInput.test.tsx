@@ -1,7 +1,26 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 
-import { ClockInput } from "./ClockInput";
+import { ClockInput, formatClockPct } from "./ClockInput";
+
+describe("formatClockPct", () => {
+  it("doesn't round a fractional percent the way a badge's .toFixed(0) did", () => {
+    // Regresses #51: a badge showing `.toFixed(0)` displayed 37.5% as
+    // "38%", and re-entering 38 committed a different clock than the
+    // one shown.
+    expect(formatClockPct(37.5)).toBe("37.5");
+  });
+
+  it("drops trailing zeros", () => {
+    expect(formatClockPct(100)).toBe("100");
+    expect(formatClockPct(150.5)).toBe("150.5");
+  });
+
+  it("caps at two decimals — the on-disk precision", () => {
+    expect(formatClockPct(162.99995)).toBe("163");
+    expect(formatClockPct(150.567)).toBe("150.57");
+  });
+});
 
 describe("<ClockInput />", () => {
   it("accepts a precise typed value like 101", () => {

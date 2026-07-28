@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   Controls,
@@ -8,6 +8,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
+  useNodesInitialized,
   useNodesState,
   useReactFlow,
 } from "@xyflow/react";
@@ -21,6 +22,7 @@ const dagre: typeof import("dagre") =
   (dagreNs as unknown as typeof import("dagre"));
 
 import { useQueryClient } from "@tanstack/react-query";
+import { rate } from "@/shared/format/rates";
 
 import { plannerApi } from "@/features/planner/api";
 import { useThemeMode } from "@/shared/theme/useThemeMode";
@@ -55,6 +57,7 @@ export interface PlanGraphCanvasProps {
   onStartExport: (itemId: string, ipm: number) => void;
   onSetExport: (itemId: string, exportIpm: number | null) => void;
   onAddLocal: (itemId: string) => void;
+  onImportFromProducer: (itemId: string, sourceFactoryId: string) => void;
 }
 
 /** How a node relates to the current selection: the clicked node, a
@@ -106,15 +109,29 @@ function renderPlanCard(data: PlanFlowData) {
           io: { inputs: r.inputs, outputs: r.outputs },
         };
       });
+      // The same "tier-reachable but not scanned" check the picker runs
+      // per option, asked instead about the recipe this node is
+      // actually built with — the badge is about what's running, not
+      // what could be swapped to.
+      const activeUncollected =
+        planNode.isAlt &&
+        canvas.unlockedAlts !== undefined &&
+        !canvas.unlockedAlts.has(planNode.recipeId);
+      const existingProducer = canvas.graph.existingProducers.find(
+        (p) => p.nodeKey === planNode.nodeKey,
+      );
       return (
         <RecipeStepNodeCard
           node={planNode}
           recipeOptions={options}
           exportIpm={canvas.exportByItem.get(planNode.itemId) ?? null}
+          uncollected={activeUncollected}
+          existingProducer={existingProducer}
           onSwapRecipe={canvas.onSwapRecipe}
           onOpenSources={canvas.onOpenSources}
           onStartExport={canvas.onStartExport}
           onSetExport={canvas.onSetExport}
+          onImportFromProducer={canvas.onImportFromProducer}
         />
       );
     }
@@ -262,7 +279,7 @@ function CanvasInner(props: PlanGraphCanvasProps) {
           id: e.id,
           source: e.fromNode,
           target: e.toNode,
-          label: `${e.itemName} · ${e.ipm % 1 === 0 ? e.ipm.toFixed(0) : e.ipm.toFixed(1)}/min${
+          label: `${e.itemName} · ${rate(e.ipm)}${
             e.isReuse ? " (reuse)" : ""
           }`,
           animated: selectedKey ? connected : animate,
@@ -296,11 +313,28 @@ function CanvasInner(props: PlanGraphCanvasProps) {
   }, [initialEdges, setEdges]);
 
   // The view NEVER moves on its own — no fit/zoom/pan on recompute or
-  // click (it was jarring mid-edit). `fitView` runs once on mount via
-  // the prop; after that the user owns the camera. Auto-arrange below
-  // is the explicit opt-in for re-running the layout.
+  // click (it was jarring mid-edit); after the initial fit the user owns
+  // the camera, and Auto-arrange below is the explicit opt-in for
+  // re-running the layout and refitting.
+  //
+  // The initial fit deliberately doesn't use the `fitView` boolean prop.
+  // That fires on the very first render, before xyflow's ResizeObserver
+  // has measured any card's real DOM size, so it computes a bounding box
+  // against unmeasured (zero-height) nodes — on one node that reads as
+  // "off-canvas", on forty it reads as a wildly wrong scale that leaves
+  // the canvas blank. Same race, worse the more there is left to
+  // measure. `useNodesInitialized` flips true once every node has
+  // actually been measured, so the fit it triggers is against real
+  // geometry.
   const { fitView } = useReactFlow();
+  const nodesInitialized = useNodesInitialized();
   const queryClient = useQueryClient();
+  const initialFitDone = useRef(false);
+  useEffect(() => {
+    if (!nodesInitialized || initialFitDone.current) return;
+    initialFitDone.current = true;
+    fitView({ padding: 0.15 });
+  }, [nodesInitialized, fitView]);
   const autoArrange = () => {
     const computed = autoLayout(graph);
     setNodes((prev) =>
@@ -326,7 +360,7 @@ function CanvasInner(props: PlanGraphCanvasProps) {
       onEdgesChange={onEdgesChange}
       nodeTypes={nodeTypes}
       colorMode={mode}
-      fitView
+      fitViewOptions={{ padding: 0.15 }}
       minZoom={0.1}
       proOptions={{ hideAttribution: true }}
       onNodeClick={(_, node) => setSelectedKey(node.id)}

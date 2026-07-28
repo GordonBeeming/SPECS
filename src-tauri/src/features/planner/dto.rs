@@ -119,6 +119,16 @@ pub enum PlanNode {
         power_mw: f32,
         /// ipm of `item_id` this step produces (sized to demand).
         output_ipm: f32,
+        /// What's left of `output_ipm` after this factory's own steps
+        /// have taken their share — the number an export is worth
+        /// declaring. Same derivation as `ExportOfferProduct.spare_ipm`
+        /// (see `domain::spare_ipm`), with "drawn" meaning the machines
+        /// next to it rather than the factories downstream of it.
+        /// Prefilling an export from gross `output_ipm` instead declares
+        /// a rate the factory can't honour and Validate reports it as an
+        /// overdraw on the far side.
+        #[serde(default)]
+        free_output_ipm: f32,
         is_alt: bool,
         /// True when `item_id` is one of the plan's targets.
         is_target: bool,
@@ -274,6 +284,50 @@ pub struct PlanGraph {
     /// "Include SAM" toggle was forced on (UI renders it disabled).
     #[serde(default)]
     pub sam_forced: bool,
+    /// Alt recipes this solve leans on that the playthrough hasn't
+    /// collected yet, by display name, sorted.
+    ///
+    /// The planner deliberately plans with any alt the current tier
+    /// reaches, collected or not (see `tier_reachable_alts`) — which
+    /// means a plan can rest entirely on hard drives nobody has scanned
+    /// and look completely buildable. "Unlocked at T5" and "I have it"
+    /// are different questions and only the first one was being asked.
+    /// Validate answers the second after the fact; this carries it while
+    /// the recipes are still being chosen.
+    #[serde(default)]
+    pub uncollected_alts: Vec<String>,
+    /// Items this plan builds locally that another factory already makes
+    /// with capacity to spare. The Sources panel can answer this per
+    /// item once you go and ask it; carried on the graph so the designer
+    /// can offer it at the moment the local copy appears instead.
+    #[serde(default)]
+    pub existing_producers: Vec<ExistingProducer>,
+}
+
+/// One item a plan is about to build locally that somebody else already
+/// makes, with who and how much they have going spare.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExistingProducer {
+    /// The local step this is an alternative to.
+    pub node_key: String,
+    pub item_id: String,
+    pub item_name: String,
+    /// What this plan builds locally, for the "…instead of N/min here"
+    /// half of the sentence.
+    pub local_ipm: f32,
+    /// Sorted by spare capacity, most first.
+    pub sources: Vec<ExistingProducerSource>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExistingProducerSource {
+    pub factory_id: String,
+    pub factory_name: String,
+    /// `ExportOfferProduct.spare_ipm` — what widening the export slice
+    /// alone would free up, no extra machines at the source.
+    pub spare_ipm: f32,
 }
 
 /// Per-compute knobs the designer sends along with the plan inputs.
@@ -407,6 +461,22 @@ pub struct ExportOfferProduct {
     /// alone would free up, with no extra machines and no cost to the
     /// exporter's own plan. Always ≥ `remaining_ipm`.
     pub spare_ipm: f32,
+    /// True when the exporter has a plan target for this item; false
+    /// when it only makes it as an intermediate.
+    ///
+    /// This is the "can `raise_export_target` be called at all?" flag.
+    /// That command refuses without a target — deliberately, because
+    /// giving another factory a new product target changes what that
+    /// factory is — so a UI that offers a raise on an intermediate is
+    /// offering a button whose only outcome is an error.
+    ///
+    /// The rates can't answer this. A zero `produced_ipm` happens to
+    /// imply an intermediate today (a target's rate is never zero), but
+    /// an intermediate with *partial* surplus is indistinguishable from
+    /// a small target by its numbers alone, and that's precisely the
+    /// case a rate-based guess gets wrong.
+    #[serde(default)]
+    pub has_target: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

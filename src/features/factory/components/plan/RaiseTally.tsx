@@ -3,7 +3,7 @@ import { TrendingUp, TriangleAlert, X } from "lucide-react";
 import type { PlanWarning, RaiseExportTargetResult } from "@/features/planner/types";
 
 import { warningLine } from "./PlanWarningsBanner";
-import { rate } from "./rates";
+import { rate } from "@/shared/format/rates";
 
 /** One gap left open somewhere upstream, with the factory it's in. */
 export interface OpenGap {

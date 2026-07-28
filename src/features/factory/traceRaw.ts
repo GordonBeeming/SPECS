@@ -1,28 +1,19 @@
 import type { Recipe } from "@/features/library/types";
 
-const EXTRACTED: ReadonlySet<string> = new Set([
-  "Desc_OreIron_C",
-  "Desc_OreCopper_C",
-  "Desc_OreGold_C",
-  "Desc_Stone_C",
-  "Desc_Coal_C",
-  "Desc_Sulfur_C",
-  "Desc_OreBauxite_C",
-  "Desc_RawQuartz_C",
-  "Desc_OreUranium_C",
-  "Desc_SAM_C",
-  "Desc_LiquidOil_C",
-  "Desc_Water_C",
-  "Desc_NitrogenGas_C",
-  "Desc_Geyser_C",
-]);
-
 /**
  * Walk the recipe graph leaves-first from each factory input, summing
  * the total raw-resource demand. Mirrors the planner's two-pass logic
  * (collect demand → leaf) but without supply gating or alt preference
  * — we're surfacing 'if this factory's inputs were all made from raws,
  * how much raw would you need?', not picking a chain.
+ *
+ * `extracted` is what the walk grounds out on, and it has to be the
+ * planner's own set (`useExtractedResources` → `is_extracted_resource`)
+ * rather than a list written here. Two hand-maintained copies of the
+ * same 14 ids fail silently: this walk would recurse past a raw
+ * resource hunting for a producing recipe, and the factory's raw-demand
+ * readout would disagree with the plan on the same screen with nothing
+ * erroring.
  *
  * Returns a flat `itemId → ipm` map. Ignores Unpackage_* recipes for
  * the same reason the planner does (they all carry unlockTier 0 and
@@ -32,6 +23,7 @@ const EXTRACTED: ReadonlySet<string> = new Set([
 export function traceRawDemand(
   inputs: Array<{ itemId: string; ratePerMin: number }>,
   recipes: Recipe[],
+  extracted: ReadonlySet<string>,
 ): Record<string, number> {
   const recipesByOutput = new Map<string, Recipe[]>();
   for (const r of recipes) {
@@ -69,7 +61,7 @@ export function traceRawDemand(
   };
 
   const walk = (itemId: string, demand: number) => {
-    if (EXTRACTED.has(itemId)) {
+    if (extracted.has(itemId)) {
       raw[itemId] = (raw[itemId] ?? 0) + demand;
       return;
     }

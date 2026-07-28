@@ -5,6 +5,7 @@ import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { ClockInput } from "@/shared/ui/ClockInput";
 import { FilterSelect } from "@/shared/ui/FilterSelect";
+import { num } from "@/shared/format/rates";
 import { factoryPickerOptions, type FactoryPickerCandidate } from "../transform";
 import type { WaterExtractorGroup } from "@/features/resources/types";
 
@@ -26,6 +27,14 @@ export interface WaterExtractorPinProps {
       gesture instead (handled by the map, same as nodes). */
   onStartBindDrag: (e: React.MouseEvent) => void;
   currentScale: () => number;
+  /** `DEFAULT_SCALE / (live zoom)`, precomputed by MapView (which owns
+      both constants) so the group's on-screen size holds constant
+      across zoom instead of scaling with the map — same mechanism
+      #96 gave node markers, extended to pins per #99. Cancels to 1 at
+      the default zoom. Read from React state, unlike `currentScale()`
+      (an imperative getter used only for drag math), so this actually
+      drives a re-render as the map zooms. */
+  pinScale: number;
 }
 
 /** Droplet marker for a group of water extractors. Click toggles the
@@ -41,6 +50,7 @@ export function WaterExtractorPin({
   onDragEnd,
   onStartBindDrag,
   currentScale,
+  pinScale,
 }: WaterExtractorPinProps) {
   const startRef = useRef<{ clientX: number; clientY: number; moved: boolean } | null>(null);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
@@ -59,13 +69,20 @@ export function WaterExtractorPin({
   const totalCount = group.count + (group.count2 ?? 0);
 
   return (
+    <div
+      className="absolute"
+      style={{
+        left: `${hoverPos?.x ?? x}px`,
+        top: `${hoverPos?.y ?? y}px`,
+        transform: `translate(-50%, -50%) scale(${pinScale})`,
+      }}
+    >
     <button
       type="button"
-      className={`specs-map-pin absolute -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-md border-2 px-1.5 py-0.5 text-[11px] font-medium text-fg shadow-sm active:cursor-grabbing ${
+      className={`specs-map-pin relative cursor-grab rounded-md border-2 px-1.5 py-0.5 text-[11px] font-medium text-fg shadow-sm active:cursor-grabbing ${
         selected ? "border-accent bg-accent/25" : "border-accent/70 bg-bg-raised/95 hover:bg-bg-raised"
       }`}
-      style={{ left: `${hoverPos?.x ?? x}px`, top: `${hoverPos?.y ?? y}px` }}
-      title={`${totalCount}× Water Extractor · ${group.outputIpm.toFixed(0)} m³/min — click to ${
+      title={`${totalCount}× Water Extractor · ${num(group.outputIpm)} m³/min — click to ${
         group.locked ? "unlock" : "lock"
       } · double-click to edit · hold and drag to ${
         group.locked ? "bind to a factory" : "move"
@@ -145,12 +162,19 @@ export function WaterExtractorPin({
         {group.locked && <Lock className="h-2.5 w-2.5 text-fg-muted" aria-label="Locked in place" />}
       </span>
     </button>
+    </div>
   );
 }
 
 export interface WaterExtractorPopoverProps {
   group: WaterExtractorGroup;
   factories: FactoryPickerCandidate[];
+  /**
+   * One Water Extractor's output at 100% clock, from
+   * `water_pump_ipm`. Passed in rather than written here so the live
+   * preview and the total Rust persists come off the same rate.
+   */
+  pumpIpm: number;
   pending: boolean;
   onSave: (patch: {
     count: number;
@@ -171,6 +195,7 @@ export interface WaterExtractorPopoverProps {
 export function WaterExtractorPopover({
   group,
   factories,
+  pumpIpm,
   pending,
   onSave,
   onToggleLock,
@@ -186,7 +211,10 @@ export function WaterExtractorPopover({
   );
   const [factoryId, setFactoryId] = useState<string | null>(group.factoryId ?? null);
 
-  const bankIpm = (c: number, p: number) => c * 120 * (p / 100);
+  // Previewed off the rate Rust computes the saved total from, never a
+  // literal: a form that shows one number and stores another is the
+  // failure this prop exists to make impossible.
+  const bankIpm = (c: number, p: number) => c * pumpIpm * (p / 100);
   const totalIpm = bankIpm(count, clockPct) + (bank2 ? bankIpm(bank2.count, bank2.clockPct) : 0);
 
   return (
@@ -285,7 +313,7 @@ export function WaterExtractorPopover({
       <div className="mt-2 rounded-md bg-bg px-2 py-1.5 text-xs tabular-nums">
         <span className="text-fg-muted">Output</span>{" "}
         <span className="font-semibold text-fg">
-          {totalIpm % 1 === 0 ? totalIpm.toFixed(0) : totalIpm.toFixed(1)} m³/min
+          {num(totalIpm)} m³/min
         </span>
       </div>
 

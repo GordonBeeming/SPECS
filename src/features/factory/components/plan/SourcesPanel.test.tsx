@@ -70,6 +70,9 @@ function product(over: Partial<ExportOfferProduct> = {}): ExportOfferProduct {
     drawnIpm: 0,
     remainingIpm: 60,
     spareIpm: 60,
+    // Most fixtures in this file model a real plan target; the
+    // intermediate-specific tests override this to false explicitly.
+    hasTarget: true,
     ...over,
   };
 }
@@ -133,6 +136,24 @@ describe("<SourcesPanel /> — map-derived distance", () => {
     );
 
     expect(screen.getByText(exporter.name)).toHaveAttribute("title", "500 m away");
+  });
+
+  it("explains what the source cap field does, not just its unit", () => {
+    // #71: `auto`/`cap` carried no label, no unit and no tooltip — the
+    // local-build cap already had one, this is the external row's.
+    vi.spyOn(plannerApi, "listExportOffers").mockResolvedValue([]);
+
+    renderWithProviders(
+      <SourcesPanel
+        {...baseProps()}
+        sources={[{ itemId: ITEM, sourceFactoryId: exporter.id, ipmCap: null }]}
+      />,
+    );
+
+    expect(screen.getByLabelText("Source cap per minute")).toHaveAttribute(
+      "title",
+      expect.stringContaining("pulls as much as it's able to spare"),
+    );
   });
 });
 
@@ -278,6 +299,123 @@ describe("<SourcesPanel /> — raising a short exporter", () => {
     await user.click(await screen.findByRole("button", { name: new RegExp(exporter.name) }));
 
     expect(props.onAddExternal).toHaveBeenCalledWith(ITEM, exporter.id, null);
+  });
+});
+
+describe("<SourcesPanel /> — an intermediate with no plan target", () => {
+  // #106: an intermediate the factory produces along the way now
+  // reaches the offer list instead of being hidden, whether it has
+  // nothing spare or only some. `hasTarget: false` is the field that
+  // says so — the panel used to guess this from `producedIpm` alone,
+  // which only worked for the exact-zero case and not the partial one.
+  const zeroSpareIntermediate = () =>
+    offersOf({
+      producedIpm: 0,
+      exportIpm: 0,
+      drawnIpm: 0,
+      remainingIpm: 0,
+      spareIpm: 0,
+      hasTarget: false,
+    });
+
+  const partialSpareIntermediate = () =>
+    offersOf({
+      producedIpm: 15,
+      exportIpm: 15,
+      drawnIpm: 0,
+      remainingIpm: 15,
+      spareIpm: 15,
+      hasTarget: false,
+    });
+
+  it("reads as 'nothing spare', not 'makes 0/min'", async () => {
+    vi.spyOn(plannerApi, "listExportOffers").mockResolvedValue(zeroSpareIntermediate());
+
+    const user = userEvent.setup();
+    renderWithProviders(<SourcesPanel {...baseProps()} />);
+    await user.click(screen.getByRole("button", { name: /add source/i }));
+
+    const row = await screen.findByRole("button", { name: new RegExp(exporter.name) });
+    expect(row).toHaveTextContent("nothing spare");
+    expect(row).not.toHaveTextContent("0/min");
+  });
+
+  it("doesn't offer a Raise target button that has nothing to raise", async () => {
+    vi.spyOn(plannerApi, "listExportOffers").mockResolvedValue(zeroSpareIntermediate());
+
+    const user = userEvent.setup();
+    renderWithProviders(<SourcesPanel {...baseProps()} />);
+    await user.click(screen.getByRole("button", { name: /add source/i }));
+    await screen.findByText(exporter.name);
+
+    expect(screen.queryByRole("button", { name: /raise target/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/Used up internally right now/i)).toBeInTheDocument();
+  });
+
+  it("says the same thing for an already-added zero-spare source", async () => {
+    vi.spyOn(plannerApi, "listExportOffers").mockResolvedValue(zeroSpareIntermediate());
+
+    renderWithProviders(
+      <SourcesPanel
+        {...baseProps()}
+        sources={[
+          { itemId: ITEM, sourceFactoryId: home.id, ipmCap: 0 },
+          { itemId: ITEM, sourceFactoryId: exporter.id, ipmCap: null },
+        ]}
+        unassignedIpm={20}
+      />,
+    );
+
+    expect(await screen.findByText(/Used up internally right now/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /raise target/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Makes 0\/min/)).not.toBeInTheDocument();
+  });
+
+  it("offers a partial-surplus intermediate as a source without a Raise button", async () => {
+    // The case `producedIpm <= 1e-3` never caught: a manual rod bank
+    // beside a screw plan, 15/min genuinely spare — enough to look like
+    // a modest target by the numbers alone, and enough to 400 on click
+    // before `hasTarget` existed to gate it.
+    vi.spyOn(plannerApi, "listExportOffers").mockResolvedValue(partialSpareIntermediate());
+    const props = baseProps();
+    // Ask for more than the 15/min this source can spare, so it lands
+    // in the "short" bucket rather than "covers" — that's where the
+    // dead-end Raise button used to appear.
+    props.totalIpm = 40;
+
+    const user = userEvent.setup();
+    renderWithProviders(<SourcesPanel {...props} />);
+    await user.click(screen.getByRole("button", { name: /add source/i }));
+
+    const row = await screen.findByRole("button", { name: new RegExp(exporter.name) });
+    expect(row).toHaveTextContent("15/min left");
+    expect(screen.getByText(/15\/min spare, not enough on its own/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /raise target/i })).not.toBeInTheDocument();
+
+    // Still a usable source — clicking it adds the partial share.
+    await user.click(row);
+    expect(props.onAddExternal).toHaveBeenCalledWith(ITEM, exporter.id, null);
+  });
+
+  it("says the same for an already-added partial-spare source", async () => {
+    vi.spyOn(plannerApi, "listExportOffers").mockResolvedValue(partialSpareIntermediate());
+
+    renderWithProviders(
+      <SourcesPanel
+        {...baseProps()}
+        totalIpm={40}
+        sources={[
+          { itemId: ITEM, sourceFactoryId: home.id, ipmCap: 0 },
+          { itemId: ITEM, sourceFactoryId: exporter.id, ipmCap: null },
+        ]}
+        unassignedIpm={25}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/Has 15\/min spare, not enough on its own/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /raise target/i })).not.toBeInTheDocument();
   });
 });
 

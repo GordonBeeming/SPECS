@@ -75,6 +75,29 @@ type ScItem = {
   category?: string;
   stack?: number;
   color?: string;
+  /** Burn energy. MJ per unit for solids, MJ per *litre* for fluids. */
+  energy?: number;
+};
+type ScBuilding = {
+  name?: string;
+  category?: string;
+  /** Single-figure draw, MW. Production buildings with a fixed draw. */
+  powerUsed?: number;
+  /** Recipe id → `[min, max]` MW, for the variable-draw machines
+   * (Particle Accelerator, Quantum Encoder, Converter). */
+  powerUsedRecipes?: Record<string, [number, number]>;
+  /** MW produced. A plain number, or `purity → [min, max]` for the
+   * Geothermal Generator, whose output fluctuates. */
+  powerGenerated?: number | Record<string, [number, number]>;
+  /** Short item ids this generator will burn. */
+  acceptedFuels?: string[];
+  /** Coolant a generator draws alongside its fuel — water, for Coal
+   * and Nuclear. */
+  supplementalLoadType?: string;
+  supplementalLoadRatio?: number;
+  /** Extractor output per purity, `RP_Inpure` / `RP_Normal` / `RP_Pure`.
+   * Solids are items per minute; fluids are litres per minute. */
+  extractionRate?: Record<string, number>;
 };
 type ScSchematic = {
   className: string;
@@ -89,7 +112,7 @@ type ScSchematic = {
 type ScData = {
   branch: string;
   itemsData: Record<string, ScItem>;
-  buildingsData: Record<string, { name?: string }>;
+  buildingsData: Record<string, ScBuilding>;
   recipesData: Record<string, ScRecipe>;
   schematicsData: Record<string, ScSchematic>;
 };
@@ -97,10 +120,40 @@ type ScData = {
 const sc: ScData = JSON.parse(readFileSync(FIXTURE, "utf8"));
 const carriedTiers: Record<string, number> = JSON.parse(readFileSync(TIER_FIXTURE, "utf8"));
 
+// Annotated on the *variable* rather than the arrow, which is what lets
+// TypeScript treat a `fail()` call as terminating control flow — so the
+// checks below narrow their subjects instead of needing a cast afterwards.
+const fail: (msg: string) => never = (msg) => {
+  console.error(`VALIDATION FAILED: ${msg}`);
+  process.exit(1);
+};
+
 /** `/Game/.../Desc_OreIron.Desc_OreIron_C` → `Desc_OreIron_C`. */
 function classId(path: string): string {
   const m = path.match(/\.([A-Za-z0-9_]+)$/);
   return m ? m[1] : path;
+}
+
+/** Reading a hand-authored table by id. A missing entry stops the
+ * conversion: defaulting instead hands the caller the most permissive
+ * value there is (0 MW, Tier 0), which looks identical to a correct
+ * answer and reaches the app as silent, confident nonsense. */
+function requireEntry<T>(table: Record<string, T>, id: string, tableName: string): T {
+  const value = table[id];
+  if (value === undefined) fail(`${tableName} has no entry for ${id}`);
+  return value;
+}
+
+function dumpBuilding(id: string): ScBuilding {
+  const b = sc.buildingsData[id];
+  if (!b) fail(`the dump has no building ${id}`);
+  return b;
+}
+
+function dumpItem(id: string): ScItem {
+  const it = sc.itemsData[id];
+  if (!it) fail(`the dump has no item ${id}`);
+  return it;
 }
 
 // --- Item categorisation ------------------------------------------------
@@ -148,10 +201,16 @@ function categorise(item: ScItem): string {
 
 // The calculator dump keys machine recipes by native `Build_*_C` actor ids
 // already — no Desc→Build translation needed anymore.
+//
+// Every figure here is cross-checked against the dump's own `powerUsed` in
+// `checkAuthoredPower` below. The variable-draw machines (Particle
+// Accelerator, Quantum Encoder, Converter) carry a per-recipe range in the
+// dump rather than one number, so for those the authored value is a chosen
+// point inside the range and the check is a band rather than an equality.
+//
+// A building the dump gives no draw at all draws nothing: generators
+// produce power, and a Resource Well Extractor is fed by its Pressuriser.
 const POWER_MW_BY_BUILDING: Record<string, number> = {
-  // Production buildings — hand-pinned from wiki values (the dump's
-  // `powerUsed` is present but the manufacturer-family numbers depend on
-  // overclocking we don't store on the building).
   Build_SmelterMk1_C: 4,
   Build_FoundryMk1_C: 16,
   Build_ConstructorMk1_C: 4,
@@ -159,17 +218,18 @@ const POWER_MW_BY_BUILDING: Record<string, number> = {
   Build_ManufacturerMk1_C: 55,
   Build_OilRefinery_C: 30,
   Build_Blender_C: 75,
-  Build_HadronCollider_C: 1500, // Particle Accelerator – variable, max baseline
+  Build_HadronCollider_C: 1500, // Particle Accelerator — top of the dump's band
   Build_QuantumEncoder_C: 1000,
   Build_Converter_C: 250,
   Build_Packager_C: 10,
   Build_OilPump_C: 40,
   Build_WaterPump_C: 20,
-  Build_FrackingExtractor_C: 150,
-  Build_FrackingSmasher_C: 300,
+  Build_FrackingExtractor_C: 0,
+  Build_FrackingSmasher_C: 150,
   Build_MinerMk1_C: 5,
-  Build_MinerMk2_C: 12,
-  Build_MinerMk3_C: 30,
+  Build_MinerMk2_C: 15,
+  Build_MinerMk3_C: 45,
+  Build_GeneratorNuclear_C: 0,
 };
 
 const BUILDING_NAMES: Record<string, string> = {
@@ -191,6 +251,13 @@ const BUILDING_NAMES: Record<string, string> = {
   Build_MinerMk1_C: "Miner Mk.1",
   Build_MinerMk2_C: "Miner Mk.2",
   Build_MinerMk3_C: "Miner Mk.3",
+  // A generator earns a place in `buildings` only when it hosts recipes,
+  // because this table is the referent set for `recipes[].buildingId`.
+  // The Nuclear Power Plant does: burning a fuel rod is the only thing in
+  // the game that produces Uranium and Plutonium Waste, and without those
+  // recipes the whole plutonium branch has no way to come into existence.
+  // Its generation side stays in `generators` — see the power note above.
+  Build_GeneratorNuclear_C: "Nuclear Power Plant",
 };
 
 const BUILDING_CATEGORIES: Record<string, string> = {
@@ -212,12 +279,15 @@ const BUILDING_CATEGORIES: Record<string, string> = {
   Build_MinerMk1_C: "extraction",
   Build_MinerMk2_C: "extraction",
   Build_MinerMk3_C: "extraction",
+  Build_GeneratorNuclear_C: "power",
 };
 
-// Pinned from the dump's milestone schematics (each building's construction
-// recipe sits in a tiered milestone) — the 1.0 tier reshuffle moved several
-// of these from their long-remembered pre-1.0 homes (Assembler T2,
-// Manufacturer T6, Converter T9 "Matter Conversion", Miner Mk.2 T4).
+// Each building's construction recipe sits in a tiered milestone schematic,
+// so `derivedBuildingTier` recovers all but three of these from the dump and
+// `checkAuthoredBuildingTier` fails the build on any disagreement. The 1.0
+// tier reshuffle moved several from their long-remembered pre-1.0 homes
+// (Assembler T2, Manufacturer T6, Converter T9 "Matter Conversion", Miner
+// Mk.2 T4), which is exactly the drift the check now catches.
 const BUILDING_UNLOCK_TIER: Record<string, number> = {
   Build_MinerMk1_C: 0,
   Build_MinerMk2_C: 4,
@@ -237,9 +307,39 @@ const BUILDING_UNLOCK_TIER: Record<string, number> = {
   Build_WaterPump_C: 3,
   Build_FrackingExtractor_C: 8,
   Build_FrackingSmasher_C: 8,
+  Build_GeneratorNuclear_C: 8,
 };
 
+// The three buildings whose construction recipe no schematic in the dump
+// unlocks, plus the Geothermal Generator, whose recipe hangs off a MAM
+// research node that carries no tier. Their tiers stay hand-authored, and
+// membership here is closed: a building that stops deriving has to be added
+// deliberately rather than sliding into hand-authored silence.
+const UNDERIVABLE_BUILDING_TIERS = new Set([
+  "Build_OilRefinery_C",
+  "Build_OilPump_C",
+  "Build_GeneratorGeoThermal_C",
+]);
+
 const INCLUDED_BUILDINGS = new Set(Object.keys(BUILDING_NAMES));
+
+// The three building tables are read by id all over the conversion, and a
+// building present in one but absent from another would surface as a 0 MW
+// Tier 0 row rather than an error. Check the keys agree up front.
+for (const id of INCLUDED_BUILDINGS) {
+  requireEntry(POWER_MW_BY_BUILDING, id, "POWER_MW_BY_BUILDING");
+  requireEntry(BUILDING_CATEGORIES, id, "BUILDING_CATEGORIES");
+  requireEntry(BUILDING_UNLOCK_TIER, id, "BUILDING_UNLOCK_TIER");
+}
+for (const table of [
+  { name: "POWER_MW_BY_BUILDING", keys: Object.keys(POWER_MW_BY_BUILDING) },
+  { name: "BUILDING_CATEGORIES", keys: Object.keys(BUILDING_CATEGORIES) },
+  { name: "BUILDING_UNLOCK_TIER", keys: Object.keys(BUILDING_UNLOCK_TIER) },
+]) {
+  for (const id of table.keys) {
+    if (!INCLUDED_BUILDINGS.has(id)) fail(`${table.name} has ${id}, which BUILDING_NAMES doesn't`);
+  }
+}
 
 // --- Recipe conversion --------------------------------------------------
 
@@ -278,6 +378,46 @@ for (const schem of Object.values(sc.schematicsData)) {
     const rid = classId(path);
     const prev = milestoneTiers.get(rid);
     if (prev === undefined || schem.tier < prev) milestoneTiers.set(rid, schem.tier);
+  }
+}
+
+// A building is built from its own construction recipe (`Build_Foo_C` is
+// erected from `Recipe_Foo_C`, which produces `Desc_Foo_C`), and that recipe
+// sits in a milestone schematic like any other. Following that chain gives
+// the dump a say over `BUILDING_UNLOCK_TIER`, which is otherwise the one
+// hand-authored table nothing upstream can contradict — and it is the table
+// the recipe-can't-precede-its-machine invariant rests on.
+const recipesByProduct = new Map<string, string[]>();
+for (const r of Object.values(sc.recipesData)) {
+  for (const path of Object.keys(r.produce ?? {})) {
+    const produced = classId(path);
+    if (!recipesByProduct.has(produced)) recipesByProduct.set(produced, []);
+    recipesByProduct.get(produced)!.push(classId(r.className));
+  }
+}
+
+function derivedBuildingTier(buildingId: string): number | undefined {
+  const constructed = buildingId.replace(/^Build_/, "Desc_");
+  const tiers = (recipesByProduct.get(constructed) ?? [])
+    .map((rid) => milestoneTiers.get(rid))
+    .filter((t): t is number => t !== undefined);
+  return tiers.length > 0 ? Math.min(...tiers) : undefined;
+}
+
+/** Fails when the dump disagrees with the authored tier, and when a
+ * building neither derives nor is on the closed hand-authored list. */
+function checkAuthoredBuildingTier(buildingId: string, authored: number): void {
+  const derived = derivedBuildingTier(buildingId);
+  if (derived === undefined) {
+    if (!UNDERIVABLE_BUILDING_TIERS.has(buildingId)) {
+      fail(
+        `${buildingId} has no milestone schematic for its construction recipe — pin it in UNDERIVABLE_BUILDING_TIERS with a reason, or fix the derivation`,
+      );
+    }
+    return;
+  }
+  if (derived !== authored) {
+    fail(`${buildingId} is authored at tier ${authored} but the dump's milestones put it at ${derived}`);
   }
 }
 
@@ -370,19 +510,19 @@ for (const r of Object.values(sc.recipesData)) {
   const carriedTier = carriedTiers[id];
   const trustedCarriedTier = isAlt && carriedTier === 0 ? undefined : carriedTier;
 
+  const buildingTier = requireEntry(BUILDING_UNLOCK_TIER, buildingId, "BUILDING_UNLOCK_TIER");
   const derivedTier =
     milestoneTiers.get(id) ??
     HAND_TIERS[id] ??
     altUnlockTiers.get(id) ??
     trustedCarriedTier ??
-    BUILDING_UNLOCK_TIER[buildingId] ??
-    0;
+    buildingTier;
   // A recipe can't be usable before its own machine exists, but the dump's
   // tutorial-era schematics (HUB Upgrades 1-3, tier 0) teach several
   // standard recipes — Reinforced Iron Plate among them — well ahead of the
   // building those recipes actually run in. The building's own unlock tier
   // is always a hard floor regardless of what an earlier schematic claims.
-  const unlockTier = Math.max(derivedTier, BUILDING_UNLOCK_TIER[buildingId] ?? 0);
+  const unlockTier = Math.max(derivedTier, buildingTier);
 
   recipes.push({
     id,
@@ -396,6 +536,233 @@ for (const r of Object.values(sc.recipesData)) {
   });
 }
 
+// --- Generators ---------------------------------------------------------
+//
+// Everything numeric about a generator comes out of the dump. Burn rate is
+// `powerGenerated / energy × 60`; coolant is `powerGenerated ×
+// supplementalLoadRatio × 0.06` (the ratio is litres per MW-second, so ×60
+// for a minute and ÷1000 for m³), and both reproduce the wiki's figures
+// exactly. Only the id, the display name, the category and *which* of the
+// game's accepted fuels SPECS offers are authored here.
+//
+// The SPECS ids are load-bearing in a way the rest isn't: saved power-gen
+// rows reference them, so `Build_GeneratorBiomass_C` and the three
+// per-purity Geothermal ids stay as they are and carry the dump id
+// separately rather than being renamed to match it.
+
+type SpecsGeneratorFuel = {
+  fuelItemId: string;
+  fuelPerMinute: number;
+  supplementalItemId?: string;
+  supplementalPerMinute?: number;
+  byproductItemId?: string;
+  byproductPerMinute?: number;
+};
+
+type GeneratorSpec = {
+  id: string;
+  dumpId: string;
+  name: string;
+  category: string;
+  /** Undefined means "derive it"; set only where the dump can't. */
+  unlockTier?: number;
+  /** Which accepted fuels to offer, in display order. Empty for the
+   * geothermal entries, which burn nothing. */
+  fuelItemIds: string[];
+  /** Geothermal only: which purity band of the dump's output range this
+   * entry represents. */
+  geothermalPurity?: "impure" | "normal" | "pure";
+};
+
+// The Biomass Burner also accepts Flower Petals, Fabric, Packaged Liquid
+// Biofuel and the two alien-remains parts. They're left out because SPECS
+// plans production chains and none of those has one worth planning — this
+// list is the one part of a generator still chosen by hand, so a fuel the
+// game doesn't accept fails below, but a fuel we simply never offered can't
+// be caught by anything except reading it.
+const GENERATOR_SPECS: GeneratorSpec[] = [
+  {
+    id: "Build_GeneratorBiomass_C",
+    dumpId: "Build_GeneratorBiomass_Automated_C",
+    name: "Biomass Burner",
+    category: "burner",
+    fuelItemIds: ["Desc_Wood_C", "Desc_GenericBiomass_C", "Desc_Leaves_C", "Desc_Mycelia_C", "Desc_Biofuel_C"],
+  },
+  {
+    id: "Build_GeneratorCoal_C",
+    dumpId: "Build_GeneratorCoal_C",
+    name: "Coal Generator",
+    category: "burner",
+    fuelItemIds: ["Desc_Coal_C", "Desc_CompactedCoal_C", "Desc_PetroleumCoke_C"],
+  },
+  {
+    id: "Build_GeneratorFuel_C",
+    dumpId: "Build_GeneratorFuel_C",
+    name: "Fuel Generator",
+    category: "fluid",
+    fuelItemIds: [
+      "Desc_LiquidFuel_C",
+      "Desc_LiquidTurboFuel_C",
+      "Desc_LiquidBiofuel_C",
+      "Desc_RocketFuel_C",
+      "Desc_IonizedFuel_C",
+    ],
+  },
+  {
+    id: "Build_GeneratorNuclear_C",
+    dumpId: "Build_GeneratorNuclear_C",
+    name: "Nuclear Power Plant",
+    category: "nuclear",
+    fuelItemIds: ["Desc_NuclearFuelRod_C", "Desc_PlutoniumFuelRod_C", "Desc_FicsoniumFuelRod_C"],
+  },
+  // Geothermal output fluctuates ±50% in-game, so each purity band takes
+  // the average of the dump's range. Built only at fixed vents, and gated
+  // by a MAM research node the dump doesn't tier.
+  {
+    id: "Build_GeneratorGeoThermal_Impure_C",
+    dumpId: "Build_GeneratorGeoThermal_C",
+    name: "Geothermal Generator (Impure)",
+    category: "geothermal",
+    unlockTier: 8,
+    fuelItemIds: [],
+    geothermalPurity: "impure",
+  },
+  {
+    id: "Build_GeneratorGeoThermal_Normal_C",
+    dumpId: "Build_GeneratorGeoThermal_C",
+    name: "Geothermal Generator (Normal)",
+    category: "geothermal",
+    unlockTier: 8,
+    fuelItemIds: [],
+    geothermalPurity: "normal",
+  },
+  {
+    id: "Build_GeneratorGeoThermal_Pure_C",
+    dumpId: "Build_GeneratorGeoThermal_C",
+    name: "Geothermal Generator (Pure)",
+    category: "geothermal",
+    unlockTier: 8,
+    fuelItemIds: [],
+    geothermalPurity: "pure",
+  },
+];
+
+function generatorPowerMw(spec: GeneratorSpec): number {
+  const generated = dumpBuilding(spec.dumpId).powerGenerated;
+  if (spec.geothermalPurity) {
+    if (typeof generated !== "object" || generated === null) {
+      fail(`${spec.dumpId} was expected to carry a per-purity output range`);
+    }
+    const band = generated[spec.geothermalPurity];
+    if (!Array.isArray(band) || band.length !== 2) {
+      fail(`${spec.dumpId} has no ${spec.geothermalPurity} output range`);
+    }
+    return (band[0] + band[1]) / 2;
+  }
+  if (typeof generated !== "number" || !(generated > 0)) {
+    fail(`${spec.dumpId} has no single power-generated figure`);
+  }
+  return generated;
+}
+
+/** A generator's byproduct, if the game gives it one. Uranium and
+ * Plutonium Waste are ordinary recipes in the dump, keyed to the plant by
+ * `mProducedIn` and to the rod by being its only ingredient — burning the
+ * rod is the only thing that produces them, which is why the plutonium
+ * branch is unreachable without this. */
+function generatorByproduct(
+  spec: GeneratorSpec,
+  fuelItemId: string,
+  fuelPerMinute: number,
+): { itemId: string; perMinute: number } | undefined {
+  for (const r of Object.values(sc.recipesData)) {
+    const producedIn = (r.mProducedIn ?? []).map(classId);
+    if (!producedIn.includes(spec.dumpId)) continue;
+    const ingredients = Object.entries(r.ingredients ?? {});
+    if (ingredients.length !== 1 || classId(ingredients[0][0]) !== fuelItemId) continue;
+    const cycle = r.mManufactoringDuration ?? 0;
+    if (cycle <= 0) fail(`byproduct recipe ${classId(r.className)} has no cycle time`);
+    // The recipe states the rod burn rate too; if it disagrees with the
+    // rate derived from burn energy, one of the two is being misread.
+    const impliedFuelPerMinute = (ingredients[0][1] * 60) / cycle;
+    if (Math.abs(impliedFuelPerMinute - fuelPerMinute) > 0.01) {
+      fail(
+        `${spec.id} burns ${fuelItemId} at ${fuelPerMinute}/min by energy but ${classId(r.className)} implies ${impliedFuelPerMinute}/min`,
+      );
+    }
+    const produced = Object.entries(r.produce ?? {});
+    if (produced.length !== 1) {
+      fail(`byproduct recipe ${classId(r.className)} produces ${produced.length} items, expected 1`);
+    }
+    const itemId = classId(produced[0][0]);
+    const item = dumpItem(itemId);
+    const perCraft = isFluid(item) ? produced[0][1] / 1000 : produced[0][1];
+    referencedItems.add(itemId);
+    return { itemId, perMinute: round2((perCraft * 60) / cycle) };
+  }
+  return undefined;
+}
+
+const generators = GENERATOR_SPECS.map((spec) => {
+  const building = dumpBuilding(spec.dumpId);
+  const powerMw = generatorPowerMw(spec);
+  const accepted = new Set(building.acceptedFuels ?? []);
+  const fuels: SpecsGeneratorFuel[] = spec.fuelItemIds.map((fuelItemId) => {
+    if (!accepted.has(fuelItemId)) {
+      fail(`${spec.id} is authored to burn ${fuelItemId}, which ${spec.dumpId} doesn't accept`);
+    }
+    const item = dumpItem(fuelItemId);
+    if (!item.energy || item.energy <= 0) fail(`${fuelItemId} carries no burn energy`);
+    // Fluid energy is per litre; SPECS rates fluids in m³/min.
+    const perMinuteRaw = ((powerMw / item.energy) * 60) / (isFluid(item) ? 1000 : 1);
+    const fuelPerMinute = round2(perMinuteRaw);
+    referencedItems.add(fuelItemId);
+    const fuel: SpecsGeneratorFuel = { fuelItemId, fuelPerMinute };
+    if (building.supplementalLoadType && building.supplementalLoadRatio) {
+      const supplementalItemId = building.supplementalLoadType;
+      referencedItems.add(supplementalItemId);
+      fuel.supplementalItemId = supplementalItemId;
+      fuel.supplementalPerMinute = round2(powerMw * building.supplementalLoadRatio * 0.06);
+    }
+    const byproduct = generatorByproduct(spec, fuelItemId, perMinuteRaw);
+    if (byproduct) {
+      fuel.byproductItemId = byproduct.itemId;
+      fuel.byproductPerMinute = byproduct.perMinute;
+    }
+    return fuel;
+  });
+  const unlockTier = spec.unlockTier ?? derivedBuildingTier(spec.dumpId);
+  if (unlockTier === undefined) {
+    fail(`${spec.id} has no derivable unlock tier and no authored one`);
+  }
+  return {
+    id: spec.id,
+    name: spec.name,
+    category: spec.category,
+    powerMw,
+    unlockTier,
+    fuels,
+  };
+});
+
+// The dump's ingredients for a generator-hosted "recipe" (burning a fuel
+// rod for waste) never include the reactor's coolant — that's modeled as
+// the building's own supplementalLoad, not a recipe ingredient — so
+// without this fold-in, a default planner chain through nuclear waste
+// would understate raw Water demand by the coolant load each plant
+// actually draws. The recipe's own cycle time already matches the rate
+// the generator computed its fuel/coolant figures at, so the two
+// per-minute numbers share the same clock and can be combined directly.
+for (const recipe of recipes) {
+  const generator = generators.find((g) => g.id === recipe.buildingId);
+  if (!generator) continue;
+  const fuelItemId = recipe.inputs[0]?.itemId;
+  const fuel = generator.fuels.find((f) => f.fuelItemId === fuelItemId);
+  if (fuel?.supplementalItemId !== undefined && fuel.supplementalPerMinute) {
+    recipe.inputs.push({ itemId: fuel.supplementalItemId, perMinute: fuel.supplementalPerMinute });
+  }
+}
+
 // --- Item list ----------------------------------------------------------
 
 type SpecsItem = {
@@ -407,28 +774,9 @@ type SpecsItem = {
   color?: string;
 };
 
-// Generator fuels and supplementals are hand-authored below but must
-// resolve to real items.
-const EXTRA_REFERENCED = [
-  "Desc_Wood_C",
-  "Desc_GenericBiomass_C",
-  "Desc_Leaves_C",
-  "Desc_Mycelia_C",
-  "Desc_Coal_C",
-  "Desc_CompactedCoal_C",
-  "Desc_PetroleumCoke_C",
-  "Desc_Water_C",
-  "Desc_LiquidFuel_C",
-  "Desc_LiquidTurboFuel_C",
-  "Desc_LiquidBiofuel_C",
-  "Desc_RocketFuel_C",
-  "Desc_IonizedFuel_C",
-  "Desc_NuclearFuelRod_C",
-  "Desc_PlutoniumFuelRod_C",
-  "Desc_FicsoniumFuelRod_C",
-];
-for (const id of EXTRA_REFERENCED) referencedItems.add(id);
-
+// Generator fuels, coolants and byproducts register themselves in
+// `referencedItems` as the generators are built above, so this list runs
+// after that block rather than carrying a parallel hand-typed copy of it.
 const items: SpecsItem[] = [];
 const itemIds = new Set<string>();
 for (const [shortId, raw] of Object.entries(sc.itemsData)) {
@@ -471,10 +819,10 @@ for (const id of referencedItems) {
 
 const buildings = [...INCLUDED_BUILDINGS].map((id) => ({
   id,
-  name: BUILDING_NAMES[id],
-  category: BUILDING_CATEGORIES[id],
-  powerMw: POWER_MW_BY_BUILDING[id] ?? 0,
-  unlockTier: BUILDING_UNLOCK_TIER[id] ?? 0,
+  name: requireEntry(BUILDING_NAMES, id, "BUILDING_NAMES"),
+  category: requireEntry(BUILDING_CATEGORIES, id, "BUILDING_CATEGORIES"),
+  powerMw: requireEntry(POWER_MW_BY_BUILDING, id, "POWER_MW_BY_BUILDING"),
+  unlockTier: requireEntry(BUILDING_UNLOCK_TIER, id, "BUILDING_UNLOCK_TIER"),
 }));
 
 // --- Hand-authored: milestones, generators, miners, vehicles, belts, pipes
@@ -485,8 +833,8 @@ const milestones = [
   { id: "tier-2", tier: 2, name: "Logistics Mk.2", unlocks: ["Build_StorageContainerMk1_C"] },
   { id: "tier-3", tier: 3, name: "Coal Power", unlocks: ["Build_GeneratorCoal_C", "Build_FoundryMk1_C", "Build_MinerMk2_C", "Build_ConveyorBeltMk3_C"] },
   { id: "tier-4", tier: 4, name: "Advanced Steel Production", unlocks: ["Build_ConveyorBeltMk4_C"] },
-  { id: "tier-5", tier: 5, name: "Oil Processing", unlocks: ["Build_OilRefinery_C", "Build_OilPump_C", "Build_Packager_C", "Build_ConveyorBeltMk5_C"] },
-  { id: "tier-6", tier: 6, name: "Expanded Power Infrastructure", unlocks: ["Build_GeneratorFuel_C", "Build_PipelineMK2_C"] },
+  { id: "tier-5", tier: 5, name: "Oil Processing", unlocks: ["Build_OilRefinery_C", "Build_OilPump_C", "Build_Packager_C", "Build_ConveyorBeltMk5_C", "Build_GeneratorFuel_C"] },
+  { id: "tier-6", tier: 6, name: "Expanded Power Infrastructure", unlocks: ["Build_PipelineMK2_C"] },
   { id: "tier-7", tier: 7, name: "Bauxite Refinement", unlocks: ["Build_ManufacturerMk1_C", "Build_Blender_C", "Build_MinerMk3_C", "Build_FrackingExtractor_C"] },
   { id: "tier-8", tier: 8, name: "Particle Enrichment", unlocks: ["Build_HadronCollider_C", "Build_GeneratorNuclear_C", "Build_Converter_C", "Build_ConveyorBeltMk6_C"] },
   { id: "tier-9", tier: 9, name: "Project Assembly Phase 5", unlocks: ["Build_QuantumEncoder_C"] },
@@ -563,90 +911,6 @@ const pipeTiers = [
   { mark: 2, cubicMetersPerMinute: 600, unlockTier: 6 },
 ];
 
-// Generators: hand-authored so fuel rates + supplemental water match the
-// wiki. The dump omits the fuel-per-minute breakdown.
-const generators = [
-  {
-    id: "Build_GeneratorBiomass_C",
-    name: "Biomass Burner",
-    category: "burner",
-    powerMw: 30,
-    unlockTier: 0,
-    fuels: [
-      { fuelItemId: "Desc_Wood_C", fuelPerMinute: 18 },
-      { fuelItemId: "Desc_GenericBiomass_C", fuelPerMinute: 4 },
-      { fuelItemId: "Desc_Leaves_C", fuelPerMinute: 60 },
-      { fuelItemId: "Desc_Mycelia_C", fuelPerMinute: 15 },
-    ],
-  },
-  {
-    id: "Build_GeneratorCoal_C",
-    name: "Coal Generator",
-    category: "burner",
-    powerMw: 75,
-    unlockTier: 3,
-    fuels: [
-      { fuelItemId: "Desc_Coal_C", fuelPerMinute: 15, supplementalItemId: "Desc_Water_C", supplementalPerMinute: 45 },
-      { fuelItemId: "Desc_CompactedCoal_C", fuelPerMinute: 7.14, supplementalItemId: "Desc_Water_C", supplementalPerMinute: 45 },
-      { fuelItemId: "Desc_PetroleumCoke_C", fuelPerMinute: 25, supplementalItemId: "Desc_Water_C", supplementalPerMinute: 45 },
-    ],
-  },
-  {
-    id: "Build_GeneratorFuel_C",
-    name: "Fuel Generator",
-    category: "fluid",
-    powerMw: 250,
-    unlockTier: 6,
-    fuels: [
-      { fuelItemId: "Desc_LiquidFuel_C", fuelPerMinute: 20 },
-      { fuelItemId: "Desc_LiquidTurboFuel_C", fuelPerMinute: 7.5 },
-      { fuelItemId: "Desc_LiquidBiofuel_C", fuelPerMinute: 20 },
-      { fuelItemId: "Desc_RocketFuel_C", fuelPerMinute: 4.17 },
-      { fuelItemId: "Desc_IonizedFuel_C", fuelPerMinute: 3 },
-    ],
-  },
-  {
-    id: "Build_GeneratorNuclear_C",
-    name: "Nuclear Power Plant",
-    category: "nuclear",
-    powerMw: 2500,
-    unlockTier: 8,
-    fuels: [
-      { fuelItemId: "Desc_NuclearFuelRod_C", fuelPerMinute: 0.2, supplementalItemId: "Desc_Water_C", supplementalPerMinute: 240 },
-      { fuelItemId: "Desc_PlutoniumFuelRod_C", fuelPerMinute: 0.1, supplementalItemId: "Desc_Water_C", supplementalPerMinute: 240 },
-      // 1 rod / min, 1000 m³ water — closes the nuclear-waste recycle loop.
-      { fuelItemId: "Desc_FicsoniumFuelRod_C", fuelPerMinute: 1, supplementalItemId: "Desc_Water_C", supplementalPerMinute: 1000, powerMwOverride: 2500 },
-    ],
-  },
-  // Three Geothermal entries by node purity. Output is the *average* power
-  // (geothermal fluctuates ±50% in-game). No fuel cost, no unlock tier
-  // (built only at fixed geothermal nodes).
-  {
-    id: "Build_GeneratorGeoThermal_Impure_C",
-    name: "Geothermal Generator (Impure)",
-    category: "geothermal",
-    powerMw: 100,
-    unlockTier: 8,
-    fuels: [],
-  },
-  {
-    id: "Build_GeneratorGeoThermal_Normal_C",
-    name: "Geothermal Generator (Normal)",
-    category: "geothermal",
-    powerMw: 200,
-    unlockTier: 8,
-    fuels: [],
-  },
-  {
-    id: "Build_GeneratorGeoThermal_Pure_C",
-    name: "Geothermal Generator (Pure)",
-    category: "geothermal",
-    powerMw: 400,
-    unlockTier: 8,
-    fuels: [],
-  },
-];
-
 // Miners: base items-per-minute at 100% clock on normal-purity nodes.
 // Impure = base/2, Pure = base*2. Matches the wiki Mk1=60 / Mk2=120 /
 // Mk3=240 baseline. Unlock tiers mirror BUILDING_UNLOCK_TIER above
@@ -669,11 +933,6 @@ const transportVehicles = [
 
 // --- Validation ---------------------------------------------------------
 
-const fail = (msg: string) => {
-  console.error(`VALIDATION FAILED: ${msg}`);
-  process.exit(1);
-};
-
 if (sc.branch !== "Stable") fail(`expected the Stable branch dump, got ${sc.branch}`);
 if (recipes.length < 211) fail(`recipe count regressed: ${recipes.length} < 211 (the 1.1 set)`);
 const samRecipes = recipes.filter((r) => r.inputs.some((i) => i.itemId === "Desc_SAM_C"));
@@ -681,6 +940,55 @@ if (samRecipes.length === 0) fail("no SAM-consuming recipes — the SAM toggle w
 if (!itemIds.has("Desc_FicsiteIngot_C")) fail("Desc_FicsiteIngot_C missing");
 if (!itemIds.has("Desc_SAM_C")) fail("Desc_SAM_C missing");
 if (milestoneTiers.size < 100) fail(`milestone tier coverage regressed: ${milestoneTiers.size} recipes`);
+
+// The hand-authored building tables are the ones nothing upstream used to
+// contradict, so a typo in them reached the app looking exactly like a
+// correct number. Everything below gives the dump the deciding vote.
+for (const id of INCLUDED_BUILDINGS) {
+  const authored = requireEntry(POWER_MW_BY_BUILDING, id, "POWER_MW_BY_BUILDING");
+  const dump = dumpBuilding(id);
+  if (typeof dump.powerUsed === "number") {
+    if (dump.powerUsed !== authored) {
+      fail(`${id} is authored at ${authored} MW but the dump says ${dump.powerUsed} MW`);
+    }
+  } else {
+    const bands = Object.values(dump.powerUsedRecipes ?? {});
+    if (bands.length > 0) {
+      // A variable-draw machine: the authored figure is a chosen point in
+      // the range the dump gives per recipe, so bound it rather than pin it.
+      const low = Math.min(...bands.map((b) => b[0]));
+      const high = Math.max(...bands.map((b) => b[1]));
+      if (authored < low || authored > high) {
+        fail(`${id} is authored at ${authored} MW, outside the dump's ${low}–${high} MW range`);
+      }
+    } else if (authored !== 0) {
+      fail(`${id} is authored at ${authored} MW but the dump gives it no draw at all`);
+    }
+  }
+  checkAuthoredBuildingTier(id, requireEntry(BUILDING_UNLOCK_TIER, id, "BUILDING_UNLOCK_TIER"));
+}
+for (const spec of GENERATOR_SPECS) {
+  if (spec.unlockTier === undefined) continue;
+  checkAuthoredBuildingTier(spec.dumpId, spec.unlockTier);
+}
+
+// A hand pin that the dump can now tier itself is stale, not a fallback —
+// leaving it in means a real signal is being overridden by a guess.
+for (const rid of Object.keys(HAND_TIERS)) {
+  if (!sc.recipesData[rid]) fail(`HAND_TIERS pins ${rid}, which isn't in the dump`);
+  if (milestoneTiers.has(rid)) {
+    fail(`HAND_TIERS pins ${rid}, but the dump's milestones now tier it at ${milestoneTiers.get(rid)}`);
+  }
+}
+
+// Miner marks feed both the resource budget and the extractor draw, and
+// the dump states both per mark — so neither has to be taken on trust.
+for (const m of miners) {
+  const normal = dumpBuilding(m.id).extractionRate?.RP_Normal;
+  if (normal !== m.baseItemsPerMinute) {
+    fail(`${m.id} is authored at ${m.baseItemsPerMinute} ipm but the dump says ${normal}`);
+  }
+}
 // Endgame recipes run in low-tier machines — exactly the case the
 // building-tier fallback gets wrong. Pin a few so a regression in the
 // schematic parsing can't silently demote them.
@@ -703,11 +1011,13 @@ for (const r of recipes) {
 // invariant that would have caught the tier-0-alt bug outright, since every
 // alt whose derivation and carried-tier fixture both came up empty used to
 // default straight to 0 instead of its building's real unlock tier.
-const belowBuildingTier = recipes.filter((r) => r.unlockTier < (BUILDING_UNLOCK_TIER[r.buildingId] ?? 0));
+const belowBuildingTier = recipes.filter(
+  (r) => r.unlockTier < requireEntry(BUILDING_UNLOCK_TIER, r.buildingId, "BUILDING_UNLOCK_TIER"),
+);
 if (belowBuildingTier.length > 0) {
   fail(
     `${belowBuildingTier.length} recipe(s) unlock before their building does: ${belowBuildingTier
-      .map((r) => `${r.id} (tier ${r.unlockTier} < ${r.buildingId} tier ${BUILDING_UNLOCK_TIER[r.buildingId] ?? 0})`)
+      .map((r) => `${r.id} (tier ${r.unlockTier} < ${r.buildingId} tier ${BUILDING_UNLOCK_TIER[r.buildingId]})`)
       .join(", ")}`,
   );
 }
@@ -718,6 +1028,29 @@ const zeroTierAlts = recipes.filter((r) => r.isAlt && r.unlockTier === 0);
 if (zeroTierAlts.length > 0) {
   fail(`${zeroTierAlts.length} alt recipe(s) landed at tier 0: ${zeroTierAlts.map((r) => r.id).join(", ")}`);
 }
+// Burning a fuel rod is the only source of nuclear waste in the game, so
+// without these byproducts the plutonium branch — Plutonium Pellet,
+// Encased Plutonium Cell, Non-Fissile Uranium, Ficsonium and the Space
+// Elevator parts behind them — has nothing to ground out against and the
+// planner refuses every target in it.
+const nuclearGen = generators.find((g) => g.id === "Build_GeneratorNuclear_C");
+if (!nuclearGen) fail("the Nuclear Power Plant is missing from the generator list");
+for (const [fuelItemId, wasteItemId] of [
+  ["Desc_NuclearFuelRod_C", "Desc_NuclearWaste_C"],
+  ["Desc_PlutoniumFuelRod_C", "Desc_PlutoniumWaste_C"],
+]) {
+  const fuel = nuclearGen.fuels.find((f) => f.fuelItemId === fuelItemId);
+  if (!fuel) fail(`the Nuclear Power Plant no longer burns ${fuelItemId}`);
+  if (fuel.byproductItemId !== wasteItemId) {
+    fail(`${fuelItemId} should leave ${wasteItemId} behind, got ${fuel.byproductItemId ?? "nothing"}`);
+  }
+}
+for (const wasteItemId of ["Desc_NuclearWaste_C", "Desc_PlutoniumWaste_C"]) {
+  if (!recipes.some((r) => r.outputs.some((o) => o.itemId === wasteItemId))) {
+    fail(`no recipe produces ${wasteItemId} — the plutonium branch would be unplannable`);
+  }
+}
+
 if (spaceElevatorPhases.length !== 5) fail(`expected 5 Space Elevator phases, got ${spaceElevatorPhases.length}`);
 for (const ph of spaceElevatorPhases) {
   if (ph.parts.length === 0) fail(`Space Elevator phase ${ph.phase} has no parts`);

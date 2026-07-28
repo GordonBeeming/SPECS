@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use tauri::State;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -8,14 +10,16 @@ use crate::shared::error::{AppError, AppResult};
 use crate::shared::gamedata::GameData;
 
 use super::domain::{
-    BudgetAssumption, allowed_extractors, extractor_output_ipm, resource_budget,
-    tier_eligible_extractors, water_group_output_ipm,
+    BudgetAssumption, WATER_PUMP_IPM, allowed_extractors, extractor_deliverable_ipm,
+    resource_budget, tier_eligible_extractors, water_group_output_ipm,
+    well_clock_reconciliation, well_satellite_node_ids,
 };
 use super::dto::{
     ResourceBudget, ResourceNodeClaim, ResourceNodeRow, SetNodeClaimInput,
     SetWaterExtractorGroupInput, WaterExtractorGroup,
 };
 use super::repo;
+use super::repo::ClaimRow;
 
 fn now_iso() -> String {
     OffsetDateTime::now_utc()
@@ -30,6 +34,32 @@ fn require_active(
         .snapshot()
         .ok_or_else(|| AppError::Invalid("no active playthrough".into()))?;
     Ok(db)
+}
+
+/// Loads every claim and, if any well's satellites disagree on clock,
+/// heals them back into agreement first (see `well_clock_reconciliation`
+/// for why "agreement" means "the highest one"). Every command in this
+/// slice that reads claims goes through this rather than
+/// `repo::claims_all` directly, so a save from before satellites shared
+/// a clock self-heals the first time it's read here instead of staying
+/// silently split — and so this command's own numbers can't disagree
+/// with what it just wrote back to disk.
+fn load_reconciled_claims(
+    db: &PlaythroughDb,
+    game_data: &GameData,
+) -> AppResult<HashMap<String, ClaimRow>> {
+    let mut claims = db.with(|c| repo::claims_all(c).map_err(AppError::from))?;
+    let corrections = well_clock_reconciliation(&claims, game_data);
+    if !corrections.is_empty() {
+        let now = now_iso();
+        db.with(|c| repo::claims_set_clocks(c, &corrections, &now).map_err(AppError::from))?;
+        for (node_id, clock) in &corrections {
+            if let Some(claim) = claims.get_mut(node_id) {
+                claim.clock_pct = *clock;
+            }
+        }
+    }
+    Ok(claims)
 }
 
 fn validate_clock(clock_pct: f32) -> AppResult<()> {
@@ -56,7 +86,7 @@ fn list_resource_nodes_impl(
     db: &PlaythroughDb,
     game_data: &GameData,
 ) -> AppResult<Vec<ResourceNodeRow>> {
-    let claims = db.with(|c| repo::claims_all(c).map_err(AppError::from))?;
+    let claims = load_reconciled_claims(db, game_data)?;
     let (current_tier, _progress) = db.with(|c| {
         crate::features::playthrough::repo::progress_get(c).map_err(AppError::from)
     })?;
@@ -74,8 +104,17 @@ fn list_resource_nodes_impl(
                 "Desc_Geyser_C" => "Geothermal Vent".to_string(),
                 other => other.to_string(),
             });
+        // Deliverable, not theoretical: this row's rate is summed into
+        // the Resources screen's per-resource total and read as "what
+        // this node gives me", the same question the factory ledger's
+        // supply chip answers — the two must not print different
+        // numbers for the same claim. The gap between the two figures
+        // is what the row's own "over port cap" chip states, sourced
+        // from `ClaimOverPortCapacity`, so nothing goes unexplained.
         let ipm = claim_row
-            .map(|c| extractor_output_ipm(node, c.miner_id.as_deref(), c.clock_pct, game_data))
+            .map(|c| {
+                extractor_deliverable_ipm(node, c.miner_id.as_deref(), c.clock_pct, tier, game_data)
+            })
             .unwrap_or(0.0);
         // Family truth, unfiltered — `claim_invalid_extractor` must stay
         // about "wrong building for this node", not "not unlocked yet",
@@ -145,6 +184,15 @@ pub fn set_node_claim(
     game_data: State<GameData>,
     input: SetNodeClaimInput,
 ) -> AppResult<()> {
+    let db = require_active(&active)?;
+    set_node_claim_impl(&db, &game_data, input)
+}
+
+fn set_node_claim_impl(
+    db: &PlaythroughDb,
+    game_data: &GameData,
+    input: SetNodeClaimInput,
+) -> AppResult<()> {
     validate_clock(input.clock_pct)?;
     // Validate node id against the catalog so a typo doesn't silently
     // create an orphan row.
@@ -158,7 +206,7 @@ pub fn set_node_claim(
         // The picker options and this check come from the same function,
         // so a wrong-picker bug surfaces as an error here instead of
         // producing a silently wrong rate later.
-        let allowed = allowed_extractors(node, &game_data);
+        let allowed = allowed_extractors(node, game_data);
         if allowed.is_empty() {
             return Err(AppError::Invalid(
                 "geysers feed geothermal generators — track them in the power slice".into(),
@@ -172,10 +220,19 @@ pub fn set_node_claim(
             )));
         }
     }
-    let db = require_active(&active)?;
     let now = now_iso();
     let trimmed_notes = input.notes.as_deref().map(str::trim).map(str::to_string);
     let trimmed_factory = input.factory_id.as_deref().map(str::trim).map(str::to_string);
+    // A well has one Pressuriser and therefore one clock: whichever
+    // satellite this write targets, every other claimed satellite of
+    // the same well cascades to the same clock in the same
+    // transaction, so two satellites can never disagree the moment
+    // either one is edited (see `well_clock_reconciliation` for the
+    // read-side heal of saves from before this cascade existed).
+    let sibling_ids: Vec<String> = well_satellite_node_ids(node, game_data)
+        .into_iter()
+        .filter(|id| id != &input.node_id)
+        .collect();
     db.with(|c| {
         repo::claim_upsert(
             c,
@@ -186,7 +243,13 @@ pub fn set_node_claim(
             trimmed_notes.as_deref(),
             &now,
         )
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+        if !sibling_ids.is_empty() {
+            let corrections: Vec<(String, f32)> =
+                sibling_ids.iter().map(|id| (id.clone(), input.clock_pct)).collect();
+            repo::claims_set_clocks(c, &corrections, &now).map_err(AppError::from)?;
+        }
+        Ok(())
     })
 }
 
@@ -200,7 +263,7 @@ pub fn get_resource_budget(
     assumption: Option<BudgetAssumption>,
 ) -> AppResult<ResourceBudget> {
     let db = require_active(&active)?;
-    let claims = db.with(|c| repo::claims_all(c).map_err(AppError::from))?;
+    let claims = load_reconciled_claims(&db, &game_data)?;
     let (current_tier, _progress) = db.with(|c| {
         crate::features::playthrough::repo::progress_get(c).map_err(AppError::from)
     })?;
@@ -242,6 +305,20 @@ fn group_to_dto(row: repo::WaterGroupRow) -> WaterExtractorGroup {
         created_at: row.created_at,
         updated_at: row.updated_at,
     }
+}
+
+/// One Water Extractor's output at 100% clock, so the group editor can
+/// preview an unsaved bank without a second copy of the rate.
+///
+/// The saved figure comes back on `WaterExtractorGroup.output_ipm`, but
+/// the editor is live: it has to show what the numbers currently in its
+/// inputs would produce, before there's a row to compute from. Sending
+/// the per-pump rate is the smallest thing that keeps the preview and
+/// the persisted total on one number — a literal in the editor is a
+/// form that previews one figure and saves another.
+#[tauri::command]
+pub fn water_pump_ipm() -> AppResult<f32> {
+    Ok(WATER_PUMP_IPM)
 }
 
 #[tauri::command]
@@ -424,10 +501,49 @@ mod tests {
             !row.claim_invalid_extractor,
             "an above-tier but same-family claim isn't an invalid extractor"
         );
-        // The stored claim's real rate still shows (Mk2 @ Normal = 120
-        // ipm) — the picker's narrowed options don't retroactively
-        // change what's already built.
-        assert!((row.items_per_minute - 120.0).abs() < 0.01);
+        // The row reports what the node delivers, and at Tier 0 the only
+        // belt is Mk1 at 60/min — the Mk2's 120 can't leave the port.
+        // The picker's narrowed options still don't retroactively change
+        // what's already built: the extractor is honoured (a Mk1 claim
+        // here would read 60 too, but from 60 produced, not from a cap),
+        // and validation reports both the above-tier building and the
+        // over-port clock separately.
+        assert!(
+            (row.items_per_minute - 60.0).abs() < 0.01,
+            "got {}",
+            row.items_per_minute
+        );
+    }
+
+    #[test]
+    fn list_resource_nodes_reports_the_deliverable_rate_and_lifts_it_as_belts_unlock() {
+        // A Mk2 miner on Normal iron is 120/min of arithmetic. At Tier 1
+        // the only belt is Mk1's 60/min, so that's what the row shows;
+        // Mk2 belts land at Tier 2 and let the same claim through in
+        // full. The row's rate is summed into the Resources screen's
+        // per-resource total and read as supply, so it has to agree with
+        // the factory ledger's figure for the same claim rather than
+        // quoting the clock rate.
+        let gd = GameData::from_bundled().unwrap();
+        let iron = gd
+            .nodes()
+            .iter()
+            .find(|n| {
+                n.resource_item_id == "Desc_OreIron_C"
+                    && n.purity == crate::shared::gamedata::types::NodePurity::Normal
+            })
+            .unwrap();
+        let rate_at = |tier: i64| {
+            let db = open_test_db(tier);
+            db.with(|c| {
+                repo::claim_upsert(c, &iron.id, Some("Build_MinerMk2_C"), 100.0, None, None, "n")
+            })
+            .unwrap();
+            let rows = list_resource_nodes_impl(&db, &gd).unwrap();
+            rows.iter().find(|r| r.id == iron.id).unwrap().items_per_minute
+        };
+        assert!((rate_at(1) - 60.0).abs() < 0.01, "got {}", rate_at(1));
+        assert!((rate_at(2) - 120.0).abs() < 0.01, "got {}", rate_at(2));
     }
 
     #[test]
@@ -494,5 +610,137 @@ mod tests {
             "a tier-eligible stored extractor must not be duplicated: {:?}",
             row.allowed_extractors
         );
+    }
+
+    // ---------- well shared-clock tests (#95) ----------
+
+    fn bundled_well_satellites(gd: &GameData, min_count: usize) -> Vec<crate::shared::gamedata::types::MapNode> {
+        let core_groups: HashMap<String, Vec<&crate::shared::gamedata::types::MapNode>> = gd
+            .nodes()
+            .iter()
+            .filter(|n| n.kind == NodeKind::FrackingWell && n.core_id.is_some())
+            .fold(HashMap::new(), |mut acc, n| {
+                acc.entry(n.core_id.clone().unwrap()).or_default().push(n);
+                acc
+            });
+        core_groups
+            .into_values()
+            .find(|group| group.len() >= min_count)
+            .expect("bundled map data has a well with enough satellites for this test")
+            .into_iter()
+            .cloned()
+            .collect()
+    }
+
+    #[test]
+    fn set_node_claim_cascades_the_new_clock_onto_claimed_sibling_satellites() {
+        // #95's exact reproduction, driven through the write path: claim
+        // two satellites of the same well at 50% and 100%, then edit the
+        // 50% one to 150% — the 100% one must follow, not stay behind.
+        let gd = GameData::from_bundled().unwrap();
+        let sats = bundled_well_satellites(&gd, 2);
+        let db = open_test_db(9);
+        set_node_claim_impl(
+            &db,
+            &gd,
+            SetNodeClaimInput {
+                node_id: sats[0].id.clone(),
+                miner_id: Some("Build_FrackingExtractor_C".into()),
+                clock_pct: 50.0,
+                factory_id: None,
+                notes: None,
+            },
+        )
+        .unwrap();
+        set_node_claim_impl(
+            &db,
+            &gd,
+            SetNodeClaimInput {
+                node_id: sats[1].id.clone(),
+                miner_id: Some("Build_FrackingExtractor_C".into()),
+                clock_pct: 100.0,
+                factory_id: None,
+                notes: None,
+            },
+        )
+        .unwrap();
+        let claims = db.with(|c| repo::claims_all(c)).unwrap();
+        assert!((claims[&sats[0].id].clock_pct - 100.0).abs() < 0.01, "claiming the second satellite must pull the first up to match");
+        assert!((claims[&sats[1].id].clock_pct - 100.0).abs() < 0.01);
+
+        // Editing satellite 0 back up to 150% must cascade to satellite 1.
+        set_node_claim_impl(
+            &db,
+            &gd,
+            SetNodeClaimInput {
+                node_id: sats[0].id.clone(),
+                miner_id: Some("Build_FrackingExtractor_C".into()),
+                clock_pct: 150.0,
+                factory_id: None,
+                notes: None,
+            },
+        )
+        .unwrap();
+        let claims = db.with(|c| repo::claims_all(c)).unwrap();
+        assert!((claims[&sats[0].id].clock_pct - 150.0).abs() < 0.01);
+        assert!(
+            (claims[&sats[1].id].clock_pct - 150.0).abs() < 0.01,
+            "a satellite not directly edited must still follow the well's one clock"
+        );
+    }
+
+    #[test]
+    fn set_node_claim_cascade_leaves_unclaimed_siblings_alone() {
+        // A well can have satellites the player hasn't claimed yet —
+        // cascading a clock onto a node with no claim row must not
+        // create one (that would silently "claim" a node the player
+        // never touched).
+        let gd = GameData::from_bundled().unwrap();
+        let sats = bundled_well_satellites(&gd, 2);
+        let db = open_test_db(9);
+        set_node_claim_impl(
+            &db,
+            &gd,
+            SetNodeClaimInput {
+                node_id: sats[0].id.clone(),
+                miner_id: Some("Build_FrackingExtractor_C".into()),
+                clock_pct: 100.0,
+                factory_id: None,
+                notes: None,
+            },
+        )
+        .unwrap();
+        let claims = db.with(|c| repo::claims_all(c)).unwrap();
+        assert_eq!(claims.len(), 1, "the unclaimed sibling must not gain a row");
+    }
+
+    #[test]
+    fn list_resource_nodes_self_heals_a_well_whose_satellites_disagree() {
+        // Simulates a save from before satellites shared a clock: write
+        // straight to the repo layer (bypassing the cascade) so two
+        // satellites of one well disagree, then confirm the very next
+        // list call both reports and persists agreement.
+        let gd = GameData::from_bundled().unwrap();
+        let sats = bundled_well_satellites(&gd, 2);
+        let db = open_test_db(9);
+        db.with(|c| {
+            repo::claim_upsert(c, &sats[0].id, Some("Build_FrackingExtractor_C"), 50.0, None, None, "n").unwrap();
+            repo::claim_upsert(c, &sats[1].id, Some("Build_FrackingExtractor_C"), 100.0, None, None, "n").unwrap();
+        });
+        let rows = list_resource_nodes_impl(&db, &gd).unwrap();
+        let clock_of = |id: &str| {
+            rows.iter()
+                .find(|r| r.id == id)
+                .and_then(|r| r.claim.as_ref())
+                .map(|c| c.clock_pct)
+                .unwrap()
+        };
+        assert!((clock_of(&sats[0].id) - 100.0).abs() < 0.01, "the low satellite must heal up to the well's clock");
+        assert!((clock_of(&sats[1].id) - 100.0).abs() < 0.01);
+        // The heal is persisted, not just patched in the response — a
+        // second, independent read must agree without going through
+        // `list_resource_nodes_impl` again.
+        let persisted = db.with(|c| repo::claims_all(c)).unwrap();
+        assert!((persisted[&sats[0].id].clock_pct - 100.0).abs() < 0.01);
     }
 }

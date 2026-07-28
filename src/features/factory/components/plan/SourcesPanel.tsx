@@ -28,7 +28,7 @@ import { invoke } from "@/shared/tauri/invoke";
 import { Icon } from "@/shared/ui/Icon";
 import { warningLine } from "./PlanWarningsBanner";
 import { RaiseTally } from "./RaiseTally";
-import { isReportable, rate } from "./rates";
+import { FLOW_EPS, isReportable, rate } from "@/shared/format/rates";
 
 export interface SourcesPanelProps {
   factoryId: string;
@@ -238,17 +238,17 @@ export function SourcesPanel({
   // Grouped add-list: spare already covers the need / makes enough but
   // exports none of it / would have to build more.
   const coverers = visibleOffers.filter(
-    (o) => (o.product?.remainingIpm ?? 0) >= totalIpm - 1e-3,
+    (o) => (o.product?.remainingIpm ?? 0) >= totalIpm - FLOW_EPS,
   );
   const exportables = visibleOffers.filter(
     (o) =>
-      (o.product?.remainingIpm ?? 0) < totalIpm - 1e-3 &&
-      (o.product?.spareIpm ?? 0) >= totalIpm - 1e-3,
+      (o.product?.remainingIpm ?? 0) < totalIpm - FLOW_EPS &&
+      (o.product?.spareIpm ?? 0) >= totalIpm - FLOW_EPS,
   );
   const shortExporters = visibleOffers.filter(
     (o) =>
-      (o.product?.remainingIpm ?? 0) < totalIpm - 1e-3 &&
-      (o.product?.spareIpm ?? 0) < totalIpm - 1e-3,
+      (o.product?.remainingIpm ?? 0) < totalIpm - FLOW_EPS &&
+      (o.product?.spareIpm ?? 0) < totalIpm - FLOW_EPS,
   );
   const exporterIds = new Set(itemOffers.map((o) => o.factoryId));
   const otherFactories = allFactories.filter(
@@ -280,10 +280,21 @@ export function SourcesPanel({
     const remaining = o.product?.remainingIpm ?? 0;
     const spare = o.product?.spareIpm ?? 0;
     const produced = o.product?.producedIpm ?? 0;
+    // Whether `raiseExportTarget` can succeed at all — false for an
+    // intermediate, which has no plan target for Raise to reach. The
+    // rates can't stand in for this: a zero `producedIpm` happens to
+    // mean "no target" today, but a partial-surplus intermediate looks
+    // identical to a small target by the numbers alone.
+    const hasTarget = o.product?.hasTarget ?? true;
     const exportsNone = (o.product?.exportIpm ?? 0) <= 0;
-    const covers = remaining >= totalIpm - 1e-3;
+    const covers = remaining >= totalIpm - FLOW_EPS;
     // Its machines already make enough; only the export slice is shut.
-    const justNeedsExporting = !covers && spare >= totalIpm - 1e-3;
+    // Gated on `hasTarget` too — for an intermediate `exportIpm` always
+    // equals `producedIpm`, so this reads mathematically unreachable
+    // today, but that's an invariant of today's DTO construction, not
+    // one the type system pins. Nothing here should fire a raise
+    // without a target to raise.
+    const canOpenViaExport = !covers && spare >= totalIpm - FLOW_EPS && hasTarget;
     const isPending = raising(o.factoryId);
     return (
       <li key={o.factoryId}>
@@ -291,7 +302,7 @@ export function SourcesPanel({
           className={`rounded-md border ${
             covers
               ? "border-border hover:border-accent"
-              : justNeedsExporting
+              : canOpenViaExport
                 ? "border-primary/40"
                 : "border-warning/40"
           }`}
@@ -300,7 +311,7 @@ export function SourcesPanel({
             type="button"
             disabled={raiseTarget.isPending}
             onClick={() => {
-              if (justNeedsExporting) {
+              if (canOpenViaExport) {
                 // One gesture: open the slice, then take the source.
                 raiseTarget.mutate({
                   exporterFactoryId: o.factoryId,
@@ -326,9 +337,13 @@ export function SourcesPanel({
             {exportsNone ? (
               <span
                 className="shrink-0 tabular-nums text-fg-muted"
-                title={`Makes ${rate(produced)} · none of it offered for export yet`}
+                title={
+                  hasTarget
+                    ? `Makes ${rate(produced)} · none of it offered for export yet`
+                    : "Makes it, but its own steps use every bit — nothing spare right now"
+                }
               >
-                {rate(spare)} spare
+                {hasTarget ? `${rate(spare)} spare` : "nothing spare"}
               </span>
             ) : (
               <span
@@ -341,7 +356,7 @@ export function SourcesPanel({
               </span>
             )}
           </button>
-          {justNeedsExporting && (
+          {canOpenViaExport && (
             <div className="flex items-center gap-1.5 border-t border-primary/30 px-2 py-1 text-[10px] text-fg-muted">
               {isPending ? (
                 <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
@@ -354,7 +369,7 @@ export function SourcesPanel({
               </span>
             </div>
           )}
-          {!covers && !justNeedsExporting && (
+          {!covers && !canOpenViaExport && hasTarget && (
             <div className="flex items-center justify-between gap-2 border-t border-warning/30 px-2 py-1">
               <span className="min-w-0 truncate text-[10px] text-fg-muted">
                 Needs {rate(totalIpm - spare)} more
@@ -375,6 +390,21 @@ export function SourcesPanel({
                 )}
                 Raise target
               </button>
+            </div>
+          )}
+          {/* No plan target exists to raise here — same reasoning as
+              the "doesn't make this yet" row further down: saying so
+              beats an action that fails on click. Split zero from
+              partial: one has nothing to give, the other has some, just
+              not enough — different sentences. */}
+          {!covers && !canOpenViaExport && !hasTarget && spare <= FLOW_EPS && (
+            <div className="flex items-center gap-1.5 border-t border-border px-2 py-1 text-[10px] text-fg-muted">
+              Used up internally right now — nothing to take.
+            </div>
+          )}
+          {!covers && !canOpenViaExport && !hasTarget && spare > FLOW_EPS && (
+            <div className="flex items-center gap-1.5 border-t border-border px-2 py-1 text-[10px] text-fg-muted">
+              Has {rate(spare)} spare, not enough on its own — the rest needs another source.
             </div>
           )}
         </div>
@@ -564,17 +594,23 @@ export function SourcesPanel({
             // that only helps if every other row is raised too.
             const needed = supplying + unassignedIpm;
             const shortHere = sourceId !== null && isReportable(unassignedIpm);
+            // Whether raising this source can succeed at all — see the
+            // add-source list for why the rates can't stand in for it.
+            const hasTarget = product?.hasTarget ?? true;
             // Its machines already make enough; the export slice is the
             // only thing in the way, so this costs the exporter nothing.
             // `spare` has this factory's own draw taken out of it, so it
             // goes back in before comparing against what we're asking
-            // it to send us.
-            const justNeedsExporting =
-              product !== null && product.spareIpm + supplying >= needed - 1e-3;
+            // it to send us. Gated on `hasTarget` too — nothing here
+            // should offer to raise a source that has no target.
+            const canOpenViaExport =
+              product !== null &&
+              product.spareIpm + supplying >= needed - FLOW_EPS &&
+              hasTarget;
             // An explicit cap the raise would otherwise be powerless
             // against — lifting the exporter's target does nothing while
             // this row refuses to take more than the old number.
-            const bindingCap = src.ipmCap !== null && src.ipmCap < needed - 1e-3;
+            const bindingCap = src.ipmCap !== null && src.ipmCap < needed - FLOW_EPS;
             const isPending = sourceId !== null && raising(sourceId);
             return (
               <li key={src.index} className="rounded-md border border-border">
@@ -622,6 +658,7 @@ export function SourcesPanel({
                     value={src.ipmCap ?? ""}
                     placeholder="cap"
                     aria-label="Source cap per minute"
+                    title="Cap how much this source sends — empty pulls as much as it's able to spare"
                     onChange={(e) => {
                       const v = e.target.value === "" ? null : Number(e.target.value);
                       onSetCap(itemId, src.index, v !== null && Number.isFinite(v) && v > 0 ? v : null);
@@ -661,7 +698,23 @@ export function SourcesPanel({
                     </button>
                   </div>
                 )}
-                {shortHere && sourceId !== null && product !== null && (
+                {/* No plan target exists on a source without one, so
+                    there's nothing for Raise to reach — same reasoning
+                    as the "doesn't make this yet" row above: saying so
+                    beats an action that fails on click. Split zero from
+                    partial spare, same as the add-source list. */}
+                {shortHere && sourceId !== null && product !== null && !hasTarget && product.spareIpm <= FLOW_EPS && (
+                  <div className="flex items-center gap-1.5 border-t border-border px-2 py-1 text-[10px] text-fg-muted">
+                    Used up internally right now — nothing to take.
+                  </div>
+                )}
+                {shortHere && sourceId !== null && product !== null && !hasTarget && product.spareIpm > FLOW_EPS && (
+                  <div className="flex items-center gap-1.5 border-t border-border px-2 py-1 text-[10px] text-fg-muted">
+                    Has {rate(product.spareIpm)} spare, not enough on its own — the rest needs
+                    another source.
+                  </div>
+                )}
+                {shortHere && sourceId !== null && product !== null && hasTarget && (
                   <div className="flex items-center justify-between gap-2 border-t border-warning/30 px-2 py-1">
                     <span className="min-w-0 truncate text-[10px] text-fg-muted">
                       {product.exportIpm <= 0
@@ -680,7 +733,7 @@ export function SourcesPanel({
                         raiseTarget.mutate({ exporterFactoryId: sourceId, neededIpm: needed });
                       }}
                       title={`${
-                        justNeedsExporting ? "Open" : "Raise"
+                        canOpenViaExport ? "Open" : "Raise"
                       } ${factoryNames.get(sourceId) ?? sourceId}'s ${itemName} export to ${rate(
                         needed,
                       )} — what it sends you now plus the ${rate(unassignedIpm)} nothing covers${
@@ -690,12 +743,12 @@ export function SourcesPanel({
                     >
                       {isPending ? (
                         <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : justNeedsExporting ? (
+                      ) : canOpenViaExport ? (
                         <Upload className="h-3 w-3" />
                       ) : (
                         <TrendingUp className="h-3 w-3" />
                       )}
-                      {justNeedsExporting ? "Export it" : "Raise target"}
+                      {canOpenViaExport ? "Export it" : "Raise target"}
                     </button>
                   </div>
                 )}

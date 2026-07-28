@@ -68,6 +68,19 @@ pub fn library_transport_vehicles(
     Ok(game_data.transport_vehicles().to_vec())
 }
 
+/// The items the game only sources from extractors, wells and vents.
+///
+/// Every chain walk on either side of the IPC boundary terminates on
+/// this set — it's what "you can't make this, you mine it" means. The
+/// frontend's raw-demand trace needs the same answer the planner used,
+/// and a second hand-written list of the same ids is the one duplicate
+/// nothing would fail on: the two walks would just quietly stop at
+/// different depths and report different raw totals for one factory.
+#[tauri::command]
+pub fn library_extracted_resources(game_data: State<GameData>) -> AppResult<Vec<String>> {
+    Ok(game_data.extracted_resources().iter().map(|s| s.to_string()).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,5 +128,39 @@ mod tests {
         out.sort_by_key(|b| b.mark);
         let marks: Vec<u8> = out.iter().map(|b| b.mark).collect();
         assert_eq!(marks, vec![1, 2, 3, 4, 5, 6]);
+    }
+
+    /// The frontend's raw-demand trace terminates on whatever this
+    /// command ships, and the planner terminates on
+    /// `is_extracted_resource`. Adding an id to one and not the other
+    /// would fail nothing at runtime — the two walks would just stop at
+    /// different depths — so the agreement is asserted here instead.
+    #[test]
+    fn extracted_resources_command_agrees_with_the_predicate() {
+        let gd = gd();
+        let shipped: Vec<String> = gd.extracted_resources().iter().map(|s| s.to_string()).collect();
+        for id in &shipped {
+            assert!(gd.is_extracted_resource(id), "{id} shipped but not extracted");
+        }
+        for item in gd.items() {
+            assert_eq!(
+                gd.is_extracted_resource(&item.id),
+                shipped.contains(&item.id),
+                "{} disagrees between the predicate and the shipped list",
+                item.id
+            );
+        }
+        // Every id has to name something the dataset knows about, or a
+        // typo would sit in the set doing nothing until the resource it
+        // meant to ground out started recursing. `Desc_Geyser_C` is the
+        // deliberate exception: geysers feed power rather than item
+        // flow, so their placeholder is a node id with no item behind
+        // it (see `MapNode::resource_item_id`).
+        for id in &shipped {
+            assert!(
+                gd.item(id).is_some() || gd.nodes().iter().any(|n| &n.resource_item_id == id),
+                "{id} names neither a dataset item nor a map node's resource"
+            );
+        }
     }
 }

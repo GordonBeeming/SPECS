@@ -1,4 +1,5 @@
 import type { PlanWarning } from "@/features/planner/types";
+import type { Purity } from "@/features/resources/types";
 
 export type Severity = "error" | "warning";
 
@@ -150,9 +151,10 @@ export type FindingKind =
       nodeId: string;
       resourceItemName: string;
       /** Position within this node's (resource, purity) bucket — pairs
-       * with `nodeX`/`nodeY` to reproduce the Resources screen's
-       * "#N · 1.7km W · 1.5km N" label. */
+       * with `nodePurity` and `nodeX`/`nodeY` to reproduce the Resources
+       * screen's "#P1 · 1.7km W · 1.5km N" label. */
       nodeIndex: number;
+      nodePurity: Purity;
       nodeX: number;
       nodeY: number;
       extractorName: string;

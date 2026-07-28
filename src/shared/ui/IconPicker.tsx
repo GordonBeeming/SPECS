@@ -18,7 +18,17 @@ interface IconPickerProps {
    * a slice of ids is sensible (e.g. only buildings).
    */
   pool?: string[];
+  /**
+   * Id → display name, for search and grid titles. This is a branded
+   * primitive under `shared/ui`, so it doesn't fetch game data itself —
+   * the caller (which already has the item/building lookups) supplies
+   * this. Ids with no entry fall back to the raw id, same as the
+   * `<Icon>` primitive's own fallback.
+   */
+  nameById?: Map<string, string>;
 }
+
+const EMPTY_NAMES = new Map<string, string>();
 
 /**
  * Visual picker for `Desc_*_C` / `Build_*_C` icons. Surfaces the bundled
@@ -27,8 +37,20 @@ interface IconPickerProps {
  * The "no icon" pill clears the selection — the consumer is expected to
  * fall back to its own glyph when value is null.
  */
-export function IconPicker({ value, onChange, suggested = [], pool }: IconPickerProps) {
+export function IconPicker({
+  value,
+  onChange,
+  suggested = [],
+  pool,
+  nameById = EMPTY_NAMES,
+}: IconPickerProps) {
   const [query, setQuery] = useState("");
+
+  // Every bundled icon is a game-data item or building id, but the grid
+  // is keyed by the internal class name (`Desc_IronPlate_C`), which is
+  // meaningless to search by. Resolve to display names so typing "Iron
+  // Plate" finds what typing "IronPlate" already could.
+  const displayName = (id: string): string => nameById.get(id) ?? id;
 
   const everything = useMemo(() => {
     if (pool) return pool;
@@ -47,8 +69,12 @@ export function IconPicker({ value, onChange, suggested = [], pool }: IconPicker
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (q.length === 0) return everything;
-    return everything.filter((id) => id.toLowerCase().includes(q));
-  }, [query, everything]);
+    // Match on the display name first — that's what a player types —
+    // and keep the class name as a fallback so pasting an id still works.
+    return everything.filter(
+      (id) => displayName(id).toLowerCase().includes(q) || id.toLowerCase().includes(q),
+    );
+  }, [query, everything, nameById]);
 
   // De-dupe suggested → main grid so the same icon doesn't appear twice.
   const suggestedSet = new Set(suggested);
@@ -86,7 +112,7 @@ export function IconPicker({ value, onChange, suggested = [], pool }: IconPicker
           <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-fg-muted">
             Suggested
           </div>
-          <Grid value={value} onChange={onChange} ids={suggested} />
+          <Grid value={value} onChange={onChange} ids={suggested} nameById={nameById} />
         </div>
       )}
 
@@ -96,7 +122,7 @@ export function IconPicker({ value, onChange, suggested = [], pool }: IconPicker
             All icons
           </div>
         )}
-        <Grid value={value} onChange={onChange} ids={restOfGrid} />
+        <Grid value={value} onChange={onChange} ids={restOfGrid} nameById={nameById} />
         {restOfGrid.length === 0 && (
           <div className="rounded-md border border-dashed border-border p-3 text-center text-xs text-fg-muted">
             No icons match "{query}".
@@ -111,20 +137,23 @@ function Grid({
   value,
   onChange,
   ids,
+  nameById,
 }: {
   value: string | null;
   onChange: (next: string | null) => void;
   ids: string[];
+  nameById: Map<string, string>;
 }) {
   return (
     <div className="grid grid-cols-8 gap-1">
       {ids.map((id) => {
         const picked = id === value;
+        const name = nameById.get(id) ?? id;
         return (
           <button
             key={id}
             type="button"
-            title={id}
+            title={name}
             onClick={() => onChange(id)}
             className={`flex h-10 w-10 items-center justify-center rounded-md border transition-colors ${
               picked
@@ -132,7 +161,7 @@ function Grid({
                 : "border-border bg-bg hover:border-primary/50 hover:bg-border/40"
             }`}
           >
-            <Icon itemId={id} alt={id} className="h-7 w-7" />
+            <Icon itemId={id} alt={name} className="h-7 w-7" />
           </button>
         );
       })}
