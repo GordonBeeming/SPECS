@@ -80,7 +80,7 @@ function invalidate(client: ReturnType<typeof useQueryClient>) {
   // explicitly — this only refetches while something has it mounted
   // (React Query skips inactive queries), so it's a no-op everywhere
   // else.
-  client.invalidateQueries({ queryKey: ["validation-sweep"] });
+  client.invalidateQueries({ queryKey: queryKeys.validation.sweep });
 }
 
 export function useSetNodeClaim() {

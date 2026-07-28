@@ -57,4 +57,7 @@ export const queryKeys = {
   elevator: {
     overview: ["elevator", "overview"] as const,
   },
+  validation: {
+    sweep: ["validation", "sweep"] as const,
+  },
 };

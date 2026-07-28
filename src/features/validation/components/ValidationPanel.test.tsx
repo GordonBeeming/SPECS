@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 
 import { ValidationPanel } from "./ValidationPanel";
 import { validationApi } from "../api";
+import { playthroughApi } from "@/features/playthrough/api";
 import { useNavStore } from "@/shared/nav-store";
 import type { ValidationReport } from "../types";
 
@@ -71,6 +72,12 @@ function renderWithProviders(node: ReactNode) {
 
 beforeEach(() => {
   useNavStore.setState({ pendingFactoryId: null, pendingRoute: null });
+  // useValidation now gates on an open playthrough (the sweep is
+  // playthrough-scoped), so every test needs one in the cache.
+  vi.spyOn(playthroughApi, "current").mockResolvedValue({
+    id: "p", displayName: "Run", gameVersion: "1.2",
+    createdAt: "2026-06-10T00:00:00Z", currentTier: 4, currentMilestoneProgress: 0,
+  });
 });
 
 afterEach(() => vi.restoreAllMocks());

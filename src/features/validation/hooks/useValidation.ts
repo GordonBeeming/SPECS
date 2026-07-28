@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
+import { queryKeys } from "@/shared/query/keys";
+import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { validationApi } from "../api";
 
 /**
@@ -12,12 +14,19 @@ import { validationApi } from "../api";
  * *some* findings (e.g. Resources' port-capacity flag) skip the sweep
  * until it actually has something to read it against, such as an
  * active playthrough.
+ *
+ * The report is scoped to whichever playthrough is open in the backend,
+ * so the cache key is too — same pattern every other per-playthrough
+ * hook uses — otherwise switching playthroughs can briefly serve the
+ * previous run's report.
  */
 export function useValidation(enabled = true) {
+  const playthrough = useCurrentPlaythrough();
+  const ptId = playthrough.data?.id ?? null;
   return useQuery({
-    queryKey: ["validation-sweep"],
+    queryKey: [...queryKeys.validation.sweep, ptId] as const,
     queryFn: validationApi.validate,
-    enabled,
+    enabled: enabled && !!playthrough.data,
     gcTime: 0,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
