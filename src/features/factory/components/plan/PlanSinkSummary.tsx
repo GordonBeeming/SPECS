@@ -2,7 +2,7 @@ import { Recycle } from "lucide-react";
 
 import { Icon } from "@/shared/ui/Icon";
 import type { PlanGraph } from "@/features/planner/types";
-import { isReportable, rate } from "./rates";
+import { isReportable, rate } from "@/shared/format/rates";
 
 /**
  * What this plan throws away, on the way in rather than buried on the

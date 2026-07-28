@@ -148,8 +148,8 @@ function LinkRow({ link, fromName, toName, itemLabel, isFluid, vehicleNames, onE
   // Fluids ride pipes and the planner reports m³/min for them — match that
   // unit in the row so the editor / picker / list all speak the same units.
   const unit = isFluid ? "m³/min" : "ipm";
-  // `link.transportKind` alone reads as "belt" for every mark alike —
-  // the mark is the one figure a belt-cap audit needs (#71). The
+  // `link.transportKind` alone reads as "belt" for every mark alike,
+  // and the mark is the one figure a belt-cap audit needs. The
   // persisted plan JSON carries it; fall back to the bare kind only for
   // a row saved before plan validation existed, where the JSON might
   // not parse.

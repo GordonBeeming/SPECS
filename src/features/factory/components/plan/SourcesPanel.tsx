@@ -28,7 +28,7 @@ import { invoke } from "@/shared/tauri/invoke";
 import { Icon } from "@/shared/ui/Icon";
 import { warningLine } from "./PlanWarningsBanner";
 import { RaiseTally } from "./RaiseTally";
-import { isReportable, rate } from "./rates";
+import { FLOW_EPS, isReportable, rate } from "@/shared/format/rates";
 
 export interface SourcesPanelProps {
   factoryId: string;
@@ -238,17 +238,17 @@ export function SourcesPanel({
   // Grouped add-list: spare already covers the need / makes enough but
   // exports none of it / would have to build more.
   const coverers = visibleOffers.filter(
-    (o) => (o.product?.remainingIpm ?? 0) >= totalIpm - 1e-3,
+    (o) => (o.product?.remainingIpm ?? 0) >= totalIpm - FLOW_EPS,
   );
   const exportables = visibleOffers.filter(
     (o) =>
-      (o.product?.remainingIpm ?? 0) < totalIpm - 1e-3 &&
-      (o.product?.spareIpm ?? 0) >= totalIpm - 1e-3,
+      (o.product?.remainingIpm ?? 0) < totalIpm - FLOW_EPS &&
+      (o.product?.spareIpm ?? 0) >= totalIpm - FLOW_EPS,
   );
   const shortExporters = visibleOffers.filter(
     (o) =>
-      (o.product?.remainingIpm ?? 0) < totalIpm - 1e-3 &&
-      (o.product?.spareIpm ?? 0) < totalIpm - 1e-3,
+      (o.product?.remainingIpm ?? 0) < totalIpm - FLOW_EPS &&
+      (o.product?.spareIpm ?? 0) < totalIpm - FLOW_EPS,
   );
   const exporterIds = new Set(itemOffers.map((o) => o.factoryId));
   const otherFactories = allFactories.filter(
@@ -287,14 +287,14 @@ export function SourcesPanel({
     // identical to a small target by the numbers alone.
     const hasTarget = o.product?.hasTarget ?? true;
     const exportsNone = (o.product?.exportIpm ?? 0) <= 0;
-    const covers = remaining >= totalIpm - 1e-3;
+    const covers = remaining >= totalIpm - FLOW_EPS;
     // Its machines already make enough; only the export slice is shut.
     // Gated on `hasTarget` too — for an intermediate `exportIpm` always
     // equals `producedIpm`, so this reads mathematically unreachable
     // today, but that's an invariant of today's DTO construction, not
     // one the type system pins. Nothing here should fire a raise
     // without a target to raise.
-    const canOpenViaExport = !covers && spare >= totalIpm - 1e-3 && hasTarget;
+    const canOpenViaExport = !covers && spare >= totalIpm - FLOW_EPS && hasTarget;
     const isPending = raising(o.factoryId);
     return (
       <li key={o.factoryId}>
@@ -397,12 +397,12 @@ export function SourcesPanel({
               beats an action that fails on click. Split zero from
               partial: one has nothing to give, the other has some, just
               not enough — different sentences. */}
-          {!covers && !canOpenViaExport && !hasTarget && spare <= 1e-3 && (
+          {!covers && !canOpenViaExport && !hasTarget && spare <= FLOW_EPS && (
             <div className="flex items-center gap-1.5 border-t border-border px-2 py-1 text-[10px] text-fg-muted">
               Used up internally right now — nothing to take.
             </div>
           )}
-          {!covers && !canOpenViaExport && !hasTarget && spare > 1e-3 && (
+          {!covers && !canOpenViaExport && !hasTarget && spare > FLOW_EPS && (
             <div className="flex items-center gap-1.5 border-t border-border px-2 py-1 text-[10px] text-fg-muted">
               Has {rate(spare)} spare, not enough on its own — the rest needs another source.
             </div>
@@ -605,12 +605,12 @@ export function SourcesPanel({
             // should offer to raise a source that has no target.
             const canOpenViaExport =
               product !== null &&
-              product.spareIpm + supplying >= needed - 1e-3 &&
+              product.spareIpm + supplying >= needed - FLOW_EPS &&
               hasTarget;
             // An explicit cap the raise would otherwise be powerless
             // against — lifting the exporter's target does nothing while
             // this row refuses to take more than the old number.
-            const bindingCap = src.ipmCap !== null && src.ipmCap < needed - 1e-3;
+            const bindingCap = src.ipmCap !== null && src.ipmCap < needed - FLOW_EPS;
             const isPending = sourceId !== null && raising(sourceId);
             return (
               <li key={src.index} className="rounded-md border border-border">
@@ -703,12 +703,12 @@ export function SourcesPanel({
                     as the "doesn't make this yet" row above: saying so
                     beats an action that fails on click. Split zero from
                     partial spare, same as the add-source list. */}
-                {shortHere && sourceId !== null && product !== null && !hasTarget && product.spareIpm <= 1e-3 && (
+                {shortHere && sourceId !== null && product !== null && !hasTarget && product.spareIpm <= FLOW_EPS && (
                   <div className="flex items-center gap-1.5 border-t border-border px-2 py-1 text-[10px] text-fg-muted">
                     Used up internally right now — nothing to take.
                   </div>
                 )}
-                {shortHere && sourceId !== null && product !== null && !hasTarget && product.spareIpm > 1e-3 && (
+                {shortHere && sourceId !== null && product !== null && !hasTarget && product.spareIpm > FLOW_EPS && (
                   <div className="flex items-center gap-1.5 border-t border-border px-2 py-1 text-[10px] text-fg-muted">
                     Has {rate(product.spareIpm)} spare, not enough on its own — the rest needs
                     another source.

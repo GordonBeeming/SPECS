@@ -322,7 +322,6 @@ function ClaimEditor({
 function extractorChipLabel(buildingId: string, row: ResourceNodeRow): string {
   const mk = buildingId.match(/^Build_MinerMk(\d)_C$/);
   if (mk) return `Mk${mk[1]}`;
-  if (buildingId === "Build_FrackingSmasher_C") return "Well Extractor";
   return (
     row.allowedExtractors.find((e) => e.id === buildingId)?.name ?? buildingId
   );

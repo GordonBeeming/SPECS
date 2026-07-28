@@ -10,9 +10,9 @@ use crate::shared::error::{AppError, AppResult};
 use crate::shared::gamedata::GameData;
 
 use super::domain::{
-    BudgetAssumption, allowed_extractors, extractor_deliverable_ipm, resource_budget,
-    tier_eligible_extractors, water_group_output_ipm, well_clock_reconciliation,
-    well_satellite_node_ids,
+    BudgetAssumption, WATER_PUMP_IPM, allowed_extractors, extractor_deliverable_ipm,
+    resource_budget, tier_eligible_extractors, water_group_output_ipm,
+    well_clock_reconciliation, well_satellite_node_ids,
 };
 use super::dto::{
     ResourceBudget, ResourceNodeClaim, ResourceNodeRow, SetNodeClaimInput,
@@ -305,6 +305,20 @@ fn group_to_dto(row: repo::WaterGroupRow) -> WaterExtractorGroup {
         created_at: row.created_at,
         updated_at: row.updated_at,
     }
+}
+
+/// One Water Extractor's output at 100% clock, so the group editor can
+/// preview an unsaved bank without a second copy of the rate.
+///
+/// The saved figure comes back on `WaterExtractorGroup.output_ipm`, but
+/// the editor is live: it has to show what the numbers currently in its
+/// inputs would produce, before there's a row to compute from. Sending
+/// the per-pump rate is the smallest thing that keeps the preview and
+/// the persisted total on one number — a literal in the editor is a
+/// form that previews one figure and saves another.
+#[tauri::command]
+pub fn water_pump_ipm() -> AppResult<f32> {
+    Ok(WATER_PUMP_IPM)
 }
 
 #[tauri::command]

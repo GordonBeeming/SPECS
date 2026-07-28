@@ -13,7 +13,11 @@ import {
   useFactoryList,
   useUnsourcedInputs,
 } from "@/features/factory/hooks/useFactories";
-import { useItems, useRecipes } from "@/features/library/hooks/useLibrary";
+import {
+  useExtractedResources,
+  useItems,
+  useRecipes,
+} from "@/features/library/hooks/useLibrary";
 import { TierBadge } from "@/features/library/components/TierBadge";
 import { traceRawDemand } from "@/features/factory/traceRaw";
 import { useLogisticsLinks } from "@/features/logistics/hooks/useLogistics";
@@ -25,6 +29,7 @@ import {
   useSetNodeClaim,
   useSetWaterGroup,
   useWaterExtractorGroups,
+  useWaterPumpIpm,
 } from "@/features/resources/hooks/useResources";
 import { factoryApi } from "@/features/factory/api";
 import { plannerApi } from "@/features/planner/api";
@@ -234,6 +239,7 @@ export function MapView() {
   const powerGens = useAllPowerGens();
   const unsourcedInputs = useUnsourcedInputs();
   const waterGroups = useWaterExtractorGroups();
+  const waterPumpIpm = useWaterPumpIpm();
   const setClaim = useSetNodeClaim();
   const clearClaim = useClearNodeClaim();
   const setWaterGroup = useSetWaterGroup();
@@ -1550,7 +1556,12 @@ export function MapView() {
                 key={selectedWaterGroup.id}
                 group={selectedWaterGroup}
                 factories={factories.data ?? []}
-                pending={setWaterGroup.isPending || deleteWaterGroup.isPending}
+                pumpIpm={waterPumpIpm.data ?? 0}
+                pending={
+                  setWaterGroup.isPending ||
+                  deleteWaterGroup.isPending ||
+                  waterPumpIpm.data === undefined
+                }
                 onSave={(patch) => {
                   setWaterGroup.mutate(
                     {
@@ -2125,6 +2136,7 @@ function FactoryPopover({
   const detail = useFactoryDetail(factoryId);
   const recipes = useRecipes();
   const items = useItems();
+  const extracted = useExtractedResources();
   const itemNames = useMemo(
     () => new Map(items.data?.map((i) => [i.id, i.name]) ?? []),
     [items.data],
@@ -2154,7 +2166,7 @@ function FactoryPopover({
   // the telemetry. Intermediates (Iron Rod, Screw, …) never bind
   // from nodes so the rollup is the only useful demand view.
   const requires = useMemo(() => {
-    if (!ledger || !recipes.data) return [] as Array<{
+    if (!ledger || !recipes.data || !extracted.data) return [] as Array<{
       itemId: string;
       required: number;
       bound: number;
@@ -2175,7 +2187,7 @@ function FactoryPopover({
       .filter((d) => d.ratePerMin > 0.001);
     const raw = grossDeficits.length === 0
       ? {}
-      : traceRawDemand(grossDeficits, recipes.data);
+      : traceRawDemand(grossDeficits, recipes.data, new Set(extracted.data));
     // Map raw item id → bound supply from the factory's flow rows.
     const boundFor = (itemId: string): number => {
       const flow = ledger.flows.find((f) => f.itemId === itemId);
@@ -2192,7 +2204,7 @@ function FactoryPopover({
         };
       })
       .sort((a, b) => b.required - a.required);
-  }, [ledger, recipes.data]);
+  }, [ledger, recipes.data, extracted.data]);
   // Bound supply for items the factory doesn't actually need (so a
   // wired-up node never silently disappears from the UI).
   const unusedBindings = useMemo(() => {

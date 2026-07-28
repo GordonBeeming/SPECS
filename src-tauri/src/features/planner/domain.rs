@@ -25,6 +25,18 @@ use super::tier;
 /// reporting threshold only.
 pub const REPORTABLE_IPM: f32 = 0.05;
 
+/// The smallest ipm difference that counts as a difference. Flow
+/// arithmetic runs through f32 sums whose exact bits depend on the
+/// order the terms arrived in, so a balanced plan lands a hair either
+/// side of zero and every comparison needs a floor under it.
+///
+/// Deliberately named beside `REPORTABLE_IPM`, because the two get
+/// confused: this is the *arithmetic* tolerance, twenty times tighter
+/// than the threshold for putting a sentence on screen. Use the
+/// reporting one to decide whether to mention a gap, this one to decide
+/// whether the gap exists.
+pub const FLOW_EPS_IPM: f32 = 1e-3;
+
 /// What's left of a flow once everything already taking from it has had
 /// its share. Negative never means "owed" — it means there is nothing
 /// spare, so the floor is part of the rule, not a tidy-up.
@@ -35,6 +47,20 @@ pub const REPORTABLE_IPM: f32 = 0.05;
 /// factory can offer). They differ only in what counts as "drawn".
 pub(crate) fn spare_ipm(produced_ipm: f32, drawn_ipm: f32) -> f32 {
     (produced_ipm - drawn_ipm).max(0.0)
+}
+
+/// How much of a target's declared export slice is real capacity. An
+/// export larger than what the plan produces is a wish: the plan only
+/// materializes machines for `produced_ipm`, so nothing above that can
+/// leave the factory however the slice is declared.
+///
+/// A rule rather than an expression, because the export offers panel
+/// and the overdraw check both size the same link against it. Let them
+/// each write the clamp and they eventually contradict each other about
+/// one link — one saying it overdraws its source, the other still
+/// offering that source as a candidate.
+pub fn export_slice_ipm(export_ipm: Option<f32>, produced_ipm: f32) -> f32 {
+    export_ipm.unwrap_or(0.0).min(produced_ipm).max(0.0)
 }
 
 /// Per-machine ipm of `item_id` for this recipe at 100% clock with no
@@ -1865,6 +1891,25 @@ mod tests {
 
     fn unlocked() -> HashSet<String> {
         HashSet::new()
+    }
+
+    /// The clamp behind the export offers panel and the overdraw check.
+    /// Four call sites wrote it by hand before it had a name, two of
+    /// them with a comment pointing at a third.
+    #[test]
+    fn export_slice_is_capped_by_production_and_floored_at_zero() {
+        // Declaring more export than the plan makes doesn't materialise
+        // machines — the slice is what actually gets built.
+        assert_eq!(export_slice_ipm(Some(200.0), 120.0), 120.0);
+        // Under production, the declared slice stands.
+        assert_eq!(export_slice_ipm(Some(60.0), 120.0), 60.0);
+        // No slice declared is no export, not "all of it".
+        assert_eq!(export_slice_ipm(None, 120.0), 0.0);
+        // A negative slice is not a debt owed to the exporter.
+        assert_eq!(export_slice_ipm(Some(-30.0), 120.0), 0.0);
+        // Nothing produced caps everything at nothing, however the
+        // slice is declared.
+        assert_eq!(export_slice_ipm(Some(90.0), 0.0), 0.0);
     }
 
     #[test]

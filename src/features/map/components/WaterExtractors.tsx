@@ -5,6 +5,7 @@ import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { ClockInput } from "@/shared/ui/ClockInput";
 import { FilterSelect } from "@/shared/ui/FilterSelect";
+import { num } from "@/shared/format/rates";
 import { factoryPickerOptions, type FactoryPickerCandidate } from "../transform";
 import type { WaterExtractorGroup } from "@/features/resources/types";
 
@@ -81,7 +82,7 @@ export function WaterExtractorPin({
       className={`specs-map-pin relative cursor-grab rounded-md border-2 px-1.5 py-0.5 text-[11px] font-medium text-fg shadow-sm active:cursor-grabbing ${
         selected ? "border-accent bg-accent/25" : "border-accent/70 bg-bg-raised/95 hover:bg-bg-raised"
       }`}
-      title={`${totalCount}× Water Extractor · ${group.outputIpm.toFixed(0)} m³/min — click to ${
+      title={`${totalCount}× Water Extractor · ${num(group.outputIpm)} m³/min — click to ${
         group.locked ? "unlock" : "lock"
       } · double-click to edit · hold and drag to ${
         group.locked ? "bind to a factory" : "move"
@@ -168,6 +169,12 @@ export function WaterExtractorPin({
 export interface WaterExtractorPopoverProps {
   group: WaterExtractorGroup;
   factories: FactoryPickerCandidate[];
+  /**
+   * One Water Extractor's output at 100% clock, from
+   * `water_pump_ipm`. Passed in rather than written here so the live
+   * preview and the total Rust persists come off the same rate.
+   */
+  pumpIpm: number;
   pending: boolean;
   onSave: (patch: {
     count: number;
@@ -188,6 +195,7 @@ export interface WaterExtractorPopoverProps {
 export function WaterExtractorPopover({
   group,
   factories,
+  pumpIpm,
   pending,
   onSave,
   onToggleLock,
@@ -203,7 +211,10 @@ export function WaterExtractorPopover({
   );
   const [factoryId, setFactoryId] = useState<string | null>(group.factoryId ?? null);
 
-  const bankIpm = (c: number, p: number) => c * 120 * (p / 100);
+  // Previewed off the rate Rust computes the saved total from, never a
+  // literal: a form that shows one number and stores another is the
+  // failure this prop exists to make impossible.
+  const bankIpm = (c: number, p: number) => c * pumpIpm * (p / 100);
   const totalIpm = bankIpm(count, clockPct) + (bank2 ? bankIpm(bank2.count, bank2.clockPct) : 0);
 
   return (
@@ -302,7 +313,7 @@ export function WaterExtractorPopover({
       <div className="mt-2 rounded-md bg-bg px-2 py-1.5 text-xs tabular-nums">
         <span className="text-fg-muted">Output</span>{" "}
         <span className="font-semibold text-fg">
-          {totalIpm % 1 === 0 ? totalIpm.toFixed(0) : totalIpm.toFixed(1)} m³/min
+          {num(totalIpm)} m³/min
         </span>
       </div>
 

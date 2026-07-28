@@ -1,7 +1,7 @@
 import { FlaskConical, TriangleAlert } from "lucide-react";
 
 import type { PlanWarning, PlannerError } from "@/features/planner/types";
-import { rate } from "./rates";
+import { rate } from "@/shared/format/rates";
 
 export function warningLine(w: PlanWarning): string {
   switch (w.kind) {

@@ -22,6 +22,7 @@ const dagre: typeof import("dagre") =
   (dagreNs as unknown as typeof import("dagre"));
 
 import { useQueryClient } from "@tanstack/react-query";
+import { rate } from "@/shared/format/rates";
 
 import { plannerApi } from "@/features/planner/api";
 import { useThemeMode } from "@/shared/theme/useThemeMode";
@@ -278,7 +279,7 @@ function CanvasInner(props: PlanGraphCanvasProps) {
           id: e.id,
           source: e.fromNode,
           target: e.toNode,
-          label: `${e.itemName} · ${e.ipm % 1 === 0 ? e.ipm.toFixed(0) : e.ipm.toFixed(1)}/min${
+          label: `${e.itemName} · ${rate(e.ipm)}${
             e.isReuse ? " (reuse)" : ""
           }`,
           animated: selectedKey ? connected : animate,

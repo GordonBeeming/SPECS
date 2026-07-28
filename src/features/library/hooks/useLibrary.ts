@@ -80,3 +80,16 @@ export function useTransportVehicles() {
     ...STATIC,
   });
 }
+
+/**
+ * The item ids a chain walk terminates on — what the game mines rather
+ * than manufactures. Comes from Rust so a client-side trace grounds out
+ * on exactly the set the planner grounds out on.
+ */
+export function useExtractedResources() {
+  return useQuery({
+    queryKey: queryKeys.library.extractedResources,
+    queryFn: libraryApi.extractedResources,
+    ...STATIC,
+  });
+}

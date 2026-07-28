@@ -17,7 +17,7 @@ use crate::shared::gamedata::GameData;
 
 use crate::shared::db::playthrough_db::PlaythroughDb;
 
-use super::domain::{compute_plan_graph, spare_ipm};
+use super::domain::{compute_plan_graph, export_slice_ipm, spare_ipm, FLOW_EPS_IPM};
 use super::dto::{
     ComputePlanInput, ComputePlanResult, FactoryPlan, PlanImportRowDto, PlanLayoutEntry,
     PlanNode, SavePlanInput, SavePlanResult,
@@ -197,14 +197,10 @@ fn gather_export_capacity(
     let mut planned: HashSet<(String, String)> = HashSet::new();
     for (fid, t) in targets {
         planned.insert((fid.clone(), t.item_id.clone()));
-        let Some(export) = t.export_ipm else { continue };
-        if export <= 0.0 {
+        if t.export_ipm.unwrap_or(0.0) <= 0.0 {
             continue;
         }
-        // An export slice larger than the production rate is a wish,
-        // not capacity — the plan only materializes machines for
-        // `ipm`, so offers clamp to what actually gets made.
-        let export = export.min(t.ipm);
+        let export = export_slice_ipm(t.export_ipm, t.ipm);
         let d = *drawn.get(&(fid.clone(), t.item_id.clone())).unwrap_or(&0.0);
         out.insert((fid, t.item_id), spare_ipm(export, d));
     }
@@ -552,7 +548,7 @@ pub(crate) fn plan_save_impl(
                 })
                 .collect();
             for (row, alloc) in sourced_rows.iter().zip(allocations.iter()) {
-                if alloc.resolved_ipm <= 1e-3 {
+                if alloc.resolved_ipm <= FLOW_EPS_IPM {
                     continue;
                 }
                 let link_id = Uuid::new_v4().to_string();
@@ -727,9 +723,7 @@ fn export_offers_impl(
         if t.ipm <= 0.0 {
             continue;
         }
-        // Same clamp as gather_export_capacity: the offer can't exceed
-        // what the plan actually produces.
-        let export = t.export_ipm.unwrap_or(0.0).max(0.0).min(t.ipm);
+        let export = export_slice_ipm(t.export_ipm, t.ipm);
         let drawn_ipm = *drawn
             .get(&(fid.clone(), t.item_id.clone()))
             .unwrap_or(&0.0);
@@ -1124,7 +1118,10 @@ fn raise_export_target_impl(
     result.new_export_ipm = new_export_ipm;
     // This factory's outbound links are untouched by its own plan save,
     // so the draw is still the one measured above.
-    result.remaining_ipm = (new_export_ipm.min(new_target_ipm) - drawn).max(0.0);
+    result.remaining_ipm = spare_ipm(
+        export_slice_ipm(Some(new_export_ipm), new_target_ipm),
+        drawn,
+    );
     let (introduced, worsened) = warnings_introduced(&before_warnings, &saved.graph.warnings);
     result.introduced_warnings = introduced;
     result.worsened_warnings = worsened;

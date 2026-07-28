@@ -207,22 +207,16 @@ impl GameData {
         }
     }
 
-    /// True if no recipe in the dataset produces this item.
-    /// (Currently only a sanity helper — the planner reaches its
-    /// termination condition via `is_extracted_resource` below
-    /// because several "natural" items show up as recipe byproducts
-    /// elsewhere.)
-    #[allow(dead_code)]
-    pub fn is_raw_resource(&self, item_id: &str) -> bool {
-        self.inner
-            .recipes_by_output_item
-            .get(item_id)
-            .map(|v| v.is_empty())
-            .unwrap_or(true)
-    }
-
     /// True for items that the game exclusively sources from
     /// extractors / wells / vents — Iron Ore, Water, Crude Oil, etc.
+    ///
+    /// **This, not "no recipe produces it", is where a chain walk
+    /// terminates.** The two questions look interchangeable and give
+    /// different answers for exactly the resources that matter: Water
+    /// and Crude Oil are both recipe byproducts, so a producer check
+    /// says they're manufacturable and lets a plan walk straight past
+    /// the extractor that has to supply them.
+    ///
     /// They may *also* appear as recipe byproducts (Water from
     /// Battery production, Crude Oil from various refines) but the
     /// planner should still constrain on claimed supply: a player
@@ -239,25 +233,35 @@ impl GameData {
     /// produces its output — which grounds the chain out through the
     /// rod, and through uranium ore, which genuinely is extracted.
     pub fn is_extracted_resource(&self, item_id: &str) -> bool {
-        matches!(
-            item_id,
-            "Desc_OreIron_C"
-                | "Desc_OreCopper_C"
-                | "Desc_OreGold_C"
-                | "Desc_Stone_C"
-                | "Desc_Coal_C"
-                | "Desc_Sulfur_C"
-                | "Desc_OreBauxite_C"
-                | "Desc_RawQuartz_C"
-                | "Desc_OreUranium_C"
-                | "Desc_SAM_C"
-                | "Desc_LiquidOil_C"
-                | "Desc_Water_C"
-                | "Desc_NitrogenGas_C"
-                | "Desc_Geyser_C"
-        )
+        EXTRACTED_RESOURCE_IDS.contains(&item_id)
+    }
+
+    /// The same set as a list, for the frontend. `library_extracted_resources`
+    /// ships it over IPC so the TypeScript raw-demand trace terminates on
+    /// exactly the ids the planner terminates on.
+    pub fn extracted_resources(&self) -> &'static [&'static str] {
+        EXTRACTED_RESOURCE_IDS
     }
 }
+
+/// Backing list for `GameData::is_extracted_resource` — see that method
+/// for what earns an id a place here and why generator byproducts don't.
+const EXTRACTED_RESOURCE_IDS: &[&str] = &[
+    "Desc_OreIron_C",
+    "Desc_OreCopper_C",
+    "Desc_OreGold_C",
+    "Desc_Stone_C",
+    "Desc_Coal_C",
+    "Desc_Sulfur_C",
+    "Desc_OreBauxite_C",
+    "Desc_RawQuartz_C",
+    "Desc_OreUranium_C",
+    "Desc_SAM_C",
+    "Desc_LiquidOil_C",
+    "Desc_Water_C",
+    "Desc_NitrogenGas_C",
+    "Desc_Geyser_C",
+];
 
 #[cfg(test)]
 mod tests {

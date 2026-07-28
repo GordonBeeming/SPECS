@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Gauge, TriangleAlert } from "lucide-react";
 
 import { Icon } from "@/shared/ui/Icon";
+import { num } from "@/shared/format/rates";
 import type { BudgetAssumption, ResourceBudgetRow } from "../types";
 import { useResourceBudget } from "../hooks/useResources";
 
@@ -45,9 +46,15 @@ function orderRows(rows: ResourceBudgetRow[]): ResourceBudgetRow[] {
     });
 }
 
+/**
+ * Budget figures run to five digits where a plan's rates don't, so this
+ * panel — and only this panel — abbreviates past 1000. Below that it
+ * defers to the shared rule so a node's ipm reads the same here as it
+ * does on the row it came from.
+ */
 function fmtIpm(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return n % 1 === 0 ? n.toFixed(0) : n.toFixed(1);
+  return num(n);
 }
 
 // localStorage can throw in hardened webviews / privacy modes — the

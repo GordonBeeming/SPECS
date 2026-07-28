@@ -13,7 +13,7 @@ import { Icon } from "@/shared/ui/Icon";
 import { FilterSelect, type FilterOption } from "@/shared/ui/FilterSelect";
 import type { ExistingProducer, PlanNode } from "@/features/planner/types";
 import { RateInput } from "./RateInput";
-import { rate } from "./rates";
+import { rate } from "@/shared/format/rates";
 
 export const PLAN_NODE_WIDTH = 250;
 

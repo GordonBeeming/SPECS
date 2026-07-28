@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::features::factory::dto::FactoryMachine;
 use crate::features::logistics::dto::{LogisticsLink, TransportPlan};
+use crate::features::planner::domain::{export_slice_ipm, FLOW_EPS_IPM};
 use crate::features::planner::dto::{PlanGraph, PlanNode};
 use crate::features::planner::repo::PlanTargetRow;
 use crate::features::power::dto::PowerFuelFlow;
@@ -19,7 +20,10 @@ use crate::shared::gamedata::GameData;
 
 use super::dto::{AltToUnlock, Category, FactoryRef, Finding, FindingKind, Severity};
 
-const EPS: f32 = 1e-3;
+/// The sweep compares flows the planner produced, so it has to use the
+/// planner's tolerance — a stricter one here would report a plan the
+/// planner considers balanced as overdrawn.
+const EPS: f32 = FLOW_EPS_IPM;
 
 fn err(category: Category, kind: FindingKind) -> Finding {
     Finding { severity: Severity::Error, category, kind }
@@ -540,13 +544,11 @@ pub fn check_flows(
         gd.item(id).map(|i| i.name.clone()).unwrap_or_else(|| id.to_string())
     };
 
-    // Same clamp as the planner's export offers: an export slice larger
-    // than the production rate is a wish, not capacity.
     let mut available: HashMap<(String, String), f32> = HashMap::new();
     let mut planned: HashSet<(String, String)> = HashSet::new();
     for (fid, t) in targets {
         planned.insert((fid.clone(), t.item_id.clone()));
-        let export = t.export_ipm.unwrap_or(0.0).min(t.ipm).max(0.0);
+        let export = export_slice_ipm(t.export_ipm, t.ipm);
         *available.entry((fid.clone(), t.item_id.clone())).or_insert(0.0) += export;
     }
 

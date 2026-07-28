@@ -351,18 +351,6 @@ pub fn extractor_power_mw(
     machine_power_mw_amp(base_power_mw, 1, clock_pct, 0, 0)
 }
 
-/// Convenience for callers that just have a purity + clock + miner
-/// reference (e.g. the planner picking a hypothetical Mk2 setup
-/// without an actual claim row).
-#[allow(dead_code)]
-pub fn miner_node_ipm(
-    purity: NodePurity,
-    miner_base_ipm: f32,
-    clock_pct: f32,
-) -> f32 {
-    miner_base_ipm * purity.multiplier() * (clock_pct / 100.0)
-}
-
 /// Supply pool fed into one factory by its bound claims and bound
 /// water extractor groups. Used by the factory ledger's "From nodes:
 /// X ipm" chip, and by the planner's per-factory raw-supply figures

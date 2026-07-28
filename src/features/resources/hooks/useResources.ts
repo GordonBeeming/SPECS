@@ -35,6 +35,21 @@ export function useWaterExtractorGroups() {
   });
 }
 
+/**
+ * One Water Extractor's output at 100% clock. A property of the game,
+ * not of the playthrough, so it isn't keyed on one and never goes
+ * stale — the group editor previews unsaved banks against it so its
+ * arithmetic matches the total Rust stores.
+ */
+export function useWaterPumpIpm() {
+  return useQuery({
+    queryKey: queryKeys.resources.waterPumpIpm,
+    queryFn: () => resourcesApi.waterPumpIpm(),
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+}
+
 export function useSetWaterGroup() {
   const client = useQueryClient();
   return useMutation({

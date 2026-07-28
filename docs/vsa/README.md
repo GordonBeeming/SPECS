@@ -56,6 +56,11 @@ Things that genuinely cross slices:
 
 - `tauri/` — typed `invoke<T>` wrapper, generated TS types _(later)_.
 - `query/` — TanStack Query client + key factory.
+- `format/` — `rates.ts`: the one per-minute rate formatter, plus the
+  reporting threshold and flow tolerance that go with it. Shared because
+  factory, map and resources all print rates on screens read side by
+  side, and an inline `toFixed(1)` renders `12.0/min` next to this
+  helper's `12/min` for the same flow.
 - `theme/` — brand tokens, dark-mode store.
 - `ui/` — branded primitives (`Button`, `Card`, `Badge`).
 - `testing/` — Vitest setup.

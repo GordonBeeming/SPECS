@@ -1,4 +1,4 @@
-import type { ExtractorOption, Purity, ResourceNodeRow } from "./types";
+import type { Purity, ResourceNodeRow } from "./types";
 
 /**
  * The extractor a fresh claim should default to: the caller's preferred
@@ -16,15 +16,6 @@ export function claimDefaultExtractor(
   if (allowed.length === 0) return null;
   if (preferredId && allowed.some((e) => e.id === preferredId)) return preferredId;
   return allowed[0].id;
-}
-
-/**
- * Extractor option label for pickers — same shape as the generator
- * picker's "Biomass Burner — 30 MW · T0" hint, so a Miner Mk2 reads
- * "Miner Mk.2 · T4" instead of leaving the tier invisible.
- */
-export function extractorOptionLabel(option: Pick<ExtractorOption, "name" | "unlockTier">): string {
-  return `${option.name} · T${option.unlockTier}`;
 }
 
 /**

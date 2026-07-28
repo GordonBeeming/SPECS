@@ -22,4 +22,5 @@ export const resourcesApi = {
     invoke<WaterExtractorGroup>("set_water_extractor_group", { input }),
   deleteWaterGroup: (id: string) =>
     invoke<void>("delete_water_extractor_group", { id }),
+  waterPumpIpm: () => invoke<number>("water_pump_ipm"),
 };

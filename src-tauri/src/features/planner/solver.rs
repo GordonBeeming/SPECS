@@ -34,6 +34,13 @@ const FLUID_SURPLUS_COST: f64 = 1e6;
 /// Water comes from extractors anywhere on the map, not from a finite
 /// node budget — close to free, but not free enough to dump.
 const WATER_WEIGHT: f64 = 1e-3;
+
+/// Below this many runs an LP variable is solver noise, not a recipe
+/// the plan uses. It is not a flow tolerance and shares nothing with
+/// `FLOW_EPS_IPM` — a run count is dimensionless and the simplex leaves
+/// its dust orders of magnitude below anything an ipm comparison cares
+/// about, so this floor sits well under the flow one on purpose.
+const LP_ZERO_RUNS: f64 = 1e-6;
 /// A raw that somehow has no map capacity (dataset drift) is treated
 /// as extremely scarce instead of dividing by zero.
 const UNKNOWN_RAW_WEIGHT: f64 = 1000.0;
@@ -411,7 +418,7 @@ pub fn solve(
     let mut chosen: Vec<(String, f64)> = Vec::new();
     for (idx, var) in &recipe_vars {
         let runs = solution[*var];
-        if runs <= 1e-6 {
+        if runs <= LP_ZERO_RUNS {
             continue;
         }
         let recipe = recipes[*idx];
