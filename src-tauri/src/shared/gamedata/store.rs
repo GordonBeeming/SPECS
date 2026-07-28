@@ -229,6 +229,15 @@ impl GameData {
     /// without a Water Extractor can't realistically run a Pure Iron
     /// Ingot chain just because Battery production also drips water
     /// out the side.
+    ///
+    /// The converse also holds, and it's the reason nuclear waste isn't
+    /// on this list: a *generator* byproduct has no node to claim, so
+    /// listing it here would have every plutonium plan advise claiming
+    /// more nodes for an item that has none anywhere on the map.
+    /// Generator byproducts are recipes instead — burning a rod in a
+    /// Nuclear Power Plant produces waste the same way any machine
+    /// produces its output — which grounds the chain out through the
+    /// rod, and through uranium ore, which genuinely is extracted.
     pub fn is_extracted_resource(&self, item_id: &str) -> bool {
         matches!(
             item_id,
@@ -271,5 +280,67 @@ mod tests {
         let gd = fx();
         assert!(!gd.version().is_empty());
         assert!(!gd.game_version().is_empty());
+    }
+
+    /// Whether *some* chain of recipes reduces `item_id` to extracted
+    /// resources. Mirrors what the planner needs to terminate: any one
+    /// producing recipe whose every input grounds out is enough, so an
+    /// alternate that leans on a hand-foraged item (Leaves, alien parts,
+    /// a Power Shard) doesn't condemn the item. An item already on the
+    /// stack counts as not-yet-grounded, which keeps a recipe cycle from
+    /// vouching for itself.
+    fn grounds_out(gd: &GameData, item_id: &str, on_stack: &mut Vec<String>) -> bool {
+        if gd.is_extracted_resource(item_id) {
+            return true;
+        }
+        if on_stack.iter().any(|i| i == item_id) {
+            return false;
+        }
+        on_stack.push(item_id.to_string());
+        let reachable = gd
+            .recipes_producing(item_id)
+            .iter()
+            .any(|r| r.inputs.iter().all(|i| grounds_out(gd, &i.item_id, on_stack)));
+        on_stack.pop();
+        reachable
+    }
+
+    #[test]
+    fn the_plutonium_branch_grounds_out() {
+        // Every one of these used to dead-end at Uranium Waste, which no
+        // recipe produced because the plant that emits it carried no
+        // outputs. The planner correctly refused all of them, which took
+        // Ficsonium, Singularity Cells and several Space Elevator parts
+        // down with the branch.
+        let gd = fx();
+        for item_id in [
+            "Desc_NuclearWaste_C",
+            "Desc_PlutoniumWaste_C",
+            "Desc_PlutoniumPellet_C",
+            "Desc_PlutoniumCell_C",
+            "Desc_PlutoniumFuelRod_C",
+            "Desc_NonFissibleUranium_C",
+            "Desc_Ficsonium_C",
+        ] {
+            assert!(
+                grounds_out(&gd, item_id, &mut Vec::new()),
+                "{item_id} has no chain down to extracted resources"
+            );
+        }
+    }
+
+    #[test]
+    fn nuclear_waste_is_not_an_extracted_resource() {
+        // It has no node anywhere on the map, so treating it as claimable
+        // supply would answer every plutonium plan with "claim more
+        // nodes" — advice the player cannot act on. It reaches the
+        // planner as a generator byproduct recipe instead.
+        let gd = fx();
+        assert!(!gd.is_extracted_resource("Desc_NuclearWaste_C"));
+        assert!(!gd.is_extracted_resource("Desc_PlutoniumWaste_C"));
+        assert!(
+            !gd.recipes_producing("Desc_NuclearWaste_C").is_empty(),
+            "waste has to reach the planner some other way"
+        );
     }
 }

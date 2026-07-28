@@ -26,6 +26,14 @@ export interface WaterExtractorPinProps {
       gesture instead (handled by the map, same as nodes). */
   onStartBindDrag: (e: React.MouseEvent) => void;
   currentScale: () => number;
+  /** `DEFAULT_SCALE / (live zoom)`, precomputed by MapView (which owns
+      both constants) so the group's on-screen size holds constant
+      across zoom instead of scaling with the map — same mechanism
+      #96 gave node markers, extended to pins per #99. Cancels to 1 at
+      the default zoom. Read from React state, unlike `currentScale()`
+      (an imperative getter used only for drag math), so this actually
+      drives a re-render as the map zooms. */
+  pinScale: number;
 }
 
 /** Droplet marker for a group of water extractors. Click toggles the
@@ -41,6 +49,7 @@ export function WaterExtractorPin({
   onDragEnd,
   onStartBindDrag,
   currentScale,
+  pinScale,
 }: WaterExtractorPinProps) {
   const startRef = useRef<{ clientX: number; clientY: number; moved: boolean } | null>(null);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
@@ -59,12 +68,19 @@ export function WaterExtractorPin({
   const totalCount = group.count + (group.count2 ?? 0);
 
   return (
+    <div
+      className="absolute"
+      style={{
+        left: `${hoverPos?.x ?? x}px`,
+        top: `${hoverPos?.y ?? y}px`,
+        transform: `translate(-50%, -50%) scale(${pinScale})`,
+      }}
+    >
     <button
       type="button"
-      className={`specs-map-pin absolute -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-md border-2 px-1.5 py-0.5 text-[11px] font-medium text-fg shadow-sm active:cursor-grabbing ${
+      className={`specs-map-pin relative cursor-grab rounded-md border-2 px-1.5 py-0.5 text-[11px] font-medium text-fg shadow-sm active:cursor-grabbing ${
         selected ? "border-accent bg-accent/25" : "border-accent/70 bg-bg-raised/95 hover:bg-bg-raised"
       }`}
-      style={{ left: `${hoverPos?.x ?? x}px`, top: `${hoverPos?.y ?? y}px` }}
       title={`${totalCount}× Water Extractor · ${group.outputIpm.toFixed(0)} m³/min — click to ${
         group.locked ? "unlock" : "lock"
       } · double-click to edit · hold and drag to ${
@@ -145,6 +161,7 @@ export function WaterExtractorPin({
         {group.locked && <Lock className="h-2.5 w-2.5 text-fg-muted" aria-label="Locked in place" />}
       </span>
     </button>
+    </div>
   );
 }
 

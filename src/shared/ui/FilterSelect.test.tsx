@@ -91,3 +91,32 @@ describe("FilterSelect IO strip", () => {
     expect(onChange).toHaveBeenCalledWith("Recipe_Alternate_Computer_C");
   });
 });
+
+describe("FilterSelect empty state", () => {
+  // Regresses #97: "No matches." did double duty for "you typed it
+  // wrong" and "this doesn't exist and never will" (an unreachable
+  // recipe chain, say), and reading the second as the first cost real
+  // time. The two states now read differently.
+  it("says there's nothing to search when the pool itself is empty", async () => {
+    const user = userEvent.setup();
+    render(<FilterSelect ariaLabel="Item" options={[]} value={null} onChange={vi.fn()} />);
+    await user.click(screen.getByRole("combobox"));
+    expect(await screen.findByText("Nothing available.")).toBeInTheDocument();
+  });
+
+  it("names the typed query when a non-empty pool has no hits", async () => {
+    const user = userEvent.setup();
+    render(
+      <FilterSelect
+        ariaLabel="Item"
+        options={[{ value: "Desc_IronIngot_C", label: "Iron Ingot" }]}
+        value={null}
+        onChange={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("combobox"));
+    await user.type(screen.getByRole("combobox"), "xyz-does-not-exist");
+    expect(await screen.findByText('No matches for "xyz-does-not-exist".')).toBeInTheDocument();
+    expect(screen.queryByText("Nothing available.")).not.toBeInTheDocument();
+  });
+});

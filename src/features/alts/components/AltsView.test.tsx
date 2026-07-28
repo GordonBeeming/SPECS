@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { AltsView } from "./AltsView";
@@ -143,5 +144,50 @@ describe("AltsView above-tier labelling", () => {
     expect(checkbox).toBeChecked();
     expect(checkbox).not.toBeDisabled();
     expect(screen.getByText("above your tier")).toBeInTheDocument();
+  });
+
+  it("dims an above-tier alt that isn't ticked, distinct from the ticked-and-above-tier warning row", async () => {
+    // #60: "no locked styling on out-of-reach entries" — an above-tier
+    // row that's still locked reads as "can't reach this yet" (dimmed),
+    // not the same warning tint as one the player deliberately unlocked
+    // early (previous test). Checkbox stays interactive either way —
+    // this is a read, never a block.
+    const aboveTier = altRecipe("Recipe_Alt_C_C", "Alt C");
+    aboveTier.unlockTier = 7;
+    vi.spyOn(libraryApi, "recipes").mockResolvedValue([aboveTier]);
+
+    renderView(<AltsView />);
+    const checkbox = await screen.findByRole("checkbox", { name: /Alt C/i });
+    expect(checkbox).not.toBeChecked();
+    expect(checkbox).not.toBeDisabled();
+    const row = checkbox.closest("li");
+    expect(row).toHaveClass("opacity-60");
+    expect(row).not.toHaveClass("bg-warning/5");
+  });
+});
+
+describe("AltsView tier filter", () => {
+  it("groups rows under a tier header and narrows to one tier when the tier filter is set (#71)", async () => {
+    const t2 = altRecipe("Recipe_Alt_T2_C", "Alt T2");
+    t2.unlockTier = 2;
+    vi.spyOn(libraryApi, "recipes").mockResolvedValue([...recipes, t2]);
+
+    renderView(<AltsView />);
+    await screen.findByText("Alt T2");
+    // Grouped headers for every tier present in the (unfiltered) list.
+    expect(screen.getByText("Tier 0")).toBeInTheDocument();
+    expect(screen.getByText("Tier 2")).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    const tierCombobox = screen.getByRole("combobox", { name: /filter alts by tier/i });
+    await user.click(tierCombobox);
+    await user.click(await screen.findByRole("option", { name: "Tier 2" }));
+
+    // Only the Tier 2 row and its header remain — Alt A / Alt B (T0)
+    // drop out even though nothing about their *name* matched "2".
+    expect(screen.getByText("Alt T2")).toBeInTheDocument();
+    expect(screen.queryByText("Alt A")).not.toBeInTheDocument();
+    expect(screen.queryByText("Alt B")).not.toBeInTheDocument();
+    expect(screen.queryByText("Tier 0")).not.toBeInTheDocument();
   });
 });

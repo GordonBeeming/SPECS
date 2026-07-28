@@ -315,6 +315,145 @@ describe("<PowerView />", () => {
     ).toBeInTheDocument();
   });
 
+  it("gives a healthy factory's generator badge a success colour, not the same amber the deficit badge uses", async () => {
+    // #72: a positive-net factory's sidebar chip used the same
+    // bg-warning/text-warning classes as a genuinely short factory's
+    // deficit chip, so a healthy factory and a struggling one looked
+    // alike at a glance despite meaning opposite things.
+    vi.spyOn(playthroughApi, "current").mockResolvedValue({
+      id: "p",
+      displayName: "Run",
+      gameVersion: "1.1",
+      createdAt: "2026-05-10T00:00:00Z",
+      currentTier: 3,
+      currentMilestoneProgress: 0,
+    });
+    vi.spyOn(factoryApi, "list").mockResolvedValue([
+      {
+        id: "f1",
+        name: "Coal Power Plant",
+        worldX: 0,
+        worldY: 0,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+        machineCount: 0,
+      },
+    ]);
+    vi.spyOn(powerApi, "list").mockResolvedValue([]);
+    vi.spyOn(powerApi, "listAll").mockResolvedValue([
+      {
+        id: "g1",
+        factoryId: "f1",
+        generatorId: "Build_GeneratorCoal_C",
+        fuelItemId: "Desc_Coal_C",
+        count: 4,
+        clockPct: 100,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+      },
+    ]);
+    vi.spyOn(powerApi, "balance").mockResolvedValue({
+      factoryId: "f1",
+      generatedMw: 300,
+      consumedMw: 60,
+      netMw: 240,
+      fuelFlows: [],
+    });
+    vi.spyOn(powerApi, "listBalances").mockResolvedValue([
+      { factoryId: "f1", generatedMw: 300, consumedMw: 60, netMw: 240, fuelFlows: [] },
+    ]);
+    renderWithProviders(<PowerView />);
+
+    const badge = await screen.findByTitle("4 generators");
+    expect(badge).toHaveClass("text-success");
+    expect(badge).not.toHaveClass("text-warning");
+  });
+
+  it("coalesces duplicate generator rows in the table, with a Merge action that consolidates them", async () => {
+    // #72: two rows with the same generator, fuel and clock (e.g. one
+    // Add per building session instead of noticing the row that's
+    // already there) rendered as two separate lines, each showing its
+    // own partial count, instead of reading as one bank.
+    vi.spyOn(playthroughApi, "current").mockResolvedValue({
+      id: "p",
+      displayName: "Run",
+      gameVersion: "1.1",
+      createdAt: "2026-05-10T00:00:00Z",
+      currentTier: 0,
+      currentMilestoneProgress: 0,
+    });
+    vi.spyOn(factoryApi, "list").mockResolvedValue([
+      {
+        id: "iron",
+        name: "Iron Works",
+        worldX: 0,
+        worldY: 0,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+        machineCount: 6,
+      },
+    ]);
+    vi.spyOn(powerApi, "list").mockResolvedValue([
+      {
+        id: "g1",
+        factoryId: "iron",
+        generatorId: "Build_GeneratorBiomass_C",
+        fuelItemId: "Desc_Leaves_C",
+        count: 4,
+        clockPct: 100,
+        notes: "first batch",
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+      },
+      {
+        id: "g2",
+        factoryId: "iron",
+        generatorId: "Build_GeneratorBiomass_C",
+        fuelItemId: "Desc_Leaves_C",
+        count: 4,
+        clockPct: 100,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+      },
+    ]);
+    vi.spyOn(powerApi, "listAll").mockResolvedValue([]);
+    vi.spyOn(powerApi, "balance").mockResolvedValue({
+      factoryId: "iron",
+      generatedMw: 40,
+      consumedMw: 24,
+      netMw: 16,
+      fuelFlows: [],
+    });
+    vi.spyOn(powerApi, "listBalances").mockResolvedValue([
+      { factoryId: "iron", generatedMw: 40, consumedMw: 24, netMw: 16, fuelFlows: [] },
+    ]);
+    vi.spyOn(powerApi, "update").mockResolvedValue(undefined);
+    vi.spyOn(powerApi, "remove").mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderWithProviders(<PowerView />);
+
+    // One row, summed count, marked as a merge of two rows — not two
+    // rows each reading "4".
+    const countCell = await screen.findByText("8");
+    expect(countCell.closest("tr")).toHaveTextContent("(2×)");
+    expect(screen.queryByText("4", { selector: "td" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /merge/i }));
+
+    await waitFor(() => {
+      // The surviving row absorbs the total count and the other row's
+      // note — nothing about the second row silently disappears.
+      expect(powerApi.update).toHaveBeenCalledWith({
+        id: "g1",
+        count: 8,
+        clockPct: 100,
+        fuelItemId: "Desc_Leaves_C",
+        notes: "first batch",
+      });
+      expect(powerApi.remove).toHaveBeenCalledWith("g2");
+    });
+  });
+
   it("gates the fuel picker by each fuel item's own tier, not the generator's", async () => {
     // Regresses: the Fuel Generator unlocks well before Rocket Fuel and
     // Ionized Fuel do, so gating the fuel list on the generator's own
@@ -490,5 +629,112 @@ describe("<PowerView />", () => {
     await waitFor(() => {
       expect(screen.queryByText(/edit generator/i, { selector: "h2" })).not.toBeInTheDocument();
     });
+  });
+
+  it("never offers a fuel the product picker itself refuses to plan, in either the Add or Edit picker (#94)", async () => {
+    // Plutonium Fuel Rod's whole chain requires Uranium Waste, which has
+    // no producing recipe in the dataset — `list_item_tiers` leaves it
+    // out entirely (see tier.rs's whole-chain relaxation), and the
+    // product picker already reflects that by not offering it. Both the
+    // Add form and the Edit modal gate every fuel by that same
+    // `useItemTiers` table (not the generator's own unlockTier, and not
+    // each fuel's own recipe stamp), so an item absent from the table —
+    // "no chain reaches this, ever" — is excluded here exactly the same
+    // way it's excluded from the product picker. This pins that down
+    // explicitly for the Nuclear Power Plant / Plutonium Fuel Rod pair
+    // named in #94, so the two screens can't drift back out of sync.
+    const user = userEvent.setup();
+    vi.spyOn(playthroughApi, "current").mockResolvedValue({
+      id: "p",
+      displayName: "Run",
+      gameVersion: "1.1",
+      createdAt: "2026-05-10T00:00:00Z",
+      currentTier: 9,
+      currentMilestoneProgress: 0,
+    });
+    vi.spyOn(factoryApi, "list").mockResolvedValue([
+      {
+        id: "nuclear",
+        name: "Nuclear Plant",
+        worldX: 0,
+        worldY: 0,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+        machineCount: 0,
+      },
+    ]);
+    vi.spyOn(libraryApi, "generators").mockResolvedValue([
+      {
+        id: "Build_GeneratorNuclear_C",
+        name: "Nuclear Power Plant",
+        category: "nuclear",
+        powerMw: 2500,
+        unlockTier: 7,
+        fuels: [
+          { fuelItemId: "Desc_NuclearFuelRod_C", fuelPerMinute: 0.2, supplementalItemId: "Desc_Water_C", supplementalPerMinute: 240 },
+          { fuelItemId: "Desc_PlutoniumFuelRod_C", fuelPerMinute: 0.1, supplementalItemId: "Desc_Water_C", supplementalPerMinute: 240 },
+          { fuelItemId: "Desc_FicsoniumFuelRod_C", fuelPerMinute: 1, supplementalItemId: "Desc_Water_C", supplementalPerMinute: 1000 },
+        ],
+      },
+    ]);
+    vi.spyOn(libraryApi, "items").mockResolvedValue([
+      { id: "Desc_NuclearFuelRod_C", name: "Uranium Fuel Rod", category: "part", stackSize: 50, isFluid: false },
+      { id: "Desc_PlutoniumFuelRod_C", name: "Plutonium Fuel Rod", category: "part", stackSize: 50, isFluid: false },
+      { id: "Desc_FicsoniumFuelRod_C", name: "Ficsonium Fuel Rod", category: "part", stackSize: 50, isFluid: false },
+    ]);
+    // Uranium and Ficsonium fuel rods' chains ground out; Plutonium Fuel
+    // Rod's doesn't reach `list_item_tiers` at all — items no chain ever
+    // reaches are left out server-side entirely, not sent with a null
+    // tier (two reachable fuels here so the Edit modal's `fuelOptions.length
+    // > 1` gate actually renders the picker instead of skipping it).
+    vi.spyOn(plannerApi, "listItemTiers").mockResolvedValue([
+      { itemId: "Desc_NuclearFuelRod_C", tier: 7, standardTier: 7 },
+      { itemId: "Desc_FicsoniumFuelRod_C", tier: 9, standardTier: 9 },
+    ]);
+    vi.spyOn(powerApi, "list").mockResolvedValue([
+      {
+        id: "g1",
+        factoryId: "nuclear",
+        generatorId: "Build_GeneratorNuclear_C",
+        fuelItemId: "Desc_NuclearFuelRod_C",
+        count: 2,
+        clockPct: 100,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+      },
+    ]);
+    vi.spyOn(powerApi, "listAll").mockResolvedValue([]);
+    vi.spyOn(powerApi, "balance").mockResolvedValue({
+      factoryId: "nuclear",
+      generatedMw: 5000,
+      consumedMw: 0,
+      netMw: 5000,
+      fuelFlows: [],
+    });
+    vi.spyOn(powerApi, "listBalances").mockResolvedValue([
+      { factoryId: "nuclear", generatedMw: 5000, consumedMw: 0, netMw: 5000, fuelFlows: [] },
+    ]);
+
+    renderWithProviders(<PowerView />);
+
+    // Add form: picking the Nuclear Power Plant offers only the
+    // reachable fuel.
+    await user.click(await screen.findByRole("button", { name: /add generator/i }));
+    const generatorCombobox = screen.getByRole("combobox", { name: /^generator$/i });
+    await user.click(generatorCombobox);
+    await user.click(await screen.findByRole("option", { name: /nuclear power plant/i }));
+    const fuelCombobox = screen.getByRole("combobox", { name: /^fuel$/i });
+    await user.click(fuelCombobox);
+    await user.keyboard("{ArrowDown}");
+    expect(await screen.findByRole("option", { name: /uranium fuel rod/i })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /ficsonium fuel rod/i })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /plutonium fuel rod/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+
+    // Edit modal on the existing (reachable-fuel) row: still no
+    // Plutonium Fuel Rod option, since it isn't the row's current fuel
+    // and it isn't reachable either.
+    await user.click(await screen.findByRole("button", { name: /edit generator/i }));
+    expect(screen.queryByRole("option", { name: /plutonium fuel rod/i })).not.toBeInTheDocument();
   });
 });

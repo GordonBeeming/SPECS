@@ -1,7 +1,7 @@
 import { Battery, Lock } from "lucide-react";
 
 import { useTransportVehicles } from "@/features/library/hooks/useLibrary";
-import type { TransportPlan } from "../types";
+import type { TransportKind, TransportPlan, TransportSegment } from "../types";
 
 interface TransportPlanPickerProps {
   plans: TransportPlan[];
@@ -90,8 +90,13 @@ export function TransportPlanPicker({ plans, selectedJson, onPick }: TransportPl
 /**
  * Compact human label for a plan: "2× Mk6 belts", "1× Mk6 + 1× Mk1 belts",
  * or "3× Truck (Build_Truck_C)" for vehicle plans.
+ *
+ * Exported so the logistics list row (`LogisticsListView.tsx`) can reuse
+ * the same label instead of falling back to the bare `transportKind` —
+ * that fallback is what dropped the mark from "belt" and read as "belt"
+ * for every tier of belt alike (#71).
  */
-function summariseSegments(
+export function summariseSegments(
   plan: TransportPlan,
   vehicleNames: Map<string, string>,
 ): string {
@@ -139,4 +144,55 @@ export function serialisePlan(plan: TransportPlan): string {
   if (plan.vehicleId !== undefined) out.vehicleId = plan.vehicleId;
   if (plan.batteryPerMinute !== undefined) out.batteryPerMinute = plan.batteryPerMinute;
   return JSON.stringify(out);
+}
+
+const TRANSPORT_KINDS: ReadonlySet<TransportKind> = new Set([
+  "belt",
+  "pipe",
+  "truck",
+  "tractor",
+  "train",
+  "drone",
+]);
+
+function isTransportKind(v: unknown): v is TransportKind {
+  return typeof v === "string" && TRANSPORT_KINDS.has(v as TransportKind);
+}
+
+function isTransportSegment(v: unknown): v is TransportSegment {
+  if (typeof v !== "object" || v === null) return false;
+  const s = v as Partial<TransportSegment>;
+  return typeof s.mark === "number" && typeof s.count === "number";
+}
+
+/**
+ * Reverses `serialisePlan` for a persisted link's `transportPlanJson`,
+ * validating shape field-by-field rather than trusting the parse — the
+ * Rust side has validated every row it wrote, but a row saved by an
+ * older schema version is still a possibility this reader has to survive.
+ * Returns `null` on anything that doesn't look like a `TransportPlan`,
+ * matching the fail-soft convention `edgeStyle.ts` uses for the same
+ * stored string.
+ */
+export function parseTransportPlanJson(json: string): TransportPlan | null {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const p = parsed as Partial<TransportPlan>;
+    if (!isTransportKind(p.kind) || !Array.isArray(p.segments)) return null;
+    if (!p.segments.every(isTransportSegment)) return null;
+    return {
+      kind: p.kind,
+      segments: p.segments,
+      totalCapacityPerMinute:
+        typeof p.totalCapacityPerMinute === "number" ? p.totalCapacityPerMinute : 0,
+      utilisationPct: typeof p.utilisationPct === "number" ? p.utilisationPct : 0,
+      minUnlockTier: typeof p.minUnlockTier === "number" ? p.minUnlockTier : 0,
+      locked: typeof p.locked === "boolean" ? p.locked : false,
+      vehicleId: typeof p.vehicleId === "string" ? p.vehicleId : undefined,
+      batteryPerMinute: typeof p.batteryPerMinute === "number" ? p.batteryPerMinute : undefined,
+    };
+  } catch {
+    return null;
+  }
 }

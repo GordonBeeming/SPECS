@@ -145,7 +145,13 @@ export function FilterSelect(props: FilterSelectProps) {
           >
             <ChevronDown className="h-4 w-4" aria-hidden="true" />
           </ComboboxButton>
-          <DropdownPanel filtered={filtered} value={new Set(props.value)} multiple />
+          <DropdownPanel
+            filtered={filtered}
+            value={new Set(props.value)}
+            multiple
+            optionsCount={props.options.length}
+            query={query}
+          />
         </div>
       </Combobox>
     );
@@ -191,7 +197,13 @@ export function FilterSelect(props: FilterSelectProps) {
             <ChevronDown className="h-4 w-4" aria-hidden="true" />
           </ComboboxButton>
         </div>
-        <DropdownPanel filtered={filtered} value={new Set([props.value ?? ""])} multiple={false} />
+        <DropdownPanel
+          filtered={filtered}
+          value={new Set([props.value ?? ""])}
+          multiple={false}
+          optionsCount={props.options.length}
+          query={query}
+        />
       </div>
     </Combobox>
   );
@@ -201,6 +213,9 @@ interface DropdownPanelProps {
   filtered: FilterOption[];
   value: Set<string>;
   multiple: boolean;
+  /** Full, unfiltered pool size — see the empty-state comment below. */
+  optionsCount: number;
+  query: string;
 }
 
 function rate(n: number): string {
@@ -210,7 +225,7 @@ function rate(n: number): string {
   return Number(n.toFixed(3)).toString();
 }
 
-function DropdownPanel({ filtered, value, multiple }: DropdownPanelProps) {
+function DropdownPanel({ filtered, value, multiple, optionsCount, query }: DropdownPanelProps) {
   // Rows with an IO strip need more room than plain labels; only pay
   // for the wider panel when a recipe picker is actually using it.
   const hasIo = filtered.some((o) => o.io);
@@ -229,7 +244,16 @@ function DropdownPanel({ filtered, value, multiple }: DropdownPanelProps) {
       modal={false}
     >
       {filtered.length === 0 ? (
-        <div className="px-3 py-2 text-sm text-fg-muted">No matches.</div>
+        <div className="px-3 py-2 text-sm text-fg-muted">
+          {optionsCount === 0
+            ? // The pool itself is empty — nothing was ever offered, so
+              // there's no typo to fix. Distinct from the query below:
+              // "No matches" alone reads as "you typed it wrong" even
+              // when the real answer is "this isn't reachable at all"
+              // (an unplannable item's whole recipe chain, say).
+              "Nothing available."
+            : `No matches for "${query.trim()}".`}
+        </div>
       ) : (
         // Walk options in caller-provided order and emit a sticky
         // header whenever the `group` changes. Header rows are pure

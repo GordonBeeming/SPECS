@@ -115,6 +115,28 @@ describe("<LogisticsLinkEditor /> — map-derived distance", () => {
     expect(screen.getByText(/from the map/i)).toBeInTheDocument();
   });
 
+  it("keeps the map-derived hint out of the Distance field's accessible name", async () => {
+    // Regression for the same accessible-name trap the Item field's
+    // "no outputs yet" hint hit: a <label>'s full text content becomes
+    // part of every control it wraps' accessible name, so a hint left
+    // inside the <label> would turn "Distance (m, optional)" into
+    // "Distance (m, optional) From the map — 500 m…" for a screen
+    // reader — and for `getByRole(..., { name: "Distance (m, optional)" })`,
+    // an exact match, unlike the unanchored `getByLabelText(/distance/i)`
+    // used elsewhere in this file.
+    const user = userEvent.setup();
+    renderWithProviders(<LogisticsLinkEditor onClose={() => {}} />);
+
+    await pickFactory(user, /from factory/i, /Copper Works/i);
+    await pickFactory(user, /to factory/i, /Iron Works/i);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("spinbutton", { name: "Distance (m, optional)" }),
+      ).toHaveValue(500);
+    });
+  });
+
   it("lets the player override the derived distance", async () => {
     const user = userEvent.setup();
     renderWithProviders(<LogisticsLinkEditor onClose={() => {}} />);
@@ -239,5 +261,149 @@ describe("<LogisticsLinkEditor /> — modal layout and validation", () => {
     renderWithProviders(<LogisticsLinkEditor onClose={onClose} />);
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe("<LogisticsLinkEditor /> — item picker narrowed to the source's outputs (#61)", () => {
+  beforeEach(() => {
+    // Two items so filtering is observable — the shared `beforeEach`
+    // above only stocks one, which can't distinguish "filtered" from
+    // "unfiltered".
+    vi.spyOn(libraryApi, "items").mockResolvedValue([
+      { id: "Desc_CopperIngot_C", name: "Copper Ingot", category: "ingot", stackSize: 100, isFluid: false },
+      { id: "Desc_IronIngot_C", name: "Iron Ingot", category: "ingot", stackSize: 100, isFluid: false },
+    ]);
+  });
+
+  it("offers only the items the source factory produces once a source is picked", async () => {
+    vi.spyOn(factoryApi, "detail").mockImplementation(async (id: string) => ({
+      factory: id === copperWorks.id ? copperWorks : ironWorks,
+      machines: [],
+      ledger: {
+        factoryId: id,
+        powerMw: 0,
+        flows:
+          id === copperWorks.id
+            ? [
+                {
+                  itemId: "Desc_CopperIngot_C",
+                  itemName: "Copper Ingot",
+                  isFluid: false,
+                  producedPerMinute: 30,
+                  consumedPerMinute: 0,
+                  netPerMinute: 30,
+                  fromNodesPerMinute: 0,
+                  fromLinksPerMinute: 0,
+                },
+              ]
+            : [],
+      },
+    }));
+
+    const user = userEvent.setup();
+    renderWithProviders(<LogisticsLinkEditor onClose={() => {}} />);
+    await pickFactory(user, /from factory/i, /Copper Works/i);
+
+    // The whole ~150-item catalogue used to show here regardless of what
+    // the source made (#61) — Iron Ingot must now be gone, Copper Ingot
+    // must stay.
+    await user.click(screen.getByRole("combobox", { name: /^item$/i }));
+    expect(await screen.findByRole("option", { name: /Copper Ingot/i })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Iron Ingot/i })).not.toBeInTheDocument();
+  });
+
+  it("also offers an item the source only supplies via a bound resource-node claim, not a machine", async () => {
+    // A raw-ore outpost has no `FactoryMachine` rows — its output only
+    // shows up as `fromNodesPerMinute`. Filtering on `producedPerMinute`
+    // alone would hide every extraction-only factory's items.
+    vi.spyOn(factoryApi, "detail").mockResolvedValue({
+      factory: copperWorks,
+      machines: [],
+      ledger: {
+        factoryId: copperWorks.id,
+        powerMw: 0,
+        flows: [
+          {
+            itemId: "Desc_IronIngot_C",
+            itemName: "Iron Ingot",
+            isFluid: false,
+            producedPerMinute: 0,
+            consumedPerMinute: 0,
+            netPerMinute: 0,
+            fromNodesPerMinute: 120,
+            fromLinksPerMinute: 0,
+          },
+        ],
+      },
+    });
+
+    const user = userEvent.setup();
+    renderWithProviders(<LogisticsLinkEditor onClose={() => {}} />);
+    await pickFactory(user, /from factory/i, /Copper Works/i);
+
+    await user.click(screen.getByRole("combobox", { name: /^item$/i }));
+    expect(await screen.findByRole("option", { name: /Iron Ingot/i })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Copper Ingot/i })).not.toBeInTheDocument();
+  });
+
+  it("falls back to the full catalogue when the source factory has no outputs yet, instead of an empty picker", async () => {
+    vi.spyOn(factoryApi, "detail").mockResolvedValue({
+      factory: copperWorks,
+      machines: [],
+      ledger: { factoryId: copperWorks.id, powerMw: 0, flows: [] },
+    });
+
+    const user = userEvent.setup();
+    renderWithProviders(<LogisticsLinkEditor onClose={() => {}} />);
+    await pickFactory(user, /from factory/i, /Copper Works/i);
+
+    await user.click(screen.getByRole("combobox", { name: /^item$/i }));
+    expect(await screen.findByRole("option", { name: /Copper Ingot/i })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: /Iron Ingot/i })).toBeInTheDocument();
+  });
+
+  it("keeps an already-picked item's label visible in edit mode even if the source's flows no longer include it", async () => {
+    // Edit mode disables the field, so the player can't retype it — if
+    // the filter dropped the stored item from the options list the
+    // combobox would render blank instead of the item it's locked to.
+    vi.spyOn(factoryApi, "detail").mockResolvedValue({
+      factory: copperWorks,
+      machines: [],
+      ledger: {
+        factoryId: copperWorks.id,
+        powerMw: 0,
+        // The factory now only makes Iron Ingot — the link is still
+        // pinned to the Copper Ingot it was created for.
+        flows: [
+          {
+            itemId: "Desc_IronIngot_C",
+            itemName: "Iron Ingot",
+            isFluid: false,
+            producedPerMinute: 30,
+            consumedPerMinute: 0,
+            netPerMinute: 30,
+            fromNodesPerMinute: 0,
+            fromLinksPerMinute: 0,
+          },
+        ],
+      },
+    });
+
+    const link: LogisticsLink = {
+      id: "link-3",
+      fromFactoryId: copperWorks.id,
+      toFactoryId: ironWorks.id,
+      itemId: "Desc_CopperIngot_C",
+      itemsPerMinute: 30,
+      transportKind: "belt",
+      transportPlanJson: "{}",
+      createdAt: "2026-05-10T00:00:00Z",
+      updatedAt: "2026-05-10T00:00:00Z",
+    };
+    renderWithProviders(<LogisticsLinkEditor link={link} onClose={() => {}} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("combobox", { name: /^item$/i })).toHaveValue("Copper Ingot");
+    });
   });
 });

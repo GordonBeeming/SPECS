@@ -1,4 +1,4 @@
-import type { ExtractorOption, ResourceNodeRow } from "./types";
+import type { ExtractorOption, Purity, ResourceNodeRow } from "./types";
 
 /**
  * The extractor a fresh claim should default to: the caller's preferred
@@ -34,9 +34,30 @@ export function extractorOptionLabel(option: Pick<ExtractorOption, "name" | "unl
  * bucket plus a coarse coordinate hint instead. The raw id stays on
  * the row's `title` so we can still trace which entry the user is
  * pointing at.
+ *
+ * The index resets at 1 for each purity within a resource (Pure/Normal/
+ * Impure each number their own nodes), so "Iron Ore #1" alone can name
+ * either a Pure or a Normal node — the purity initial in front of the
+ * number is what keeps the two apart when the label is read on its own,
+ * without renumbering (and without touching the index math the Rust
+ * side mirrors for `claimOverPortCapacity` findings).
  */
-export function nodeDisplayLabel(node: ResourceNodeRow, index: number): string {
-  return `#${index + 1} · ${coordChip(node.x, node.y)}`;
+export function nodeDisplayLabel(
+  node: Pick<ResourceNodeRow, "x" | "y" | "purity">,
+  index: number,
+): string {
+  return `#${purityInitial(node.purity)}${index + 1} · ${coordChip(node.x, node.y)}`;
+}
+
+function purityInitial(purity: Purity): string {
+  switch (purity) {
+    case "Pure":
+      return "P";
+    case "Normal":
+      return "N";
+    case "Impure":
+      return "I";
+  }
 }
 
 /**

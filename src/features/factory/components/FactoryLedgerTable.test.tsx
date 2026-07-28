@@ -41,13 +41,40 @@ describe("<FactoryLedgerTable />", () => {
       },
     ]);
     render(<FactoryLedgerTable ledger={ledger} itemNames={new Map()} />);
-    // Net cell texts include the formatted value with sign.
-    const deficit = screen.getByText("-30.0");
-    const surplus = screen.getByText("+20.0");
-    const neutral = screen.getByText("0.0");
+    // Net cell texts include the formatted value with sign and unit.
+    const deficit = screen.getByText("-30.0 /min");
+    const surplus = screen.getByText("+20.0 /min");
+    const neutral = screen.getByText("0.0 /min");
     expect(deficit.className).toMatch(/text-danger/);
     expect(surplus.className).toMatch(/text-success/);
     expect(neutral.className).toMatch(/text-fg-muted/);
+  });
+
+  it("carries a unit on every rate cell, fluid or solid", () => {
+    // Regresses #61: "PRODUCED 60.0 / CONSUMED 60.0" carried no unit at
+    // all, unlike the plan graph which labels every edge.
+    const ledger = ledgerWith([
+      {
+        itemId: "Desc_IronOre_C",
+        itemName: "Iron Ore",
+        isFluid: false,
+        producedPerMinute: 60,
+        consumedPerMinute: 60,
+        netPerMinute: 0,
+      },
+      {
+        itemId: "Desc_Water_C",
+        itemName: "Water",
+        isFluid: true,
+        producedPerMinute: 120,
+        consumedPerMinute: 0,
+        netPerMinute: 120,
+      },
+    ]);
+    render(<FactoryLedgerTable ledger={ledger} itemNames={new Map()} />);
+    expect(screen.getAllByText("60.0 /min")).toHaveLength(2);
+    expect(screen.getByText("120.0 m³/min")).toBeInTheDocument();
+    expect(screen.getByText("+120.0 m³/min")).toBeInTheDocument();
   });
 
   it("falls back to the item id when no name is known", () => {

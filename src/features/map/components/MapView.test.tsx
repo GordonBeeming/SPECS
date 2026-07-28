@@ -8,7 +8,7 @@ import { playthroughApi } from "@/features/playthrough/api";
 import { factoryApi } from "@/features/factory/api";
 import type { Factory } from "@/features/factory/types";
 import { resourcesApi } from "@/features/resources/api";
-import type { ResourceNodeRow } from "@/features/resources/types";
+import type { ResourceNodeRow, WaterExtractorGroup } from "@/features/resources/types";
 import { logisticsApi } from "@/features/logistics/api";
 import { powerApi } from "@/features/power/api";
 import { plannerApi } from "@/features/planner/api";
@@ -148,6 +148,30 @@ const claimedNode: ResourceNodeRow = {
   claimInvalidExtractor: false,
 };
 
+const ironNode: ResourceNodeRow = {
+  id: "n-iron",
+  resourceItemId: "Desc_OreIron_C",
+  resourceItemName: "Iron Ore",
+  purity: "Normal",
+  kind: "miner_node",
+  x: 10000,
+  y: 10000,
+  z: 0,
+  claim: null,
+  itemsPerMinute: 0,
+  allowedExtractors: [{ id: "Build_MinerMk1_C", name: "Miner Mk.1", baseIpm: 60, unlockTier: 0 }],
+  claimInvalidExtractor: false,
+};
+
+const copperNode: ResourceNodeRow = {
+  ...ironNode,
+  id: "n-copper",
+  resourceItemId: "Desc_OreCopper_C",
+  resourceItemName: "Copper Ore",
+  x: 20000,
+  y: 20000,
+};
+
 function renderWithProviders(node: ReactNode) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
@@ -174,7 +198,23 @@ describe("<MapView /> — reaching a claimed node from the map", () => {
     vi.spyOn(validationApi, "validate").mockResolvedValue(cleanValidationReport);
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it("persists 'Show claimed nodes too' under a key scoped to the active playthrough (#64)", async () => {
+    // The bug: this preference (and the rest of the map's filter/view
+    // state) used to live under one global key, so it bled from
+    // whichever playthrough was open last into a brand-new one.
+    const user = userEvent.setup();
+    renderWithProviders(<MapView />);
+    const toggle = await screen.findByLabelText(/show claimed nodes too/i);
+    await user.click(toggle);
+
+    expect(localStorage.getItem("specs:map:showClaimedToo:p")).toBe("0");
+    expect(localStorage.getItem("specs:map:showClaimedToo")).toBeNull();
+  });
 
   it("shows a claimed node's marker without needing any toggle or factory selection first", async () => {
     renderWithProviders(<MapView />);
@@ -280,6 +320,47 @@ describe("<MapView /> — reaching a claimed node from the map", () => {
     expect(flag).toHaveAttribute("title", expect.stringContaining("clock to 66% to fit"));
   });
 
+  it("marks claimed nodes with a badge, not just a subtle opacity dip (#59)", async () => {
+    // Before this fix, claimed vs unclaimed was opacity 1 vs 0.78 on a
+    // 14px marker — the only difference, and too subtle to read at a
+    // glance. The badge is a second, shape-based channel.
+    renderWithProviders(<MapView />);
+    const marker = await screen.findByRole("button", { name: /feeds Iron Works/i });
+    expect(marker.querySelector(".bg-success")).toBeInTheDocument();
+  });
+
+  it("draws a faint line from a claimed node to its factory without needing to select the factory first (#59)", async () => {
+    // Before this fix: the map's only factory↔node overlay only drew
+    // once a factory was selected (InputLinesLayer), and the always-
+    // visible "Show factory links" checkbox never meant this relation
+    // at all — it's factory→factory logistics. This binding line is
+    // the "primary spatial fact" the issue says was never drawn.
+    const { container } = renderWithProviders(<MapView />);
+    await screen.findByRole("button", { name: /feeds Iron Works/i });
+    const bindingLines = container.querySelectorAll('line[stroke-dasharray="3 5"]');
+    expect(bindingLines.length).toBeGreaterThan(0);
+  });
+
+  it("shows an unmissable banner when factory placement is armed too, not just water placement (#59)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MapView />);
+    await user.click(await screen.findByRole("button", { name: /^place a factory$/i }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/placing a factory/i);
+  });
+
+  it("enables 'Jump to my claims' once there's a claim to jump to, and it doesn't throw when clicked (#50)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MapView />);
+    // Wait for the node data to actually land before checking the
+    // button's enabled state — it renders (disabled) on the very
+    // first paint, before the query resolves.
+    await screen.findByRole("button", { name: /feeds Iron Works/i });
+    const jump = screen.getByRole("button", { name: /jump to my claims/i });
+    expect(jump).toBeEnabled();
+    expect(jump).toHaveAttribute("title", expect.stringContaining("1 claimed node"));
+    await user.click(jump);
+  });
+
   it("shows no port-capacity flag when the sweep has nothing to report for this claim", async () => {
     vi.spyOn(validationApi, "validate").mockResolvedValue(cleanValidationReport);
     const user = userEvent.setup();
@@ -352,6 +433,13 @@ describe("<MapView /> — dragging a factory pin (#103)", () => {
     expect(call.worldY).toBeCloseTo(40517.57812499994, 3);
   });
 
+  it("disables 'Jump to my claims' when there's nothing claimed yet (#50)", async () => {
+    renderWithProviders(<MapView />);
+    const jump = await screen.findByRole("button", { name: /jump to my claims/i });
+    expect(jump).toBeDisabled();
+    expect(jump).toHaveAttribute("title", "No claimed nodes yet");
+  });
+
   it("shows the factory's coordinates on its card, the way node cards and 'New factory here' (#97) already do", async () => {
     const user = userEvent.setup();
     renderWithProviders(<MapView />);
@@ -361,6 +449,154 @@ describe("<MapView /> — dragging a factory pin (#103)", () => {
     expect(
       await screen.findByText(coordChip(factory.worldX, factory.worldY)),
     ).toBeInTheDocument();
+  });
+
+  it("gives the factory pin the same zoom-independent scale node markers already have (#99)", async () => {
+    // Regresses #99: node markers got a counter-scale wrapper in #96
+    // so their on-screen size holds constant across zoom, but factory
+    // pins kept scaling with the map. jsdom doesn't lay out real
+    // pixels, so this pins the fix's actual mechanism — the pin's
+    // positioning wrapper carries its own `scale()`, which cancels to
+    // exactly 1 at the default zoom.
+    renderWithProviders(<MapView />);
+    const pin = await screen.findByTitle(/click for details, double-click to open the plan/i);
+    expect(pin.parentElement?.style.transform).toBe("translate(-50%, -50%) scale(1)");
+  });
+});
+
+const waterGroup: WaterExtractorGroup = {
+  id: "wg-1",
+  worldX: 5000,
+  worldY: 5000,
+  count: 4,
+  clockPct: 100,
+  count2: null,
+  clock2Pct: null,
+  factoryId: null,
+  notes: null,
+  locked: false,
+  outputIpm: 480,
+  createdAt: "2026-05-10T00:00:00Z",
+  updatedAt: "2026-05-10T00:00:00Z",
+};
+
+describe("<MapView /> — a water-extractor pin holds its size at zoom too (#99)", () => {
+  beforeEach(() => {
+    vi.spyOn(playthroughApi, "current").mockResolvedValue({
+      id: "p",
+      displayName: "Run",
+      gameVersion: "1.1",
+      createdAt: "2026-05-10T00:00:00Z",
+      currentTier: 0,
+      currentMilestoneProgress: 0,
+    });
+    vi.spyOn(factoryApi, "list").mockResolvedValue([]);
+    vi.spyOn(resourcesApi, "list").mockResolvedValue([]);
+    vi.spyOn(resourcesApi, "listWaterGroups").mockResolvedValue([waterGroup]);
+    vi.spyOn(resourcesApi, "budget").mockResolvedValue({ assumptionLabel: "x", rows: [] });
+    vi.spyOn(logisticsApi, "list").mockResolvedValue([]);
+    vi.spyOn(powerApi, "listAll").mockResolvedValue([]);
+    vi.spyOn(plannerApi, "listUnsourcedInputs").mockResolvedValue([]);
+    vi.spyOn(libraryApi, "items").mockResolvedValue([]);
+    vi.spyOn(validationApi, "validate").mockResolvedValue(cleanValidationReport);
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("gives the water-extractor pin the same counter-scale wrapper as factory pins and node markers", async () => {
+    renderWithProviders(<MapView />);
+    const pin = await screen.findByTitle(/Water Extractor · 480/i);
+    expect(pin.parentElement?.style.transform).toBe("translate(-50%, -50%) scale(1)");
+  });
+});
+
+describe("<MapView /> — isolating one resource in the filter row (#59)", () => {
+  beforeEach(() => {
+    vi.spyOn(playthroughApi, "current").mockResolvedValue({
+      id: "p",
+      displayName: "Run",
+      gameVersion: "1.1",
+      createdAt: "2026-05-10T00:00:00Z",
+      currentTier: 0,
+      currentMilestoneProgress: 0,
+    });
+    vi.spyOn(factoryApi, "list").mockResolvedValue([]);
+    vi.spyOn(resourcesApi, "list").mockResolvedValue([ironNode, copperNode]);
+    vi.spyOn(resourcesApi, "listWaterGroups").mockResolvedValue([]);
+    vi.spyOn(resourcesApi, "budget").mockResolvedValue({ assumptionLabel: "x", rows: [] });
+    vi.spyOn(logisticsApi, "list").mockResolvedValue([]);
+    vi.spyOn(powerApi, "listAll").mockResolvedValue([]);
+    vi.spyOn(plannerApi, "listUnsourcedInputs").mockResolvedValue([]);
+    vi.spyOn(libraryApi, "items").mockResolvedValue([]);
+    vi.spyOn(validationApi, "validate").mockResolvedValue(cleanValidationReport);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    // The filter state is scoped to (and persisted under) the "p"
+    // playthrough id every test in this block reuses — without
+    // clearing it, one test's hidden-resource set leaks into the
+    // next test's supposedly-fresh render.
+    localStorage.clear();
+  });
+
+  it("Alt-clicking a resource chip solos it, hiding every other resource in one gesture", async () => {
+    renderWithProviders(<MapView />);
+    const ironChip = await screen.findByRole("button", { name: /^iron ore$/i });
+    const copperChip = screen.getByRole("button", { name: /^copper ore$/i });
+    expect(ironChip).toHaveAttribute("aria-pressed", "true");
+    expect(copperChip).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(ironChip, { altKey: true });
+
+    expect(ironChip).toHaveAttribute("aria-pressed", "true");
+    expect(copperChip).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("a second Alt-click on an already-soloed chip undoes it instead of hiding the last resource", async () => {
+    renderWithProviders(<MapView />);
+    const ironChip = await screen.findByRole("button", { name: /^iron ore$/i });
+    const copperChip = screen.getByRole("button", { name: /^copper ore$/i });
+
+    fireEvent.click(ironChip, { altKey: true });
+    fireEvent.click(ironChip, { altKey: true });
+
+    expect(ironChip).toHaveAttribute("aria-pressed", "true");
+    expect(copperChip).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("'Hide all' then a plain click on one chip is the two-click isolation path", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MapView />);
+    await screen.findByRole("button", { name: /^iron ore$/i });
+    await user.click(screen.getByRole("button", { name: /^hide all$/i }));
+    await user.click(screen.getByRole("button", { name: /^iron ore$/i }));
+
+    expect(screen.getByRole("button", { name: /^iron ore$/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /^copper ore$/i })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("'Show all' clears every hidden resource in one click", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MapView />);
+    await screen.findByRole("button", { name: /^iron ore$/i });
+    await user.click(screen.getByRole("button", { name: /^hide all$/i }));
+    await user.click(screen.getByRole("button", { name: /^show all$/i }));
+
+    expect(screen.getByRole("button", { name: /^iron ore$/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /^copper ore$/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 });
 

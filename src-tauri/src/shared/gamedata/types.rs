@@ -79,6 +79,16 @@ pub struct GeneratorFuel {
     /// default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub power_mw_override: Option<f32>,
+    /// What the generator emits while burning this fuel — Uranium Waste
+    /// from a Uranium Fuel Rod, Plutonium Waste from a Plutonium one.
+    /// Burning a rod is the game's only source of either, so this is
+    /// where the plutonium branch's raw material comes from. `None` for
+    /// every fuel that burns clean.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub byproduct_item_id: Option<String>,
+    /// Items per minute of `byproduct_item_id` at 100% clock.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub byproduct_per_minute: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

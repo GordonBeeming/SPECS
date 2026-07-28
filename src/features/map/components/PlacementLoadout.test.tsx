@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { clampLoadoutMinerId, DEFAULT_LOADOUT, type MapLoadout } from "./PlacementLoadout";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  clampLoadoutMinerId,
+  DEFAULT_LOADOUT,
+  readLoadout,
+  writeLoadout,
+  type MapLoadout,
+} from "./PlacementLoadout";
 import type { ExtractorOption } from "@/features/resources/types";
 
 function mark(id: string, unlockTier: number): ExtractorOption {
@@ -34,5 +40,25 @@ describe("clampLoadoutMinerId", () => {
     const loadout: MapLoadout = { ...DEFAULT_LOADOUT, minerId: "Build_MinerMk3_C" };
     const clamped = clampLoadoutMinerId(loadout, T0_T4);
     expect(clamped.minerId).toBe("Build_MinerMk2_C");
+  });
+});
+
+describe("readLoadout / writeLoadout — scoped per playthrough (#64)", () => {
+  afterEach(() => localStorage.clear());
+
+  it("doesn't bleed a mark saved under one playthrough into another", () => {
+    // The exact bug #64 fixes: a Mk.2 preference from a later-tier
+    // playthrough used to sit in one global key and be read straight
+    // back by a brand-new Tier 0 one.
+    writeLoadout({ ...DEFAULT_LOADOUT, minerId: "Build_MinerMk2_C" }, "playthrough-a");
+    expect(readLoadout("playthrough-b").minerId).toBe(DEFAULT_LOADOUT.minerId);
+    expect(readLoadout("playthrough-a").minerId).toBe("Build_MinerMk2_C");
+  });
+
+  it("keeps working unscoped for callers that haven't threaded a playthrough id through yet", () => {
+    // ResourcesView's quick-claim reads the loadout without a
+    // playthrough id — must not throw or silently discard the save.
+    writeLoadout({ ...DEFAULT_LOADOUT, minerId: "Build_MinerMk3_C" });
+    expect(readLoadout().minerId).toBe("Build_MinerMk3_C");
   });
 });

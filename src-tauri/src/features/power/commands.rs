@@ -14,7 +14,7 @@ use crate::features::resource_nodes::repo as nodes_repo;
 use crate::shared::error::{AppError, AppResult};
 use crate::shared::gamedata::GameData;
 
-use super::domain::{generator_fuel_flows, generator_power_mw};
+use super::domain::{generator_byproduct_flow, generator_fuel_flows, generator_power_mw};
 use super::dto::{
     CreatePowerGenInput, FactoryPowerBalance, PowerFuelFlow, PowerGen, SetPowerGenPositionInput,
     UpdatePowerGenInput,
@@ -286,6 +286,7 @@ pub(crate) fn power_balance_with_supply(
     let gens = db.with(|c| repo::power_gens_for_factory(c, factory_id).map_err(AppError::from))?;
     let mut generated_mw = 0.0_f32;
     let mut fuel_totals: BTreeMap<String, f32> = BTreeMap::new();
+    let mut byproduct_totals: BTreeMap<String, f32> = BTreeMap::new();
     for g in &gens {
         // Don't silently drop rows whose generator/fuel id doesn't
         // resolve — that would mask data corruption (or a dataset
@@ -300,26 +301,32 @@ pub(crate) fn power_balance_with_supply(
         if let Some((id, rate)) = supp {
             *fuel_totals.entry(id).or_insert(0.0) += rate;
         }
+        if let Some((id, rate)) = generator_byproduct_flow(fuel, g.count, g.clock_pct) {
+            *byproduct_totals.entry(id).or_insert(0.0) += rate;
+        }
     }
 
-    let fuel_flows = fuel_totals
-        .into_iter()
-        .filter(|(_, v)| *v > 0.0)
-        .map(|(item_id, per_minute)| {
-            let (item_name, is_fluid) = game_data
-                .item(&item_id)
-                .map(|it| (it.name.clone(), it.is_fluid))
-                .unwrap_or((item_id.clone(), false));
-            PowerFuelFlow { item_id, item_name, is_fluid, per_minute }
-        })
-        .collect();
+    let to_flows = |totals: BTreeMap<String, f32>| -> Vec<PowerFuelFlow> {
+        totals
+            .into_iter()
+            .filter(|(_, v)| *v > 0.0)
+            .map(|(item_id, per_minute)| {
+                let (item_name, is_fluid) = game_data
+                    .item(&item_id)
+                    .map(|it| (it.name.clone(), it.is_fluid))
+                    .unwrap_or((item_id.clone(), false));
+                PowerFuelFlow { item_id, item_name, is_fluid, per_minute }
+            })
+            .collect()
+    };
 
     Ok(FactoryPowerBalance {
         factory_id: factory_id.to_string(),
         generated_mw,
         consumed_mw,
         net_mw: generated_mw - consumed_mw,
-        fuel_flows,
+        fuel_flows: to_flows(fuel_totals),
+        byproduct_flows: to_flows(byproduct_totals),
     })
 }
 
@@ -366,6 +373,59 @@ mod tests {
             "expected 1.6 MW machine + 5 MW miner = 6.6, got {}",
             balance.consumed_mw
         );
+    }
+
+    #[test]
+    fn power_balance_reports_the_waste_a_nuclear_bank_emits() {
+        // The plant's panel used to list its fuel and water and no
+        // output of any kind, so a nuclear factory had nowhere to state
+        // where its waste goes. Two plants at 50% burn 0.2 rods/min and
+        // emit 10 ipm of Uranium Waste — half of two plants' 10/min
+        // each.
+        let db = PlaythroughDb::open_in_memory().expect("open in-memory playthrough db");
+        let gd = GameData::from_bundled().unwrap();
+        db.with(|c| factory_repo::factory_insert(c, "f1", "Nuclear", None, None, None, NOW))
+            .expect("insert factory");
+        db.with(|c| {
+            repo::power_gen_insert(
+                c, "g1", "f1", "Build_GeneratorNuclear_C", "Desc_NuclearFuelRod_C", 2, 50.0,
+                None, NOW,
+            )
+        })
+        .expect("insert generator");
+
+        let balance = power_balance_impl(&db, &gd, "f1").expect("balance computes");
+        let waste = balance
+            .byproduct_flows
+            .iter()
+            .find(|f| f.item_id == "Desc_NuclearWaste_C")
+            .expect("the bank emits Uranium Waste");
+        assert_eq!(waste.item_name, "Uranium Waste");
+        assert!((waste.per_minute - 10.0).abs() < 0.01, "got {}", waste.per_minute);
+        assert!(
+            balance.fuel_flows.iter().any(|f| f.item_id == "Desc_NuclearFuelRod_C"),
+            "the consumed side still reports the rods"
+        );
+    }
+
+    #[test]
+    fn power_balance_reports_no_byproducts_for_a_clean_burner() {
+        // Only nuclear emits anything; a coal bank must not grow an
+        // empty-but-present waste row for the Power view to render.
+        let db = PlaythroughDb::open_in_memory().expect("open in-memory playthrough db");
+        let gd = GameData::from_bundled().unwrap();
+        db.with(|c| factory_repo::factory_insert(c, "f1", "Coal", None, None, None, NOW))
+            .expect("insert factory");
+        db.with(|c| {
+            repo::power_gen_insert(
+                c, "g1", "f1", "Build_GeneratorCoal_C", "Desc_Coal_C", 1, 100.0, None, NOW,
+            )
+        })
+        .expect("insert generator");
+
+        let balance = power_balance_impl(&db, &gd, "f1").expect("balance computes");
+        assert!(balance.byproduct_flows.is_empty());
+        assert!(!balance.fuel_flows.is_empty());
     }
 
     #[test]

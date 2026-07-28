@@ -69,4 +69,17 @@ describe("<CreateFactoryModal />", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalled();
   });
+
+  it("keeps Create/Cancel outside the icon picker's scroll region", () => {
+    // Regresses: the whole dialog body scrolled as one block, so
+    // expanding the icon grid pushed Create/Cancel below the fold with
+    // no way to reach them short of scrolling past the grid.
+    renderWithProviders(<CreateFactoryModal onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /pick an icon/i }));
+
+    const createButton = screen.getByRole("button", { name: /^create$/i });
+    const scrollRegion = screen.getByPlaceholderText(/search icons/i).closest(".overflow-y-auto");
+    expect(scrollRegion).not.toBeNull();
+    expect(scrollRegion?.contains(createButton)).toBe(false);
+  });
 });

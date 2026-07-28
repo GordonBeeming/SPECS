@@ -1298,14 +1298,21 @@
       "id": "Build_MinerMk2_C",
       "name": "Miner Mk.2",
       "category": "extraction",
-      "powerMw": 12,
+      "powerMw": 15,
       "unlockTier": 4
     },
     {
       "id": "Build_MinerMk3_C",
       "name": "Miner Mk.3",
       "category": "extraction",
-      "powerMw": 30,
+      "powerMw": 45,
+      "unlockTier": 8
+    },
+    {
+      "id": "Build_GeneratorNuclear_C",
+      "name": "Nuclear Power Plant",
+      "category": "power",
+      "powerMw": 0,
       "unlockTier": 8
     },
     {
@@ -1347,14 +1354,14 @@
       "id": "Build_FrackingExtractor_C",
       "name": "Resource Well Extractor",
       "category": "extraction",
-      "powerMw": 150,
+      "powerMw": 0,
       "unlockTier": 8
     },
     {
       "id": "Build_FrackingSmasher_C",
       "name": "Resource Well Pressuriser",
       "category": "extraction",
-      "powerMw": 300,
+      "powerMw": 150,
       "unlockTier": 8
     },
     {
@@ -4189,6 +4196,26 @@
       ]
     },
     {
+      "id": "Recipe_PlutoniumWaste_C",
+      "name": "Plutonium Waste",
+      "buildingId": "Build_GeneratorNuclear_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 600,
+      "inputs": [
+        {
+          "itemId": "Desc_PlutoniumFuelRod_C",
+          "perMinute": 0.1
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_PlutoniumWaste_C",
+          "perMinute": 1
+        }
+      ]
+    },
+    {
       "id": "Recipe_PowerCrystalShard_1_C",
       "name": "Power Shard (1)",
       "buildingId": "Build_ConstructorMk1_C",
@@ -5709,6 +5736,26 @@
         {
           "itemId": "Desc_OreUranium_C",
           "perMinute": 120
+        }
+      ]
+    },
+    {
+      "id": "Recipe_NuclearWaste_C",
+      "name": "Uranium Waste",
+      "buildingId": "Build_GeneratorNuclear_C",
+      "isAlt": false,
+      "unlockTier": 8,
+      "cycleSeconds": 300,
+      "inputs": [
+        {
+          "itemId": "Desc_NuclearFuelRod_C",
+          "perMinute": 0.2
+        }
+      ],
+      "outputs": [
+        {
+          "itemId": "Desc_NuclearWaste_C",
+          "perMinute": 10
         }
       ]
     },
@@ -8595,7 +8642,8 @@
         "Build_OilRefinery_C",
         "Build_OilPump_C",
         "Build_Packager_C",
-        "Build_ConveyorBeltMk5_C"
+        "Build_ConveyorBeltMk5_C",
+        "Build_GeneratorFuel_C"
       ]
     },
     {
@@ -8603,7 +8651,6 @@
       "tier": 6,
       "name": "Expanded Power Infrastructure",
       "unlocks": [
-        "Build_GeneratorFuel_C",
         "Build_PipelineMK2_C"
       ]
     },
@@ -8804,15 +8851,19 @@
         },
         {
           "fuelItemId": "Desc_GenericBiomass_C",
-          "fuelPerMinute": 4
+          "fuelPerMinute": 10
         },
         {
           "fuelItemId": "Desc_Leaves_C",
-          "fuelPerMinute": 60
+          "fuelPerMinute": 120
         },
         {
           "fuelItemId": "Desc_Mycelia_C",
-          "fuelPerMinute": 15
+          "fuelPerMinute": 90
+        },
+        {
+          "fuelItemId": "Desc_Biofuel_C",
+          "fuelPerMinute": 4
         }
       ]
     },
@@ -8848,7 +8899,7 @@
       "name": "Fuel Generator",
       "category": "fluid",
       "powerMw": 250,
-      "unlockTier": 6,
+      "unlockTier": 5,
       "fuels": [
         {
           "fuelItemId": "Desc_LiquidFuel_C",
@@ -8883,20 +8934,23 @@
           "fuelItemId": "Desc_NuclearFuelRod_C",
           "fuelPerMinute": 0.2,
           "supplementalItemId": "Desc_Water_C",
-          "supplementalPerMinute": 240
+          "supplementalPerMinute": 240,
+          "byproductItemId": "Desc_NuclearWaste_C",
+          "byproductPerMinute": 10
         },
         {
           "fuelItemId": "Desc_PlutoniumFuelRod_C",
           "fuelPerMinute": 0.1,
           "supplementalItemId": "Desc_Water_C",
-          "supplementalPerMinute": 240
+          "supplementalPerMinute": 240,
+          "byproductItemId": "Desc_PlutoniumWaste_C",
+          "byproductPerMinute": 1
         },
         {
           "fuelItemId": "Desc_FicsoniumFuelRod_C",
           "fuelPerMinute": 1,
           "supplementalItemId": "Desc_Water_C",
-          "supplementalPerMinute": 1000,
-          "powerMwOverride": 2500
+          "supplementalPerMinute": 240
         }
       ]
     },

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 
-import { useFactoryList } from "@/features/factory/hooks/useFactories";
+import { useFactoryDetail, useFactoryList } from "@/features/factory/hooks/useFactories";
 import { useItems } from "@/features/library/hooks/useLibrary";
 import { factoryDistanceMeters } from "@/features/map/transform";
 import { Button } from "@/shared/ui/Button";
@@ -60,6 +60,10 @@ export function LogisticsLinkEditor({ link, onClose, onSaved }: LogisticsLinkEdi
   // this starts `false` and a one-time effect below decides once the
   // map's current measurement is known — see `distanceTouchedInitRef`.
   const [distanceTouched, setDistanceTouched] = useState<boolean>(false);
+  // Narrows the item picker to what the source factory can actually ship
+  // (#61) — the source is always picked before the item, so its ledger
+  // is available by the time this matters.
+  const sourceFactory = useFactoryDetail(fromFactoryId);
   const [notes, setNotes] = useState<string>(link?.notes ?? "");
   const [selectedJson, setSelectedJson] = useState<string | null>(link?.transportPlanJson ?? null);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -150,15 +154,37 @@ export function LogisticsLinkEditor({ link, onClose, onSaved }: LogisticsLinkEdi
     if (distanceTouched || derivedDistanceM == null) return;
     setDistanceText(String(derivedDistanceM));
   }, [derivedDistanceM, distanceTouched]);
-  const itemOptions = useMemo(
-    () =>
-      (items.data ?? []).map((i) => ({
-        value: i.id,
-        label: i.name,
-        hint: i.isFluid ? "fluid" : undefined,
-      })),
-    [items.data],
-  );
+  // What the source factory could plausibly ship: it's made something
+  // (a machine output) or a bound resource-node claim/water group feeds
+  // it directly — either way there's real supply to draw the link from.
+  const producibleItemIds = useMemo(() => {
+    const flows = sourceFactory.data?.ledger.flows ?? [];
+    const ids = new Set<string>();
+    for (const flow of flows) {
+      if (flow.producedPerMinute > 0 || (flow.fromNodesPerMinute ?? 0) > 0) {
+        ids.add(flow.itemId);
+      }
+    }
+    return ids;
+  }, [sourceFactory.data]);
+
+  const itemOptions = useMemo(() => {
+    const all = (items.data ?? []).map((i) => ({
+      value: i.id,
+      label: i.name,
+      hint: i.isFluid ? "fluid" : undefined,
+    }));
+    // Narrow to the source's own outputs once one's picked (#61 — the
+    // picker used to offer the whole ~150-item catalogue regardless of
+    // what the source factory actually made). Keep the already-selected
+    // item visible even if it falls outside that set — in edit mode the
+    // field is immutable and disabled, so filtering it out would blank
+    // the label instead of just narrowing the choices. A factory with no
+    // flows yet (nothing built, nothing claimed) falls back to the full
+    // catalogue rather than presenting an empty picker.
+    if (!fromFactoryId || producibleItemIds.size === 0) return all;
+    return all.filter((o) => producibleItemIds.has(o.value) || o.value === itemId);
+  }, [items.data, fromFactoryId, producibleItemIds, itemId]);
 
   const pickedPlan = useMemo<TransportPlan | null>(() => {
     if (!selectedJson) return null;
@@ -308,11 +334,25 @@ export function LogisticsLinkEditor({ link, onClose, onSaved }: LogisticsLinkEdi
                   options={itemOptions}
                   value={itemId}
                   onChange={setItemId}
-                  placeholder="Pick an item to ship"
+                  placeholder={
+                    fromFactoryId && producibleItemIds.size > 0
+                      ? "Pick from what the source factory makes"
+                      : "Pick an item to ship"
+                  }
                   disabled={isEdit}
                 />
               </div>
             </label>
+            {/* Outside the <label> on purpose — a <label>'s full text
+                content becomes part of every field it wraps' accessible
+                name, and this hint would otherwise glue itself onto
+                "Item" for anyone using a screen reader or querying by
+                role+name in a test. */}
+            {!isEdit && fromFactoryId && producibleItemIds.size === 0 && (
+              <p className="-mt-2 text-xs text-fg-muted">
+                The source factory has no outputs yet, so this shows every item.
+              </p>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
@@ -330,21 +370,30 @@ export function LogisticsLinkEditor({ link, onClose, onSaved }: LogisticsLinkEdi
                   placeholder="e.g. 60"
                 />
               </label>
-              <label className="block">
-                <span className="text-sm font-medium text-fg">Distance (m, optional)</span>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  step={1}
-                  value={distanceText}
-                  onChange={(e) => {
-                    setDistanceTouched(true);
-                    setDistanceText(e.target.value);
-                  }}
-                  className="mt-1 h-10 w-full rounded-md border border-border bg-bg px-3 text-sm text-fg outline-none focus:border-primary"
-                  placeholder="for vehicle/train/drone plans (Phase 5b)"
-                />
+              <div>
+                {/* The hints below live outside this <label> on purpose —
+                    same reasoning as the Item field's hint: a <label>'s
+                    full text content becomes part of its control's
+                    accessible name, which would otherwise turn "Distance"
+                    into "Distance (m, optional) From the map — 500 m…"
+                    for a screen reader (or `getByRole("combobox", {name:
+                    /^distance$/i})` in a test). */}
+                <label className="block">
+                  <span className="text-sm font-medium text-fg">Distance (m, optional)</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    step={1}
+                    value={distanceText}
+                    onChange={(e) => {
+                      setDistanceTouched(true);
+                      setDistanceText(e.target.value);
+                    }}
+                    className="mt-1 h-10 w-full rounded-md border border-border bg-bg px-3 text-sm text-fg outline-none focus:border-primary"
+                    placeholder="for vehicle/train/drone plans (Phase 5b)"
+                  />
+                </label>
                 {!distanceTouched && derivedDistanceM != null && (
                   <p className="mt-1 text-xs text-fg-muted">
                     From the map — {derivedDistanceM.toLocaleString()} m between the two factories.
@@ -355,7 +404,7 @@ export function LogisticsLinkEditor({ link, onClose, onSaved }: LogisticsLinkEdi
                     Place both factories on the map to measure this automatically.
                   </p>
                 )}
-              </label>
+              </div>
             </div>
 
             <div>

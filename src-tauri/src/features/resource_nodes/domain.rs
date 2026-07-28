@@ -780,15 +780,18 @@ mod tests {
     // ---------- extractor power tests ----------
 
     #[test]
-    fn extractor_power_mw_pins_the_wiki_wattage_per_mark_at_100_pct() {
+    fn extractor_power_mw_pins_the_dump_wattage_per_mark_at_100_pct() {
         let gd = GameData::from_bundled().unwrap();
-        // Mk1 5 MW, Mk2 12 MW, Mk3 30 MW — the same building wattage the
+        // Mk1 5 MW, Mk2 15 MW, Mk3 45 MW — the same building wattage the
         // Power view already charges, so a claimed miner stops being a
-        // free lunch.
+        // free lunch. These come from the game dump's own `powerUsed`,
+        // which the converter now validates the dataset against; the
+        // 12/30 this once asserted were 1.0-era figures that survived
+        // into a 1.2 dataset.
         for (miner_id, want) in [
             ("Build_MinerMk1_C", 5.0),
-            ("Build_MinerMk2_C", 12.0),
-            ("Build_MinerMk3_C", 30.0),
+            ("Build_MinerMk2_C", 15.0),
+            ("Build_MinerMk3_C", 45.0),
         ] {
             let mw = extractor_power_mw(&iron_node(NodePurity::Normal), Some(miner_id), 100.0, &gd);
             assert!((mw - want).abs() < 0.01, "{miner_id}: got {mw}, want {want}");

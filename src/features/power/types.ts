@@ -54,4 +54,8 @@ export interface FactoryPowerBalance {
   consumedMw: number;
   netMw: number;
   fuelFlows: PowerFuelFlow[];
+  /** What the generators emit — nuclear waste, and nothing else in the
+   * game. Optional so a test fixture doesn't have to state the empty
+   * case every clean-burning factory has. */
+  byproductFlows?: PowerFuelFlow[];
 }

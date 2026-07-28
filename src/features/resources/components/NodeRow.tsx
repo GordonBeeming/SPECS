@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Check, Pencil, Plus, X } from "lucide-react";
 
 import { Button } from "@/shared/ui/Button";
-import { ClockInput } from "@/shared/ui/ClockInput";
+import { ClockInput, formatClockPct } from "@/shared/ui/ClockInput";
+import { ConfirmDeleteButton } from "@/shared/ui/ConfirmDeleteButton";
 import { FilterSelect } from "@/shared/ui/FilterSelect";
 import { factoryPickerOptions, type FactoryPickerCandidate } from "@/features/map/transform";
 import { floorClockPct } from "@/features/validation/clock";
@@ -120,7 +121,7 @@ function ClaimChip({
         </span>
       )}
       <span className="rounded-full border border-border bg-bg px-2 py-0.5 text-fg-muted">
-        {(row.claim?.clockPct ?? 100).toFixed(0)}%
+        {formatClockPct(row.claim?.clockPct ?? 100)}%
       </span>
       {ipmLabel && (
         <span className="font-medium text-fg">{ipmLabel}</span>
@@ -198,14 +199,17 @@ function ClaimButton({
       >
         {editing ? <X className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
       </Button>
-      <Button
-        variant="ghost"
-        onClick={() => void clearClaim.mutate(row.id)}
-        aria-label="Release node"
-        className="px-2 py-1"
-      >
-        <X className="h-3.5 w-3.5" />
-      </Button>
+      {/* Same two-click arm/confirm pattern every other destructive
+          action in the app uses (Tauri's webview swallows
+          window.confirm()) — it also gives the release action its own
+          trash icon + red arm state, so it no longer reads as a second,
+          unlabelled copy of the edit toggle's ✕. */}
+      <ConfirmDeleteButton
+        onConfirm={() => void clearClaim.mutate(row.id)}
+        label="Release node"
+        confirmLabel="Release"
+        disabled={clearClaim.isPending}
+      />
     </div>
   );
 }

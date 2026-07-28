@@ -49,6 +49,33 @@ const RESOURCE_ORDER: string[] = [
 
 const PURITY_ORDER: Purity[] = ["Pure", "Normal", "Impure"];
 
+const OPEN_GROUPS_STORAGE = "specs:resources:openGroups";
+
+// Persisted the same way ResourceBudgetPanel remembers its own
+// collapse state — localStorage can throw in hardened webviews /
+// privacy modes, so a read/write failure degrades to "nothing open"
+// instead of crashing the page.
+function loadOpenGroups(): Set<string> {
+  try {
+    const v = localStorage.getItem(OPEN_GROUPS_STORAGE);
+    if (!v) return new Set();
+    const parsed: unknown = JSON.parse(v);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((id): id is string => typeof id === "string"));
+  } catch (err) {
+    console.warn("resources: localStorage unavailable", err);
+    return new Set();
+  }
+}
+
+function persistOpenGroups(open: Set<string>) {
+  try {
+    localStorage.setItem(OPEN_GROUPS_STORAGE, JSON.stringify(Array.from(open)));
+  } catch (err) {
+    console.warn("resources: couldn't persist open groups", err);
+  }
+}
+
 function orderResource(a: string, b: string): number {
   const ai = RESOURCE_ORDER.indexOf(a);
   const bi = RESOURCE_ORDER.indexOf(b);
@@ -107,7 +134,12 @@ export function ResourcesView() {
     () => portWarningsByNode(validation.data?.findings ?? []),
     [validation.data],
   );
-  const [open, setOpen] = useState<Set<string>>(new Set(["Desc_OreIron_C"]));
+  // Nothing pre-opened: Iron Ore alone can carry well over a hundred
+  // nodes, and forcing it open on every mount meant reaching any other
+  // resource started with scrolling past a wall of Iron Ore rows. Each
+  // group instead remembers whether the user opened it, across remounts
+  // of this view.
+  const [open, setOpen] = useState<Set<string>>(loadOpenGroups);
 
   const groups = useMemo(
     () => (nodes.data ? groupNodes(nodes.data) : []),
@@ -152,6 +184,7 @@ export function ResourcesView() {
       const next = new Set(s);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      persistOpenGroups(next);
       return next;
     });
 

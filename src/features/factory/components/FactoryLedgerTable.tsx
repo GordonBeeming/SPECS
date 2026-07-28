@@ -35,6 +35,9 @@ export function FactoryLedgerTable({ ledger, itemNames }: FactoryLedgerTableProp
             // after them paints red.
             const coveredNet = flow.netPerMinute + (flow.fromLinksPerMinute ?? 0);
             const deficit = coveredNet < -0.001;
+            // Fluids and solids share this table, so the unit has to be
+            // per-row rather than a fixed header label.
+            const unit = flow.isFluid ? "m³/min" : "/min";
             return (
               <tr key={flow.itemId} className="hover:bg-border/30">
                 <td className="px-3 py-2">
@@ -44,10 +47,14 @@ export function FactoryLedgerTable({ ledger, itemNames }: FactoryLedgerTableProp
                   </span>
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">
-                  {flow.producedPerMinute > 0 ? flow.producedPerMinute.toFixed(1) : "—"}
+                  {flow.producedPerMinute > 0
+                    ? `${flow.producedPerMinute.toFixed(1)} ${unit}`
+                    : "—"}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">
-                  {flow.consumedPerMinute > 0 ? flow.consumedPerMinute.toFixed(1) : "—"}
+                  {flow.consumedPerMinute > 0
+                    ? `${flow.consumedPerMinute.toFixed(1)} ${unit}`
+                    : "—"}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">
                   {flow.fromNodesPerMinute && flow.fromNodesPerMinute > 0 ? (
@@ -55,7 +62,7 @@ export function FactoryLedgerTable({ ledger, itemNames }: FactoryLedgerTableProp
                       className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
                       title="Items per minute from claimed resource nodes bound to this factory"
                     >
-                      {flow.fromNodesPerMinute.toFixed(1)}
+                      {flow.fromNodesPerMinute.toFixed(1)} {unit}
                     </span>
                   ) : (
                     "—"
@@ -67,7 +74,7 @@ export function FactoryLedgerTable({ ledger, itemNames }: FactoryLedgerTableProp
                       className="inline-flex items-center rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent"
                       title="Items per minute arriving via logistics links from other factories"
                     >
-                      {flow.fromLinksPerMinute.toFixed(1)}
+                      {flow.fromLinksPerMinute.toFixed(1)} {unit}
                     </span>
                   ) : (
                     "—"
@@ -84,7 +91,7 @@ export function FactoryLedgerTable({ ledger, itemNames }: FactoryLedgerTableProp
                   }
                 >
                   {flow.netPerMinute > 0 ? "+" : ""}
-                  {flow.netPerMinute.toFixed(1)}
+                  {flow.netPerMinute.toFixed(1)} {unit}
                 </td>
               </tr>
             );

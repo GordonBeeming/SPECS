@@ -246,10 +246,24 @@ function ActiveHome({ goTo }: HomeViewProps) {
     [recipes.data],
   );
 
-  const altTotal = useMemo(
-    () => (recipes.data ?? []).filter((r) => r.isAlt).length,
-    [recipes.data],
+  // "Alts unlocked N of M" only means something if M is what's actually
+  // reachable right now — the whole-catalogue count (~111 alts, most of
+  // them gated behind tiers nobody's near yet) made the denominator
+  // static across every tier change and effectively meaningless. Alt
+  // reachability here is the recipe's own unlock stamp (Question A from
+  // the canonical-functions tier section), the same rule `tier_reachable_alts`
+  // and the Alts screen's "Select reachable" use — collectability, not
+  // whole-chain buildability.
+  const tier = playthrough.data?.currentTier ?? 0;
+  const reachableAlts = useMemo(
+    () => (recipes.data ?? []).filter((r) => r.isAlt && r.unlockTier <= tier),
+    [recipes.data, tier],
   );
+  const unlockedReachableAltCount = useMemo(() => {
+    if (!alts.data) return 0;
+    const unlockedSet = alts.data;
+    return reachableAlts.filter((r) => unlockedSet.has(r.id)).length;
+  }, [reachableAlts, alts.data]);
 
   const totalMachines = useMemo(
     () => (factories.data ?? []).reduce((sum, f) => sum + f.machineCount, 0),
@@ -258,7 +272,6 @@ function ActiveHome({ goTo }: HomeViewProps) {
 
   if (!playthrough.data) return null;
   const factoryList = factories.data ?? [];
-  const tier = playthrough.data.currentTier;
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
@@ -330,8 +343,12 @@ function ActiveHome({ goTo }: HomeViewProps) {
           Icon={FlaskConical}
           tone="warning"
           label="Alts unlocked"
-          value={alts.data ? alts.data.size : 0}
-          hint={altTotal > 0 ? `of ${altTotal} total` : "Toggle in Alts"}
+          value={alts.data ? unlockedReachableAltCount : 0}
+          hint={
+            reachableAlts.length > 0
+              ? `of ${reachableAlts.length} reachable at T${tier}`
+              : `None reachable yet at T${tier}`
+          }
           onClick={() => goTo("alts")}
         />
         <StatTile

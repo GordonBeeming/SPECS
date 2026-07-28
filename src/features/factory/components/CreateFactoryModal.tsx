@@ -84,8 +84,8 @@ export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalPro
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-md max-h-[90vh] overflow-auto rounded-lg border border-border bg-bg-raised p-6 shadow-xl">
-        <div className="mb-4 flex items-center justify-between">
+      <div className="flex w-full max-w-md max-h-[90vh] flex-col overflow-hidden rounded-lg border border-border bg-bg-raised shadow-xl">
+        <div className="flex items-center justify-between p-6 pb-4">
           <h2 id="create-factory-title" className="text-lg font-semibold text-fg">
             New factory
           </h2>
@@ -99,71 +99,77 @@ export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalPro
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-4">
-          <label className="block">
-            <span className="text-sm font-medium text-fg">Name</span>
-            <input
-              type="text"
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Iron Works, Mass Constructor 1, …"
-              className="mt-1 h-10 w-full rounded-md border border-border bg-bg px-3 text-sm text-fg outline-none focus:border-primary"
-              maxLength={80}
-            />
-          </label>
+        {/* The icon picker's grid can grow past the dialog's own height
+            (max-h-[90vh]), so only this middle section scrolls — the
+            header and the Create/Cancel footer stay put rather than
+            scrolling out of view with it. */}
+        <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6">
+            <label className="block">
+              <span className="text-sm font-medium text-fg">Name</span>
+              <input
+                type="text"
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Iron Works, Mass Constructor 1, …"
+                className="mt-1 h-10 w-full rounded-md border border-border bg-bg px-3 text-sm text-fg outline-none focus:border-primary"
+                maxLength={80}
+              />
+            </label>
 
-          <div>
-            <span className="text-sm font-medium text-fg">Icon (optional)</span>
-            <div className="mt-1 flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setShowIconPicker((v) => !v)}
-                className="flex h-12 w-12 items-center justify-center rounded-md border border-border bg-bg hover:border-primary"
-                aria-label="Pick an icon for this factory"
-              >
-                {iconId ? (
-                  <Icon itemId={iconId} alt="" className="h-9 w-9" />
-                ) : (
-                  <span className="text-xs text-fg-muted">none</span>
-                )}
-              </button>
-              <p className="text-xs text-fg-muted">
-                {iconId
-                  ? "Click to pick a different glyph."
-                  : "Give this factory some character — pick from buildings, ingots, or any item."}
-              </p>
-            </div>
-            {showIconPicker && (
-              <div className="mt-3 rounded-md border border-border bg-bg p-3">
-                <IconPicker
-                  value={iconId}
-                  onChange={(next) => setIconId(next)}
-                  suggested={suggested}
-                />
+            <div>
+              <span className="text-sm font-medium text-fg">Icon (optional)</span>
+              <div className="mt-1 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowIconPicker((v) => !v)}
+                  className="flex h-12 w-12 items-center justify-center rounded-md border border-border bg-bg hover:border-primary"
+                  aria-label="Pick an icon for this factory"
+                >
+                  {iconId ? (
+                    <Icon itemId={iconId} alt="" className="h-9 w-9" />
+                  ) : (
+                    <span className="text-xs text-fg-muted">none</span>
+                  )}
+                </button>
+                <p className="text-xs text-fg-muted">
+                  {iconId
+                    ? "Click to pick a different glyph."
+                    : "Give this factory some character — pick from buildings, ingots, or any item."}
+                </p>
               </div>
+              {showIconPicker && (
+                <div className="mt-3 rounded-md border border-border bg-bg p-3">
+                  <IconPicker
+                    value={iconId}
+                    onChange={(next) => setIconId(next)}
+                    suggested={suggested}
+                  />
+                </div>
+              )}
+            </div>
+
+            <label className="block">
+              <span className="text-sm font-medium text-fg">Notes (optional)</span>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+                className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-primary"
+                placeholder="What does this factory do? Where does it live in-game?"
+              />
+            </label>
+
+            {validationError && (
+              <p role="alert" className="text-sm text-danger">{validationError}</p>
+            )}
+            {serverError && !validationError && (
+              <p role="alert" className="text-sm text-danger">{serverError}</p>
             )}
           </div>
 
-          <label className="block">
-            <span className="text-sm font-medium text-fg">Notes (optional)</span>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={3}
-              className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-primary"
-              placeholder="What does this factory do? Where does it live in-game?"
-            />
-          </label>
-
-          {validationError && (
-            <p role="alert" className="text-sm text-danger">{validationError}</p>
-          )}
-          {serverError && !validationError && (
-            <p role="alert" className="text-sm text-danger">{serverError}</p>
-          )}
-
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex shrink-0 justify-end gap-2 border-t border-border p-4 px-6">
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>

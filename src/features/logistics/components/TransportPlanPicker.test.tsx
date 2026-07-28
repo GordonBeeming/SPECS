@@ -6,7 +6,12 @@ import type { ReactNode } from "react";
 
 import { libraryApi } from "@/features/library/api";
 import type { TransportPlan } from "../types";
-import { TransportPlanPicker, serialisePlan } from "./TransportPlanPicker";
+import {
+  TransportPlanPicker,
+  parseTransportPlanJson,
+  serialisePlan,
+  summariseSegments,
+} from "./TransportPlanPicker";
 
 function renderWithProviders(node: ReactNode) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -116,5 +121,28 @@ describe("<TransportPlanPicker />", () => {
     );
     expect(await screen.findByText("2× Drone")).toBeInTheDocument();
     expect(screen.getByText(/8.0 batteries/)).toBeInTheDocument();
+  });
+});
+
+describe("parseTransportPlanJson", () => {
+  it("round-trips a serialised plan back into the same summary", () => {
+    const p = plan({
+      segments: [{ mark: 2, count: 3, perUnitCapacity: 120, unlockTier: 2 }],
+    });
+    const parsed = parseTransportPlanJson(serialisePlan(p));
+    expect(parsed).not.toBeNull();
+    expect(summariseSegments(parsed!, new Map())).toBe("3× Mk2 belts");
+  });
+
+  it("returns null for malformed JSON instead of throwing", () => {
+    expect(parseTransportPlanJson("not json")).toBeNull();
+  });
+
+  it("returns null when the shape doesn't look like a TransportPlan", () => {
+    expect(parseTransportPlanJson(JSON.stringify({ kind: "belt" }))).toBeNull();
+    expect(parseTransportPlanJson(JSON.stringify({ segments: [] }))).toBeNull();
+    expect(
+      parseTransportPlanJson(JSON.stringify({ kind: "not-a-real-kind", segments: [] })),
+    ).toBeNull();
   });
 });

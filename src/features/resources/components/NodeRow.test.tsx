@@ -81,6 +81,46 @@ describe("<NodeRow />", () => {
     expect(screen.getByText("240 ipm")).toBeInTheDocument();
   });
 
+  it("shows the clock badge's actual fraction instead of rounding it away (#51)", () => {
+    // 100% and other whole numbers pass whether the badge rounds or
+    // not — this pins a genuine non-whole clock, which used to render
+    // as "38%" (Math.round-style .toFixed(0)) even though nothing in
+    // the app ever set the claim to 38.
+    const fractional: ResourceNodeRow = {
+      ...claimedMk2,
+      claim: {
+        minerId: "Build_MinerMk2_C",
+        clockPct: 37.5,
+        factoryId: null,
+        notes: null,
+        createdAt: "2026-05-11T00:00:00Z",
+        updatedAt: "2026-05-11T00:00:00Z",
+      },
+    };
+    renderWithProviders(<NodeRow row={fractional} factories={[]} index={0} preferredMinerId={null} />);
+    expect(screen.getByText("37.5%")).toBeInTheDocument();
+    expect(screen.queryByText("38%")).toBeNull();
+  });
+
+  it("still reads a whole clock cleanly when it arrives with float noise", () => {
+    // The same f32-round-trip dust `floorClockPct`'s epsilon guards
+    // against on the Rust side — the badge must collapse it back to
+    // "50%", not print the raw fractional digits.
+    const noisy: ResourceNodeRow = {
+      ...claimedMk2,
+      claim: {
+        minerId: "Build_MinerMk2_C",
+        clockPct: 49.999999999999,
+        factoryId: null,
+        notes: null,
+        createdAt: "2026-05-11T00:00:00Z",
+        updatedAt: "2026-05-11T00:00:00Z",
+      },
+    };
+    renderWithProviders(<NodeRow row={noisy} factories={[]} index={0} preferredMinerId={null} />);
+    expect(screen.getByText("50%")).toBeInTheDocument();
+  });
+
   it("one-click claim sends sensible defaults (Mk1, 100% clock, no factory)", async () => {
     renderWithProviders(<NodeRow row={unclaimed} factories={[]} index={0} preferredMinerId={null} />);
     fireEvent.click(screen.getByLabelText("Claim node"));

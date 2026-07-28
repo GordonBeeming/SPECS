@@ -72,6 +72,13 @@ pub struct FactoryPowerBalance {
     /// keyed by item id. Positive numbers; the React side displays
     /// these as "you need to supply N ipm of X".
     pub fuel_flows: Vec<PowerFuelFlow>,
+    /// What the generators *emit* per minute — nuclear waste, and
+    /// nothing else in the game. The counterpart to `fuel_flows`, and
+    /// the reason a nuclear factory can state where its waste goes:
+    /// this is the only place the app knows waste is being produced.
+    /// Empty for every factory that burns nothing but clean fuel.
+    #[serde(default)]
+    pub byproduct_flows: Vec<PowerFuelFlow>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

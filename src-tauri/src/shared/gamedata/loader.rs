@@ -98,6 +98,86 @@ pub fn validate(data: &GameDataFile) -> Result<()> {
         }
     }
 
+    // Generators. Every fuel, coolant and byproduct is an item id the
+    // Power view resolves for display and the planner charges against
+    // claimed supply, so an unresolvable one is a runtime hole rather
+    // than a missing row.
+    let mut generator_ids: HashSet<&str> = HashSet::with_capacity(data.generators.len());
+    for g in &data.generators {
+        if !generator_ids.insert(&g.id) {
+            bail!("duplicate generator id: {}", g.id);
+        }
+        if g.power_mw <= 0.0 {
+            bail!("generator {} produces no power", g.id);
+        }
+        let mut fuel_ids: HashSet<&str> = HashSet::with_capacity(g.fuels.len());
+        for f in &g.fuels {
+            if !fuel_ids.insert(&f.fuel_item_id) {
+                return Err(anyhow!("generator {} lists fuel {} twice", g.id, f.fuel_item_id));
+            }
+            if !item_ids.contains(f.fuel_item_id.as_str()) {
+                return Err(anyhow!(
+                    "generator {} references unknown fuel item {}",
+                    g.id,
+                    f.fuel_item_id
+                ));
+            }
+            if f.fuel_per_minute <= 0.0 {
+                return Err(anyhow!(
+                    "generator {} burns {} at a non-positive rate",
+                    g.id,
+                    f.fuel_item_id
+                ));
+            }
+            // The id and the rate travel together — one without the
+            // other is a half-written row that reads as "no coolant" or
+            // "free coolant" depending on which side is missing.
+            match (&f.supplemental_item_id, f.supplemental_per_minute) {
+                (Some(id), Some(_)) if !item_ids.contains(id.as_str()) => {
+                    return Err(anyhow!(
+                        "generator {} references unknown supplemental item {}",
+                        g.id,
+                        id
+                    ));
+                }
+                (Some(_), None) | (None, Some(_)) => {
+                    return Err(anyhow!(
+                        "generator {} fuel {} has only half a supplemental load",
+                        g.id,
+                        f.fuel_item_id
+                    ));
+                }
+                _ => {}
+            }
+            match (&f.byproduct_item_id, f.byproduct_per_minute) {
+                (Some(id), Some(rate)) => {
+                    if !item_ids.contains(id.as_str()) {
+                        return Err(anyhow!(
+                            "generator {} references unknown byproduct item {}",
+                            g.id,
+                            id
+                        ));
+                    }
+                    if rate <= 0.0 {
+                        return Err(anyhow!(
+                            "generator {} emits {} at a non-positive rate",
+                            g.id,
+                            id
+                        ));
+                    }
+                }
+                (Some(_), None) | (None, Some(_)) => {
+                    return Err(anyhow!(
+                        "generator {} fuel {} has only half a byproduct",
+                        g.id,
+                        f.fuel_item_id
+                    ));
+                }
+                _ => {}
+            }
+        }
+    }
+
     // Belt + pipe tier marks unique.
     let mut belt_marks: HashSet<u8> = HashSet::new();
     for b in &data.belt_tiers {
@@ -405,6 +485,111 @@ mod tests {
         }"#;
         let err = parse_str(bad).unwrap_err();
         assert!(format!("{:#}", err).contains("more than once"));
+    }
+
+    #[test]
+    fn bundled_nuclear_plant_emits_the_waste_the_plutonium_branch_needs() {
+        // Burning a rod is the game's only source of nuclear waste. Without
+        // it Plutonium Pellet, Non-Fissile Uranium and Ficsonium have no
+        // grounding chain and the planner refuses every target behind them.
+        let data = load_bundled().unwrap();
+        let nuclear = data
+            .generators
+            .iter()
+            .find(|g| g.id == "Build_GeneratorNuclear_C")
+            .expect("Nuclear Power Plant present");
+        for (fuel_id, waste_id, rate) in [
+            ("Desc_NuclearFuelRod_C", "Desc_NuclearWaste_C", 10.0),
+            ("Desc_PlutoniumFuelRod_C", "Desc_PlutoniumWaste_C", 1.0),
+        ] {
+            let fuel = nuclear
+                .fuels
+                .iter()
+                .find(|f| f.fuel_item_id == fuel_id)
+                .unwrap_or_else(|| panic!("{fuel_id} burnable"));
+            assert_eq!(fuel.byproduct_item_id.as_deref(), Some(waste_id));
+            assert_eq!(fuel.byproduct_per_minute, Some(rate));
+        }
+        for waste_id in ["Desc_NuclearWaste_C", "Desc_PlutoniumWaste_C"] {
+            assert!(
+                data.recipes
+                    .iter()
+                    .any(|r| r.outputs.iter().any(|o| o.item_id == waste_id)),
+                "no recipe produces {waste_id}"
+            );
+        }
+    }
+
+    #[test]
+    fn bundled_biomass_burner_offers_solid_biofuel() {
+        // Solid Biofuel is the one power-relevant recipe Tier 2 unlocks;
+        // a burner that won't take it gives that recipe nowhere to go.
+        let data = load_bundled().unwrap();
+        let burner = data
+            .generators
+            .iter()
+            .find(|g| g.id == "Build_GeneratorBiomass_C")
+            .expect("Biomass Burner present");
+        let biofuel = burner
+            .fuels
+            .iter()
+            .find(|f| f.fuel_item_id == "Desc_Biofuel_C")
+            .expect("Solid Biofuel burnable");
+        assert_eq!(biofuel.fuel_per_minute, 4.0, "30 MW / 450 MJ per unit");
+    }
+
+    #[test]
+    fn bundled_building_wattages_match_the_dump() {
+        // These were hand-typed with no upstream to contradict them, and
+        // three of them were wrong: a bad wattage is invisible because it
+        // looks exactly like a correct one.
+        let data = load_bundled().unwrap();
+        let by_id: std::collections::HashMap<&str, f32> = data
+            .buildings
+            .iter()
+            .map(|b| (b.id.as_str(), b.power_mw))
+            .collect();
+        for (id, want) in [
+            ("Build_MinerMk1_C", 5.0),
+            ("Build_MinerMk2_C", 15.0),
+            ("Build_MinerMk3_C", 45.0),
+            // The satellite is fed by its Pressuriser and draws nothing
+            // itself; the Pressuriser is the building that consumes.
+            ("Build_FrackingExtractor_C", 0.0),
+            ("Build_FrackingSmasher_C", 150.0),
+        ] {
+            assert_eq!(by_id.get(id), Some(&want), "{id}");
+        }
+    }
+
+    #[test]
+    fn validate_rejects_generator_with_half_a_byproduct() {
+        let bad = r#"{
+          "version":"x","gameVersion":"1.2",
+          "items":[{"id":"i","name":"i","category":"raw","stackSize":1,"isFluid":false}],
+          "buildings":[],"recipes":[],"milestones":[],"beltTiers":[],"pipeTiers":[],
+          "generators":[{
+            "id":"g","name":"g","category":"nuclear","powerMw":1,"unlockTier":8,
+            "fuels":[{"fuelItemId":"i","fuelPerMinute":1,"byproductItemId":"i"}]
+          }]
+        }"#;
+        let err = parse_str(bad).unwrap_err();
+        assert!(format!("{:#}", err).contains("half a byproduct"));
+    }
+
+    #[test]
+    fn validate_rejects_generator_referencing_unknown_fuel() {
+        let bad = r#"{
+          "version":"x","gameVersion":"1.2",
+          "items":[{"id":"i","name":"i","category":"raw","stackSize":1,"isFluid":false}],
+          "buildings":[],"recipes":[],"milestones":[],"beltTiers":[],"pipeTiers":[],
+          "generators":[{
+            "id":"g","name":"g","category":"burner","powerMw":1,"unlockTier":0,
+            "fuels":[{"fuelItemId":"NOT_EXIST","fuelPerMinute":1}]
+          }]
+        }"#;
+        let err = parse_str(bad).unwrap_err();
+        assert!(format!("{:#}", err).contains("unknown fuel item"));
     }
 
     #[test]
