@@ -793,7 +793,19 @@ fn raise_export_target_impl(
         return Ok(result);
     }
 
-    let new_offered = offered + delta;
+    // `offered + delta` looks equivalent but silently discards an
+    // existing deficit when other consumers already draw more than
+    // what's offered (e.g. after the target was reduced elsewhere):
+    // `spare` clamps to 0 there, so `delta` becomes the full
+    // `needed_ipm` and the raise only closes the gap up to `offered`,
+    // not up to what's already drawn — 100 offered, 120 drawn, 20
+    // needed would raise to 120 and leave zero spare instead of the
+    // 140 required. Computing the new offer straight from `drawn +
+    // needed_ipm` is what "make sure I have `needed_ipm` spare after
+    // everyone else's current draw" always meant; `.max(offered)` keeps
+    // the no-decrease guarantee explicit rather than relying on the
+    // early return above to make it true.
+    let new_offered = (drawn + needed_ipm).max(offered);
     // Neither figure ever goes down: production only rises if the offer
     // outgrows it, and a declared export wish above production survives
     // untouched.
@@ -1503,6 +1515,79 @@ mod tests {
             (third.new_target_ipm - 200.0).abs() < 1e-3,
             "the second ask for the same spare must not stack on the first"
         );
+    }
+
+    #[test]
+    fn raise_export_target_accounts_for_existing_overdraw_when_the_offer_was_reduced() {
+        // Codex P2: if other consumers already draw more than the
+        // exporter currently offers — e.g. its target was reduced after
+        // a link was sized against the old, larger offer — clamping
+        // `spare` to zero threw away that existing deficit. 100 offered,
+        // 120 already drawn, 20 more wanted: the required offer is 140
+        // (120 + 20), not 120 (100 + 20, the old bug).
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "fac-wire", "Wire farm");
+        insert_test_factory(&db, "fac-cables", "Cables v1");
+
+        // The farm starts generous enough to cover the cable factory in
+        // full.
+        plan_save_impl(
+            &db,
+            &gd,
+            save_input(
+                "fac-wire",
+                vec![PlanTargetSpec { item_id: "Desc_Wire_C".into(), ipm: 200.0, export_ipm: Some(200.0) }],
+                vec![],
+            ),
+            NOW,
+        )
+        .unwrap();
+        // 60 cable/min draws 120 wire/min — sizes the link to 120 while
+        // the farm still offers 200.
+        plan_save_impl(
+            &db,
+            &gd,
+            save_input(
+                "fac-cables",
+                cable_target(),
+                vec![PlanImportSpec {
+                    item_id: "Desc_Wire_C".into(),
+                    source_factory_id: Some("fac-wire".into()),
+                    ipm_cap: None,
+                }],
+            ),
+            NOW,
+        )
+        .unwrap();
+
+        // The farm's own target then drops to 100 — a real edit made
+        // independently, elsewhere. The cable factory's link is untouched
+        // by that resave and still asks for its original 120.
+        plan_save_impl(
+            &db,
+            &gd,
+            save_input(
+                "fac-wire",
+                vec![PlanTargetSpec { item_id: "Desc_Wire_C".into(), ipm: 100.0, export_ipm: Some(100.0) }],
+                vec![],
+            ),
+            NOW,
+        )
+        .unwrap();
+        assert!(
+            (drawn_export_ipm(&db, "fac-wire", "Desc_Wire_C", None).unwrap() - 120.0).abs() < 1e-3,
+            "setup: the cable factory's link must still draw 120 after the farm's own resave"
+        );
+
+        let raised =
+            raise_export_target_impl(&db, &gd, "fac-wire", "Desc_Wire_C", 20.0, None, NOW).unwrap();
+        assert!(
+            (raised.new_export_ipm - 140.0).abs() < 1e-3,
+            "120 already drawn + 20 wanted = 140; got {}",
+            raised.new_export_ipm
+        );
+        assert!((raised.new_target_ipm - 140.0).abs() < 1e-3);
     }
 
     #[test]
