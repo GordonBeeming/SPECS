@@ -11,7 +11,7 @@ use crate::features::factory::commands::compose_ledger_with_supply;
 use crate::features::planner::commands::saved_plan_graph;
 use crate::features::planner::repo as plan_repo;
 use crate::features::playthrough::state::ActivePlaythrough;
-use crate::features::power::commands::power_balance_impl;
+use crate::features::power::commands::power_balance_with_supply;
 use crate::features::resource_nodes::repo as nodes_repo;
 use crate::shared::db::playthrough_db::PlaythroughDb;
 use crate::shared::error::{AppError, AppResult};
@@ -96,9 +96,12 @@ pub(crate) fn validate_impl(db: &PlaythroughDb, gd: &GameData) -> AppResult<Vali
         // (validation reports, never blocks).
         let mut plan_alts: Vec<String> = Vec::new();
         // Machine-side raw demand per item, for folding generator fuel
-        // draw onto the same claimed-supply comparison below. Empty for
-        // a factory with no saved plan — its only demand is generators.
+        // draw onto the same claimed-supply comparison below. Filled from
+        // the saved plan's raw_demand when there is one; a factory with
+        // no saved plan falls back to its machines' direct ingredient
+        // draw below (see `has_plan_graph`) rather than staying empty.
         let mut machine_raw_demand: HashMap<String, f32> = HashMap::new();
+        let mut has_plan_graph = false;
         match saved_plan_graph(db, gd, &f.id) {
             Err(e) => findings.push(Finding {
                 severity: Severity::Warning,
@@ -124,6 +127,7 @@ pub(crate) fn validate_impl(db: &PlaythroughDb, gd: &GameData) -> AppResult<Vali
                     domain::check_plan_graph(&fref, &graph, tier, &unlocked, gd, &mut findings);
                 domain::check_plan_graph_capacity(&fref, &graph, tier, gd, &mut findings);
                 machine_raw_demand = graph.raw_demand.clone();
+                has_plan_graph = true;
             }
         }
 
@@ -142,8 +146,10 @@ pub(crate) fn validate_impl(db: &PlaythroughDb, gd: &GameData) -> AppResult<Vali
             alt_hits.push((fref.clone(), recipe_id, in_plan, in_machines));
         }
 
-        // Power.
-        match power_balance_impl(db, gd, &f.id) {
+        // Power. `claims`/`water_groups` are already loaded once above
+        // for the whole sweep — pass them through rather than letting
+        // this re-query both whole-playthrough tables on every factory.
+        match power_balance_with_supply(db, gd, &f.id, &claims, &water_groups) {
             Ok(balance) => {
                 grid_generated += balance.generated_mw;
                 grid_consumed += balance.consumed_mw;
@@ -175,9 +181,26 @@ pub(crate) fn validate_impl(db: &PlaythroughDb, gd: &GameData) -> AppResult<Vali
                         )
                     })
                     .collect();
+                // A factory without a saved plan graph still has
+                // `raw_demand` (there's no graph to compute it from), but
+                // its manual machine rows are real claimants on the same
+                // supply pool — `ledger` above already folds their direct
+                // ingredient draw per item, so use that instead of
+                // leaving demand at zero and missing e.g. a legacy
+                // foundry's coal draw competing with its coal generators.
+                let machine_demand: HashMap<String, f32> = if has_plan_graph {
+                    machine_raw_demand
+                } else {
+                    ledger
+                        .flows
+                        .iter()
+                        .filter(|flow| flow.consumed_per_minute > 0.0)
+                        .map(|flow| (flow.item_id.clone(), flow.consumed_per_minute))
+                        .collect()
+                };
                 domain::check_generator_supply(
                     &fref,
-                    &machine_raw_demand,
+                    &machine_demand,
                     &balance.fuel_flows,
                     &supply,
                     &mut findings,
@@ -670,6 +693,59 @@ mod tests {
         assert!(
             !ks.iter().any(|k| matches!(k, FindingKind::GeneratorFuelShort { .. })),
             "manufactured Fuel must satisfy the generator's own draw: {:?}",
+            report.findings
+        );
+    }
+
+    #[test]
+    fn playthrough_validate_counts_manual_machine_demand_against_generator_fuel() {
+        // Codex P1: a factory with manual machine rows but no saved
+        // planner graph had `machine_raw_demand` stuck empty (it was only
+        // ever filled from a plan graph's `raw_demand`), so its own
+        // machines' ingredient draw never competed with a generator bank
+        // for the same claimed supply. A Foundry running Steel Ingot at
+        // 100% draws 45 Coal/min on its own; one Coal Generator draws
+        // another 15/min, for 60/min combined against a coal claim
+        // clocked to yield only 48/min — over budget only once the
+        // machine's draw is counted.
+        let db = open_test_db(3);
+        let gd = GameData::from_bundled().unwrap();
+        insert_factory(&db, "f1", "Steel Mill");
+        db.with(|c| {
+            factory_repo::machine_insert(
+                c, "m1", "f1", "Build_FoundryMk1_C", "Recipe_IngotSteel_C", 1, 100.0, false, 0, 0,
+                None, NOW,
+            )
+        })
+        .unwrap();
+        db.with(|c| {
+            crate::features::power::repo::power_gen_insert(
+                c, "g1", "f1", "Build_GeneratorCoal_C", "Desc_Coal_C", 1, 100.0, None, NOW,
+            )
+        })
+        .unwrap();
+        let coal = gd
+            .nodes()
+            .iter()
+            .find(|n| n.resource_item_id == "Desc_Coal_C"
+                && n.purity == crate::shared::gamedata::types::NodePurity::Normal)
+            .unwrap();
+        db.with(|c| {
+            nodes_repo::claim_upsert(
+                c, &coal.id, Some("Build_MinerMk1_C"), 80.0, Some("f1"), None, NOW,
+            )
+        })
+        .unwrap();
+
+        let report = validate_impl(&db, &gd).unwrap();
+        let ks = kinds(&report);
+        assert!(
+            ks.iter().any(|k| matches!(k,
+                FindingKind::GeneratorFuelShort { item_id, demand_ipm, claimed_ipm, .. }
+                    if item_id == "Desc_Coal_C"
+                        && (*demand_ipm - 60.0).abs() < 0.01
+                        && (*claimed_ipm - 48.0).abs() < 0.01)),
+            "manual machine's coal draw must count against the generator's shared supply: {:?}",
             report.findings
         );
     }
