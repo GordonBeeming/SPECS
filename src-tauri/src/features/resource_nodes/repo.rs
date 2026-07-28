@@ -81,6 +81,26 @@ pub fn claims_all(conn: &Connection) -> Result<HashMap<String, ClaimRow>> {
     Ok(out)
 }
 
+/// Overwrite just the clock on a set of already-claimed nodes — a plain
+/// `UPDATE`, not the upsert's full-row semantics, so it can't
+/// accidentally clear a claim's extractor or factory binding. A node id
+/// with no existing claim row is a no-op, which is what lets callers
+/// pass a well's full satellite list (claimed or not) without checking
+/// first: a well has one Pressuriser clock, so bringing every claimed
+/// satellite into agreement with it is either a cascade from a fresh
+/// write (`resource_nodes::commands::set_node_claim`) or a one-time
+/// heal of a save from before that cascade existed
+/// (`well_clock_reconciliation`).
+pub fn claims_set_clocks(conn: &Connection, corrections: &[(String, f32)], now: &str) -> Result<()> {
+    for (node_id, clock_pct) in corrections {
+        conn.execute(
+            "UPDATE resource_node_claim SET clock_pct_x100 = ?, updated_at = ? WHERE node_id = ?",
+            params![clock_pct_to_x100(*clock_pct), now, node_id],
+        )?;
+    }
+    Ok(())
+}
+
 #[allow(dead_code)]
 pub fn claims_for_factory(conn: &Connection, factory_id: &str) -> Result<Vec<ClaimRow>> {
     let mut stmt = conn.prepare(
@@ -254,6 +274,35 @@ mod tests {
             assert!((row.clock_pct - 150.0).abs() < 0.001);
             assert_eq!(row.created_at, "2026-05-11T00:00:00Z");
             assert_eq!(row.updated_at, "2026-05-11T01:00:00Z");
+        });
+    }
+
+    #[test]
+    fn claims_set_clocks_updates_matching_rows_and_skips_unclaimed_node_ids() {
+        let pt = db();
+        pt.with(|c| {
+            claim_upsert(c, "BP_Well1", Some("Build_FrackingExtractor_C"), 50.0, None, None, "n1").unwrap();
+            claim_upsert(c, "BP_Well2", Some("Build_FrackingExtractor_C"), 100.0, None, None, "n2").unwrap();
+            claims_set_clocks(
+                c,
+                &[
+                    ("BP_Well1".to_string(), 100.0),
+                    ("BP_Well2".to_string(), 100.0),
+                    // No claim exists for this node — must be a no-op,
+                    // not an error, so a well's full satellite list can
+                    // be passed through unfiltered.
+                    ("BP_Well3_unclaimed".to_string(), 100.0),
+                ],
+                "healed",
+            )
+            .unwrap();
+            let all = claims_all(c).unwrap();
+            assert_eq!(all.len(), 2, "no row was created for the unclaimed satellite");
+            assert!((all["BP_Well1"].clock_pct - 100.0).abs() < 0.001);
+            assert!((all["BP_Well2"].clock_pct - 100.0).abs() < 0.001);
+            assert_eq!(all["BP_Well1"].updated_at, "healed");
+            // miner_id survives — this only ever touches the clock.
+            assert_eq!(all["BP_Well1"].miner_id.as_deref(), Some("Build_FrackingExtractor_C"));
         });
     }
 

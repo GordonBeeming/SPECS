@@ -1,9 +1,17 @@
 import { Handle, Position } from "@xyflow/react";
-import { CircleAlert, Recycle, Share2, SlidersHorizontal, TriangleAlert } from "lucide-react";
+import {
+  CircleAlert,
+  Download,
+  FlaskConical,
+  Recycle,
+  Share2,
+  SlidersHorizontal,
+  TriangleAlert,
+} from "lucide-react";
 
 import { Icon } from "@/shared/ui/Icon";
 import { FilterSelect, type FilterOption } from "@/shared/ui/FilterSelect";
-import type { PlanNode } from "@/features/planner/types";
+import type { ExistingProducer, PlanNode } from "@/features/planner/types";
 import { RateInput } from "./RateInput";
 import { rate } from "./rates";
 
@@ -25,13 +33,17 @@ export function planNodeHeight(node: PlanNode): number {
 }
 
 /**
- * The rate to prefill an export field with. Satisfactory ratios are
- * exact and routinely fractional — a Motor line running 2.5/min must
- * not offer 3 — so this only trims the float dust an f32 round-trip
- * leaves behind, never the fraction itself.
+ * The rate to prefill an export field with. Takes `freeOutputIpm`
+ * (production minus what this factory's own steps consume), never gross
+ * `outputIpm` — prefilling from gross declares an export the factory
+ * can't honour when other steps here are already eating most of it.
+ *
+ * Satisfactory ratios are exact and routinely fractional — a Motor line
+ * running 2.5/min must not offer 3 — so this only trims the float dust
+ * an f32 round-trip leaves behind, never the fraction itself.
  */
-function exportPrefill(outputIpm: number): number {
-  return Number(outputIpm.toFixed(3));
+function exportPrefill(freeOutputIpm: number): number {
+  return Number(freeOutputIpm.toFixed(3));
 }
 
 /** Invisible-but-functional connection points; the graph is read-only
@@ -56,22 +68,42 @@ export interface RecipeStepNodeProps {
   recipeOptions: FilterOption[];
   /** The target's current export slice (null/undefined = none). */
   exportIpm: number | null;
+  /** True when this node's *active* recipe is a tier-reachable alt the
+   * playthrough hasn't scanned yet — the same fact the recipe picker
+   * already flags per option, read for the recipe actually in use. */
+  uncollected: boolean;
+  /** A factory that already makes this item with spare, when one
+   * exists — absent means nothing to suggest, not "nobody else makes
+   * this" (the check isn't run everywhere a graph is read). */
+  existingProducer?: ExistingProducer;
   onSwapRecipe: (itemId: string, recipeId: string) => void;
   onOpenSources: (itemId: string) => void;
   /** Make this item a product exporting `ipm`/min (adds the target). */
   onStartExport: (itemId: string, ipm: number) => void;
   onSetExport: (itemId: string, exportIpm: number | null) => void;
+  /** Import from an existing producer instead of building it here —
+   * local production stays as the elastic remainder, same as any other
+   * external source added from the Sources panel. */
+  onImportFromProducer: (itemId: string, sourceFactoryId: string) => void;
 }
 
 export function RecipeStepNodeCard({
   node,
   recipeOptions,
   exportIpm,
+  uncollected,
+  existingProducer,
   onSwapRecipe,
   onOpenSources,
   onStartExport,
   onSetExport,
+  onImportFromProducer,
 }: RecipeStepNodeProps) {
+  // "Free" only earns its own line when it actually differs from gross
+  // production — for a leaf product with no internal consumer they're
+  // the same number, and repeating it twice is noise, not information.
+  const hasFreeGap = node.freeOutputIpm < node.outputIpm - 1e-3;
+  const topSource = existingProducer?.sources[0];
   return (
     <div
       className={`rounded-md border bg-bg-raised p-3 text-xs shadow-sm ${
@@ -85,17 +117,32 @@ export function RecipeStepNodeCard({
           <Icon itemId={node.itemId} alt="" className="h-6 w-6 shrink-0" />
           <span className="truncate font-medium text-fg">{node.itemName}</span>
         </div>
-        {node.isTarget && (
-          <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-white">
-            Product
-          </span>
-        )}
+        <div className="flex shrink-0 items-center gap-1">
+          {uncollected && (
+            <span
+              title="Unlocked at this recipe's tier, but not scanned into your Alts list yet"
+              className="flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-accent"
+            >
+              <FlaskConical className="h-3 w-3" />
+              Not collected
+            </span>
+          )}
+          {node.isTarget && (
+            <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-white">
+              Product
+            </span>
+          )}
+        </div>
       </div>
       <div className="mt-1 tabular-nums text-fg-muted">
         {node.machineCount}× {node.buildingName} @ {node.clockPct.toFixed(0)}% ·{" "}
         {node.powerMw.toFixed(1)} MW
       </div>
-      <div className="mt-1 tabular-nums font-semibold text-fg">{rate(node.outputIpm)}</div>
+      <div className="mt-1 tabular-nums">
+        <span className="font-semibold text-fg">{rate(node.outputIpm)}</span>
+        <span className="text-fg-muted"> produced</span>
+        {hasFreeGap && <span className="text-fg-muted">, {rate(node.freeOutputIpm)} free</span>}
+      </div>
 
       {/* Every step gets the recipe picker — re-recipe any link in the
           chain and the upstream re-derives. */}
@@ -111,6 +158,26 @@ export function RecipeStepNodeCard({
               if (next && next !== node.recipeId) onSwapRecipe(node.itemId, next);
             }}
           />
+        </div>
+      )}
+
+      {/* Surfaced at the point the solver is about to build a local
+          copy, rather than waiting for Sources to be asked — the
+          default outcome without this is rebuilding, every time. */}
+      {!node.isTarget && topSource && (
+        <div className="mt-2 flex items-start gap-1.5 rounded border border-accent/40 bg-accent/10 px-2 py-1.5 text-fg-muted">
+          <Download className="mt-0.5 h-3 w-3 shrink-0 text-accent" />
+          <span className="min-w-0">
+            <span className="text-fg">{topSource.factoryName}</span> already makes this,{" "}
+            {rate(topSource.spareIpm)} spare —{" "}
+            <button
+              type="button"
+              onClick={() => onImportFromProducer(node.itemId, topSource.factoryId)}
+              className="font-medium text-accent hover:underline"
+            >
+              import instead
+            </button>
+          </span>
         </div>
       )}
 
@@ -147,8 +214,8 @@ export function RecipeStepNodeCard({
             type="button"
             onClick={() =>
               node.isTarget
-                ? onSetExport(node.itemId, exportPrefill(node.outputIpm))
-                : onStartExport(node.itemId, exportPrefill(node.outputIpm))
+                ? onSetExport(node.itemId, exportPrefill(node.freeOutputIpm))
+                : onStartExport(node.itemId, exportPrefill(node.freeOutputIpm))
             }
             title="Offer this item to other factories"
             className="flex items-center gap-1 rounded border border-dashed border-border px-2 py-1 text-[11px] text-fg-muted hover:border-accent hover:text-fg"

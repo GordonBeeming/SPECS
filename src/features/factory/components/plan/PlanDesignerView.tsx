@@ -29,7 +29,7 @@ import { PlanGraphCanvas } from "./PlanGraphCanvas";
 import { PlanSinkSummary } from "./PlanSinkSummary";
 import { PlanTotals } from "./PlanTotals";
 import { PlanTargetsBar } from "./PlanTargetsBar";
-import { errorLine, PlanWarningsBanner } from "./PlanWarningsBanner";
+import { errorLine, PlanWarningsBanner, UncollectedAltsBanner } from "./PlanWarningsBanner";
 import { SourcesPanel } from "./SourcesPanel";
 
 export interface PlanDesignerViewProps {
@@ -469,6 +469,7 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
         )}
         {graph && <PlanSinkSummary graph={graph} />}
         {graph && <PlanWarningsBanner warnings={graph.warnings} />}
+        {graph && <UncollectedAltsBanner names={graph.uncollectedAlts} />}
       </div>
 
       <div className="relative min-h-0 flex-1">
@@ -498,6 +499,14 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
             }}
             onSetExport={designer.setTargetExport}
             onAddLocal={designer.addLocalSource}
+            onImportFromProducer={(itemId, sourceFactoryId) =>
+              // Same shape as picking a "covers" offer from the Sources
+              // panel: add the source, leave local production as the
+              // elastic remainder. Nothing here forces the local line
+              // out — the solver shrinks it on its own once the import
+              // covers part (or all) of the demand.
+              designer.addExternalSource(itemId, sourceFactoryId, null)
+            }
           />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-fg-muted">

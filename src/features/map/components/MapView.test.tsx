@@ -653,6 +653,25 @@ describe("<MapView /> — a well satellite reads distinctly from an oil seep", (
     expect(await screen.findAllByText("Well satellite")).not.toHaveLength(0);
   });
 
+  it("keeps the well extractor selectable and tier-badged even though nothing in its single-option family is unlocked yet", async () => {
+    // Tier 6 playthrough, Tier 8 extractor: `tier_eligible_extractors`
+    // never returns empty, so the family's one option still shows —
+    // the badge (not the option's absence) is what tells the player
+    // it isn't buildable yet. This must stay selectable; blocking it
+    // would leave the well satellite with nothing to claim at all.
+    const user = userEvent.setup();
+    renderWithProviders(<MapView />);
+    const marker = await screen.findByRole("button", { name: /well satellite/i });
+    await user.click(marker);
+
+    const combobox = await screen.findByRole("combobox", { name: /extractor/i });
+    expect(combobox).toHaveValue("Resource Well Extractor");
+    await user.click(combobox);
+    const option = await screen.findByRole("option", { name: /Resource Well Extractor/ });
+    expect(option).toHaveTextContent("Tier 8");
+    expect(option).toHaveTextContent("locked");
+  });
+
   it("gives the marker its own zoom-independent scale instead of inheriting the map's", async () => {
     // Regresses #96: marker size and coordinate spread used to scale
     // together (both riding the map's own CSS zoom transform), so no

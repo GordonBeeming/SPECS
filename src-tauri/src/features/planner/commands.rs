@@ -222,9 +222,9 @@ fn gather_export_capacity(
     Ok(out)
 }
 
-/// Machine-side surplus per (factory, item) for items their factory has
-/// no plan target for — the ingots, sheets, rods and byproducts a plan
-/// makes on its way to what it was actually told to build.
+/// Machine-side spare per (factory, item) for every item a factory's
+/// machines actually make — the ingots, sheets, rods and byproducts a
+/// plan produces on its way to what it was told to build.
 ///
 /// This is the whole of the "surplus export" idea: an intermediate is
 /// already being produced, so taking some of it claims part of an
@@ -232,6 +232,16 @@ fn gather_export_capacity(
 /// `raise_export_target` can keep refusing to add a target to somebody
 /// else's factory — a raise changes what that factory *is*, and this
 /// doesn't.
+///
+/// **Producing the item is the qualifier, not having any of it spare.**
+/// A factory that makes an item and consumes every unit belongs in the
+/// answer with a spare of zero: leaving it out is indistinguishable
+/// from "no factory makes this", and that ambiguity is what makes the
+/// import flow look broken when it isn't. It's the same rule
+/// `export_offers_impl` already applies to targets, where a target with
+/// nothing left still gets a row. What zero *means* is unchanged —
+/// taking any of it needs that factory to grow, which is a target
+/// change and still the refusal above.
 ///
 /// Read off the materialized machines rather than by re-solving each
 /// plan: plan-managed machine rows are regenerated on every save, so
@@ -268,8 +278,15 @@ fn intermediate_surplus(
             tier,
         );
         for flow in ledger.flows {
-            if flow.net_per_minute > 0.0 {
-                out.insert((f.id.clone(), flow.item_id), flow.net_per_minute);
+            // An item the factory only *consumes* — its ore, its
+            // imported inputs — is not something it can be a source
+            // for, so those stay out. Anything its machines make is in,
+            // spare or not.
+            if flow.produced_per_minute > 0.0 {
+                out.insert(
+                    (f.id.clone(), flow.item_id),
+                    spare_ipm(flow.produced_per_minute, flow.consumed_per_minute),
+                );
             }
         }
     }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Check, Pencil, Plus, X } from "lucide-react";
 
+import { TierBadge } from "@/features/library/components/TierBadge";
 import { Button } from "@/shared/ui/Button";
 import { ClockInput, formatClockPct } from "@/shared/ui/ClockInput";
 import { ConfirmDeleteButton } from "@/shared/ui/ConfirmDeleteButton";
@@ -9,7 +10,7 @@ import { factoryPickerOptions, type FactoryPickerCandidate } from "@/features/ma
 import { floorClockPct } from "@/features/validation/clock";
 import type { Finding } from "@/features/validation/types";
 
-import { claimDefaultExtractor, extractorOptionLabel, nodeDisplayLabel, nodeKindLabel } from "../display";
+import { claimDefaultExtractor, nodeDisplayLabel, nodeKindLabel } from "../display";
 import { useClearNodeClaim, useSetNodeClaim } from "../hooks/useResources";
 import type { ResourceNodeRow } from "../types";
 
@@ -243,17 +244,19 @@ function ClaimEditor({
       {row.kind !== "geyser" && (
         <label className="flex flex-col gap-1 text-xs">
           <span className="text-fg-muted">Extractor</span>
-          <select
-            value={minerId}
-            onChange={(e) => setMinerId(e.target.value)}
-            className="h-8 rounded-md border border-border bg-bg px-2 text-sm text-fg outline-none focus:border-primary"
-          >
-            {minerOptions.map((m) => (
-              <option key={m.id} value={m.id}>
-                {extractorOptionLabel(m)}
-              </option>
-            ))}
-          </select>
+          <FilterSelect
+            compact
+            ariaLabel="Extractor"
+            clearable={false}
+            placeholder="Select extractor…"
+            options={minerOptions.map((m) => ({
+              value: m.id,
+              label: m.name,
+              badge: <TierBadge unlockTier={m.unlockTier} />,
+            }))}
+            value={minerId === "" ? null : minerId}
+            onChange={(next) => setMinerId(next ?? "")}
+          />
         </label>
       )}
       <label className="flex flex-col gap-1 text-xs">

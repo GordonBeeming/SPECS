@@ -107,15 +107,20 @@ pub fn allowed_extractors(node: &MapNode, game_data: &GameData) -> Vec<Extractor
             })
             .collect(),
         NodeKind::FrackingWell => {
-            // The stored id stays Build_FrackingSmasher_C — it's the
-            // clocked building and what every existing claim row holds —
-            // but players place a Resource Well Extractor on each
-            // satellite, so the label comes from that building. Changing
-            // the stored id would invalidate every saved well claim for
-            // zero rate difference.
+            // The Resource Well Pressuriser (`Build_FrackingSmasher_C`)
+            // is the clocked, powered building; a satellite places a
+            // Resource Well Extractor (`Build_FrackingExtractor_C`) and
+            // inherits the Pressuriser's clock — see `well_core_id` and
+            // `power_for_factory` for the shared-clock and shared-power
+            // halves of that split. The claim stores the extractor's own
+            // id; migration `V0017` retargeted every claim saved before
+            // the split existed. Neither `extractor_output_ipm` nor
+            // `extractor_power_mw` is mark-dependent for a well, so this
+            // id never changes a rate or power figure — only the label
+            // the picker and the claim card read back.
             let extractor = game_data.building("Build_FrackingExtractor_C");
             vec![ExtractorOption {
-                id: "Build_FrackingSmasher_C".to_string(),
+                id: "Build_FrackingExtractor_C".to_string(),
                 name: extractor
                     .map(|b| b.name.clone())
                     .unwrap_or_else(|| "Resource Well Extractor".to_string()),
@@ -419,6 +424,35 @@ pub fn supply_for_factory(
     out
 }
 
+/// The well a satellite belongs to, for grouping every place that needs
+/// to treat a well's satellites as one unit (the shared Pressuriser
+/// charge, the shared clock). Satellites the map data never grouped
+/// (`core_id` absent — rare, but real) are a well of one, keyed by
+/// their own node id; every caller uses this same fallback so they
+/// agree on the grouping without a join against a map-data field that
+/// isn't guaranteed present.
+pub fn well_core_id(node: &MapNode) -> String {
+    node.core_id.clone().unwrap_or_else(|| node.id.clone())
+}
+
+/// Every node id belonging to the same well as `node` (including
+/// `node` itself), from the full map catalog rather than just what's
+/// claimed — a fresh, unclaimed satellite still needs to be found when
+/// a sibling's clock changes. Empty for anything that isn't a
+/// `FrackingWell`.
+pub fn well_satellite_node_ids(node: &MapNode, game_data: &GameData) -> Vec<String> {
+    if node.kind != NodeKind::FrackingWell {
+        return Vec::new();
+    }
+    let core = well_core_id(node);
+    game_data
+        .nodes()
+        .iter()
+        .filter(|n| n.kind == NodeKind::FrackingWell && well_core_id(n) == core)
+        .map(|n| n.id.clone())
+        .collect()
+}
+
 /// For each fracking well (keyed by `core_id`, or a satellite's own id
 /// for the rare one the map data never grouped), the one factory whose
 /// claimed satellite owns that well's shared Pressuriser charge.
@@ -448,7 +482,7 @@ fn fracking_core_owners(
         if node.kind != NodeKind::FrackingWell {
             continue;
         }
-        let core = node.core_id.clone().unwrap_or_else(|| node.id.clone());
+        let core = well_core_id(node);
         best.entry(core)
             .and_modify(|(best_node_id, best_factory)| {
                 if node_id < best_node_id {
@@ -459,6 +493,59 @@ fn fracking_core_owners(
             .or_insert_with(|| (node_id.clone(), claim_factory_id.to_string()));
     }
     best.into_iter().map(|(core, (_, factory_id))| (core, factory_id)).collect()
+}
+
+/// A well has one Pressuriser and therefore one clock. Two claimed
+/// satellites of the same well reporting different clocks (the exact
+/// bug #95 opens with — 50% and 100% on one well, nothing objected) are
+/// out of agreement, and this returns the `(node_id, canonical_clock)`
+/// pairs that bring them back into it.
+///
+/// The canonical clock is the highest active clock among the well's
+/// claimed satellites: an operator who already dialled one satellite to
+/// 150% didn't mean the well to settle for 100%, and "highest wins" is
+/// deterministic regardless of `HashMap` iteration order, the same
+/// property `fracking_core_owners` needs from its own tie-break.
+///
+/// This is the read-side half of the shared-clock model.
+/// `resource_nodes::commands::set_node_claim` cascades a new clock onto
+/// every sibling satellite at write time, so satellites claimed through
+/// it never disagree in the first place; this function exists for
+/// claims that predate that cascade, or that some other caller wrote
+/// straight to the repo layer without going through it.
+pub fn well_clock_reconciliation(
+    claims: &HashMap<String, ClaimRow>,
+    game_data: &GameData,
+) -> Vec<(String, f32)> {
+    let mut by_core: HashMap<String, Vec<(String, f32)>> = HashMap::new();
+    for (node_id, claim) in claims {
+        if claim.clock_pct <= 0.0 || !claim.clock_pct.is_finite() {
+            continue;
+        }
+        let Some(node) = game_data.node(node_id) else {
+            continue;
+        };
+        if node.kind != NodeKind::FrackingWell {
+            continue;
+        }
+        by_core
+            .entry(well_core_id(node))
+            .or_default()
+            .push((node_id.clone(), claim.clock_pct));
+    }
+    let mut out = Vec::new();
+    for satellites in by_core.values() {
+        let canonical = satellites
+            .iter()
+            .map(|(_, clock)| *clock)
+            .fold(f32::NEG_INFINITY, f32::max);
+        for (node_id, clock) in satellites {
+            if (*clock - canonical).abs() > 1e-3 {
+                out.push((node_id.clone(), canonical));
+            }
+        }
+    }
+    out
 }
 
 /// Total MW drawn by one factory's bound extractor claims and bound
@@ -844,7 +931,7 @@ mod tests {
                 .iter()
                 .map(|e| e.id.as_str())
                 .collect::<Vec<_>>(),
-            ["Build_FrackingSmasher_C"]
+            ["Build_FrackingExtractor_C"]
         );
         let geyser = MapNode {
             id: "g".into(),
@@ -1259,7 +1346,7 @@ mod tests {
         for sat in satellites.iter().take(3) {
             claims.insert(
                 sat.id.clone(),
-                claim(&sat.id, "Build_FrackingSmasher_C", 100.0, Some("F1")),
+                claim(&sat.id, "Build_FrackingExtractor_C", 100.0, Some("F1")),
             );
         }
         let pressuriser_mw = gd.building("Build_FrackingSmasher_C").unwrap().power_mw;
@@ -1299,11 +1386,11 @@ mod tests {
         let mut claims = HashMap::new();
         claims.insert(
             satellites[0].id.clone(),
-            claim(&satellites[0].id, "Build_FrackingSmasher_C", 100.0, Some("F1")),
+            claim(&satellites[0].id, "Build_FrackingExtractor_C", 100.0, Some("F1")),
         );
         claims.insert(
             satellites[1].id.clone(),
-            claim(&satellites[1].id, "Build_FrackingSmasher_C", 100.0, Some("F2")),
+            claim(&satellites[1].id, "Build_FrackingExtractor_C", 100.0, Some("F2")),
         );
         let pressuriser_mw = gd.building("Build_FrackingSmasher_C").unwrap().power_mw;
 
@@ -1315,6 +1402,94 @@ mod tests {
             "one well split across two factories must charge the Pressuriser once in total \
              ({pressuriser_mw} MW), got F1={f1_mw} + F2={f2_mw} = {total}"
         );
+    }
+
+    // ---------- well shared-clock tests (#95) ----------
+
+    #[test]
+    fn well_core_id_falls_back_to_the_nodes_own_id_when_ungrouped() {
+        let grouped = MapNode {
+            id: "sat1".into(),
+            resource_item_id: "Desc_Water_C".into(),
+            purity: NodePurity::Normal,
+            kind: NodeKind::FrackingWell,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            core_id: Some("core1".into()),
+        };
+        assert_eq!(well_core_id(&grouped), "core1");
+        let ungrouped = MapNode { core_id: None, ..grouped };
+        assert_eq!(
+            well_core_id(&ungrouped),
+            "sat1",
+            "a satellite the map data never grouped is a well of one, keyed by its own id"
+        );
+    }
+
+    #[test]
+    fn well_satellite_node_ids_finds_every_satellite_of_the_bundled_wells_core() {
+        let gd = GameData::from_bundled().unwrap();
+        let well = gd
+            .nodes()
+            .iter()
+            .find(|n| n.kind == NodeKind::FrackingWell && n.core_id.is_some())
+            .expect("bundled map data has a fracking well");
+        let siblings = well_satellite_node_ids(well, &gd);
+        assert!(siblings.contains(&well.id), "the node's own id is always in its own well");
+        assert!(siblings.len() > 1, "the bundled well should have more than one satellite");
+        // Non-well nodes have no satellites at all.
+        let iron = gd.nodes().iter().find(|n| n.kind == NodeKind::MinerNode).unwrap();
+        assert!(well_satellite_node_ids(iron, &gd).is_empty());
+    }
+
+    #[test]
+    fn well_clock_reconciliation_corrects_disagreeing_satellites_to_the_highest_clock() {
+        // #95's exact reproduction: two satellites of the same well set
+        // to 50% and 100%, and nothing objected. One well, one clock —
+        // the lower one is what has to move.
+        let gd = GameData::from_bundled().unwrap();
+        let well = gd
+            .nodes()
+            .iter()
+            .find(|n| n.kind == NodeKind::FrackingWell && n.core_id.is_some())
+            .expect("bundled map data has a fracking well");
+        let siblings = well_satellite_node_ids(well, &gd);
+        assert!(siblings.len() >= 2, "need at least two satellites for a disagreement");
+        let mut claims = HashMap::new();
+        claims.insert(siblings[0].clone(), claim(&siblings[0], "Build_FrackingExtractor_C", 50.0, Some("F1")));
+        claims.insert(siblings[1].clone(), claim(&siblings[1], "Build_FrackingExtractor_C", 100.0, Some("F1")));
+        let corrections = well_clock_reconciliation(&claims, &gd);
+        assert_eq!(corrections.len(), 1, "only the lower satellite needs correcting");
+        assert_eq!(corrections[0].0, siblings[0]);
+        assert!((corrections[0].1 - 100.0).abs() < 0.01, "canonical clock is the highest active one");
+    }
+
+    #[test]
+    fn well_clock_reconciliation_ignores_claims_on_unknown_node_ids() {
+        // A claim row surviving against a node id the current catalog no
+        // longer has (a stale save, a bundled map-data update) must be
+        // skipped, not panic the lookup.
+        let gd = GameData::from_bundled().unwrap();
+        let mut claims = HashMap::new();
+        claims.insert("BP_DoesNotExist".to_string(), claim("BP_DoesNotExist", "Build_FrackingExtractor_C", 50.0, None));
+        assert!(well_clock_reconciliation(&claims, &gd).is_empty());
+    }
+
+    #[test]
+    fn well_clock_reconciliation_leaves_agreeing_satellites_untouched() {
+        let gd = GameData::from_bundled().unwrap();
+        let well = gd
+            .nodes()
+            .iter()
+            .find(|n| n.kind == NodeKind::FrackingWell && n.core_id.is_some())
+            .expect("bundled map data has a fracking well");
+        let siblings = well_satellite_node_ids(well, &gd);
+        let mut claims = HashMap::new();
+        for id in siblings.iter().take(3) {
+            claims.insert(id.clone(), claim(id, "Build_FrackingExtractor_C", 150.0, Some("F1")));
+        }
+        assert!(well_clock_reconciliation(&claims, &gd).is_empty());
     }
 
     // ---------- water extractor group tests ----------

@@ -622,6 +622,7 @@ export function SourcesPanel({
                     value={src.ipmCap ?? ""}
                     placeholder="cap"
                     aria-label="Source cap per minute"
+                    title="Cap how much this source sends — empty pulls as much as it's able to spare"
                     onChange={(e) => {
                       const v = e.target.value === "" ? null : Number(e.target.value);
                       onSetCap(itemId, src.index, v !== null && Number.isFinite(v) && v > 0 ? v : null);

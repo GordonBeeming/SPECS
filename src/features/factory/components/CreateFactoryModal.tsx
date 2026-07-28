@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/shared/ui/Button";
 import { Icon } from "@/shared/ui/Icon";
 import { IconPicker } from "@/shared/ui/IconPicker";
 import { useBuildings } from "@/features/library/hooks/useLibrary";
+import { queryKeys } from "@/shared/query/keys";
+import { factoryApi } from "../api";
 import { useCreateFactory } from "../hooks/useFactories";
 
 interface CreateFactoryModalProps {
@@ -11,14 +14,33 @@ interface CreateFactoryModalProps {
   onCreated?: (id: string) => void;
 }
 
+/** A world coordinate typed into the position fields, or the sentinel
+ * meaning "leave it unplaced" (both fields blank — the schema default,
+ * same as before this field existed). Anything else that doesn't parse
+ * to two finite numbers is a validation error, not a silent 0. */
+type PositionInput = { x: number; y: number } | "unset" | "invalid";
+
+function parsePosition(xRaw: string, yRaw: string): PositionInput {
+  const x = xRaw.trim();
+  const y = yRaw.trim();
+  if (x === "" && y === "") return "unset";
+  const nx = Number(x);
+  const ny = Number(y);
+  if (x === "" || y === "" || !Number.isFinite(nx) || !Number.isFinite(ny)) return "invalid";
+  return { x: nx, y: ny };
+}
+
 export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalProps) {
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
   const [iconId, setIconId] = useState<string | null>(null);
   const [showIconPicker, setShowIconPicker] = useState(false);
+  const [worldX, setWorldX] = useState("");
+  const [worldY, setWorldY] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
   const create = useCreateFactory();
   const buildings = useBuildings();
+  const queryClient = useQueryClient();
 
   // Default the suggested grid to all production building ids — those
   // are what a factory most naturally identifies with (Smelter, Refinery,
@@ -43,6 +65,11 @@ export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalPro
       setValidationError(err);
       return;
     }
+    const position = parsePosition(worldX, worldY);
+    if (position === "invalid") {
+      setValidationError("Position needs both World X and World Y, or leave both blank.");
+      return;
+    }
     setValidationError(null);
     create.mutate(
       {
@@ -52,8 +79,31 @@ export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalPro
       },
       {
         onSuccess: (factory) => {
-          onCreated?.(factory.id);
-          onClose();
+          // Every factory created here used to default to (0, 0) with no
+          // way to say otherwise, so a second factory landed stacked
+          // exactly on top of the first. Leaving both fields blank still
+          // means unplaced (unchanged from before) — this only runs when
+          // the user actually typed coordinates.
+          const placed =
+            position === "unset"
+              ? Promise.resolve()
+              : factoryApi
+                  .setPosition({ id: factory.id, worldX: position.x, worldY: position.y })
+                  .then(() => {
+                    queryClient.invalidateQueries({ queryKey: queryKeys.factory.list });
+                    queryClient.invalidateQueries({ queryKey: queryKeys.factory.detail(factory.id) });
+                  })
+                  .catch((err: unknown) => {
+                    // The factory itself was created — losing the position
+                    // write only leaves it unplaced until dragged on the
+                    // map, which isn't worth blocking the modal on, but it
+                    // must not vanish silently either.
+                    console.error("Couldn't set the new factory's position:", err);
+                  });
+          void placed.finally(() => {
+            onCreated?.(factory.id);
+            onClose();
+          });
         },
       },
     );
@@ -148,6 +198,35 @@ export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalPro
                   />
                 </div>
               )}
+            </div>
+
+            <div>
+              <span className="text-sm font-medium text-fg">Position on the map (optional)</span>
+              <p className="mt-0.5 text-xs text-fg-muted">
+                Leave both blank to place it later by dragging it on the map — otherwise every
+                factory created from this list lands on the same spot and stacks under the last
+                one.
+              </p>
+              <div className="mt-1.5 flex items-center gap-2">
+                <input
+                  type="number"
+                  step="any"
+                  value={worldX}
+                  onChange={(e) => setWorldX(e.target.value)}
+                  placeholder="World X"
+                  aria-label="Factory world X coordinate"
+                  className="h-9 w-full rounded-md border border-border bg-bg px-2 text-sm text-fg outline-none focus:border-primary"
+                />
+                <input
+                  type="number"
+                  step="any"
+                  value={worldY}
+                  onChange={(e) => setWorldY(e.target.value)}
+                  placeholder="World Y"
+                  aria-label="Factory world Y coordinate"
+                  className="h-9 w-full rounded-md border border-border bg-bg px-2 text-sm text-fg outline-none focus:border-primary"
+                />
+              </div>
             </div>
 
             <label className="block">

@@ -51,6 +51,10 @@ export type PlanNode =
       clockPct: number;
       powerMw: number;
       outputIpm: number;
+      /** What's left of `outputIpm` after this factory's own steps have
+       * taken their share — the rate an export is actually worth
+       * declaring. Same derivation as `ExportOfferProduct.spareIpm`. */
+      freeOutputIpm: number;
       isAlt: boolean;
       isTarget: boolean;
       targetIpm: number | null;
@@ -126,6 +130,37 @@ export interface PlanGraph {
   warnings: PlanWarning[];
   /** A target needs SAM, so the per-plan toggle was forced on. */
   samForced: boolean;
+  /** Alt recipes this solve leans on that the playthrough hasn't
+   * collected yet, by display name, sorted. Deliberately not a
+   * `PlanWarning` — the chain is sound and buildable in principle; being
+   * able to build it *today* is a separate, softer fact. */
+  uncollectedAlts: string[];
+  /** Items this plan builds locally that another factory already makes
+   * with capacity to spare — offered at the point the local copy
+   * appears, instead of waiting for the Sources panel to be asked. */
+  existingProducers: ExistingProducer[];
+}
+
+/** One item a plan is about to build locally that somebody else already
+ * makes, with who and how much they have going spare. */
+export interface ExistingProducer {
+  /** The local step this is an alternative to. */
+  nodeKey: string;
+  itemId: string;
+  itemName: string;
+  /** What this plan builds locally, for the "…instead of N/min here"
+   * half of the sentence. */
+  localIpm: number;
+  /** Sorted by spare capacity, most first. */
+  sources: ExistingProducerSource[];
+}
+
+export interface ExistingProducerSource {
+  factoryId: string;
+  factoryName: string;
+  /** `ExportOfferProduct.spareIpm` — what widening the export slice
+   * alone would free up, no extra machines at the source. */
+  spareIpm: number;
 }
 
 /** Per-compute knobs sent alongside the plan inputs. */

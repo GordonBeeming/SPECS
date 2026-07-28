@@ -30,6 +30,9 @@ const recipeNode: Extract<PlanNode, { kind: "recipe" }> = {
   clockPct: 100,
   powerMw: 8,
   outputIpm: 60,
+  // No internal consumer in these fixtures — free matches gross unless
+  // a test overrides it to exercise the gap.
+  freeOutputIpm: 60,
   isAlt: false,
   isTarget: true,
   targetIpm: 60,
@@ -50,10 +53,12 @@ const importNode: Extract<PlanNode, { kind: "import" }> = {
 const recipeCardProps = {
   recipeOptions: [],
   exportIpm: null as number | null,
+  uncollected: false,
   onSwapRecipe: vi.fn(),
   onOpenSources: vi.fn(),
   onStartExport: vi.fn(),
   onSetExport: vi.fn(),
+  onImportFromProducer: vi.fn(),
 };
 
 describe("RecipeStepNodeCard", () => {
@@ -101,13 +106,99 @@ describe("RecipeStepNodeCard", () => {
     const onStartExport = vi.fn();
     render(
       <RecipeStepNodeCard
-        node={{ ...recipeNode, isTarget: false, targetIpm: null, outputIpm: 2.5 }}
+        node={{ ...recipeNode, isTarget: false, targetIpm: null, outputIpm: 2.5, freeOutputIpm: 2.5 }}
         {...recipeCardProps}
         onStartExport={onStartExport}
       />,
     );
     await user.click(screen.getByText("Export"));
     expect(onStartExport).toHaveBeenCalledWith("Desc_Cable_C", 2.5);
+  });
+
+  it("prefills an export from free output, not gross production", async () => {
+    // A Screws node offering 519/min gross, almost all of it eaten by
+    // other steps here — accepting the old prefill declared an export
+    // the factory couldn't honour (#88).
+    const user = userEvent.setup();
+    const onStartExport = vi.fn();
+    render(
+      <RecipeStepNodeCard
+        node={{
+          ...recipeNode,
+          isTarget: false,
+          targetIpm: null,
+          outputIpm: 519,
+          freeOutputIpm: 12,
+        }}
+        {...recipeCardProps}
+        onStartExport={onStartExport}
+      />,
+    );
+    await user.click(screen.getByText("Export"));
+    expect(onStartExport).toHaveBeenCalledWith("Desc_Cable_C", 12);
+  });
+
+  it("shows both gross production and what's actually free", () => {
+    render(
+      <RecipeStepNodeCard
+        node={{ ...recipeNode, outputIpm: 519, freeOutputIpm: 12 }}
+        {...recipeCardProps}
+      />,
+    );
+    expect(screen.getByText(/519\/min/)).toBeInTheDocument();
+    expect(screen.getByText(/12\/min free/)).toBeInTheDocument();
+  });
+
+  it("doesn't repeat the free figure when nothing local consumes it", () => {
+    render(<RecipeStepNodeCard node={recipeNode} {...recipeCardProps} />);
+    expect(screen.queryByText(/free/)).not.toBeInTheDocument();
+  });
+
+  it("badges a recipe that's an uncollected alt", () => {
+    render(<RecipeStepNodeCard node={recipeNode} {...recipeCardProps} uncollected />);
+    expect(screen.getByText("Not collected")).toBeInTheDocument();
+  });
+
+  it("surfaces an existing producer with spare capacity instead of waiting to be asked", async () => {
+    // #107: nothing prompted the user toward Rocket Works' spare
+    // capacity, so Warp Drive Final quietly rebuilt the same part.
+    const user = userEvent.setup();
+    const onImportFromProducer = vi.fn();
+    render(
+      <RecipeStepNodeCard
+        node={{ ...recipeNode, isTarget: false, targetIpm: null }}
+        {...recipeCardProps}
+        onImportFromProducer={onImportFromProducer}
+        existingProducer={{
+          nodeKey: "recipe:Desc_Cable_C",
+          itemId: "Desc_Cable_C",
+          itemName: "Cable",
+          localIpm: 60,
+          sources: [{ factoryId: "fac-rocket", factoryName: "Rocket Works", spareIpm: 40 }],
+        }}
+      />,
+    );
+    expect(screen.getByText(/Rocket Works/)).toBeInTheDocument();
+    expect(screen.getByText(/40\/min spare/)).toBeInTheDocument();
+    await user.click(screen.getByText("import instead"));
+    expect(onImportFromProducer).toHaveBeenCalledWith("Desc_Cable_C", "fac-rocket");
+  });
+
+  it("doesn't offer an existing-producer import for a target — the target is the product", () => {
+    render(
+      <RecipeStepNodeCard
+        node={recipeNode}
+        {...recipeCardProps}
+        existingProducer={{
+          nodeKey: "recipe:Desc_Cable_C",
+          itemId: "Desc_Cable_C",
+          itemName: "Cable",
+          localIpm: 60,
+          sources: [{ factoryId: "fac-rocket", factoryName: "Rocket Works", spareIpm: 40 }],
+        }}
+      />,
+    );
+    expect(screen.queryByText("import instead")).not.toBeInTheDocument();
   });
 
   it("edits the export slice inline on exporting targets", () => {

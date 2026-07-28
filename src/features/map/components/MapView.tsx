@@ -14,6 +14,7 @@ import {
   useUnsourcedInputs,
 } from "@/features/factory/hooks/useFactories";
 import { useItems, useRecipes } from "@/features/library/hooks/useLibrary";
+import { TierBadge } from "@/features/library/components/TierBadge";
 import { traceRawDemand } from "@/features/factory/traceRaw";
 import { useLogisticsLinks } from "@/features/logistics/hooks/useLogistics";
 import { useAllPowerGens } from "@/features/power/hooks/usePower";
@@ -64,7 +65,7 @@ import { ClockInput } from "@/shared/ui/ClockInput";
 import mapAsset from "@/assets/map/satisfactory-map.webp";
 
 import { factoryPickerOptions, pctToWorld, worldToPct, type FactoryPickerCandidate } from "../transform";
-import { claimDefaultExtractor, coordChip, extractorOptionLabel, nodeKindLabel } from "@/features/resources/display";
+import { claimDefaultExtractor, coordChip, nodeKindLabel } from "@/features/resources/display";
 import type { ResourceNodeRow, WaterExtractorGroup } from "@/features/resources/types";
 import { FilterSelect } from "@/shared/ui/FilterSelect";
 
@@ -2450,17 +2451,21 @@ function NodePopover({ node, loadout, factories, onClaim, onRelease, onClose, po
         <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
           <label className="block">
             <span className="text-fg-muted">Extractor</span>
-            <select
-              value={minerId}
-              onChange={(e) => setMinerId(e.target.value)}
-              className="mt-1 h-7 w-full rounded-md border border-border bg-bg px-1.5 text-[12px] text-fg outline-none focus:border-primary"
-            >
-              {node.allowedExtractors.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {extractorOptionLabel(e)}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1">
+              <FilterSelect
+                compact
+                ariaLabel="Extractor"
+                clearable={false}
+                placeholder="Select extractor…"
+                options={node.allowedExtractors.map((e) => ({
+                  value: e.id,
+                  label: e.name,
+                  badge: <TierBadge unlockTier={e.unlockTier} />,
+                }))}
+                value={minerId === "" ? null : minerId}
+                onChange={(next) => setMinerId(next ?? "")}
+              />
+            </div>
           </label>
           <label className="block">
             <span className="text-fg-muted">Clock</span>

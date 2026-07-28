@@ -134,6 +134,24 @@ describe("<SourcesPanel /> — map-derived distance", () => {
 
     expect(screen.getByText(exporter.name)).toHaveAttribute("title", "500 m away");
   });
+
+  it("explains what the source cap field does, not just its unit", () => {
+    // #71: `auto`/`cap` carried no label, no unit and no tooltip — the
+    // local-build cap already had one, this is the external row's.
+    vi.spyOn(plannerApi, "listExportOffers").mockResolvedValue([]);
+
+    renderWithProviders(
+      <SourcesPanel
+        {...baseProps()}
+        sources={[{ itemId: ITEM, sourceFactoryId: exporter.id, ipmCap: null }]}
+      />,
+    );
+
+    expect(screen.getByLabelText("Source cap per minute")).toHaveAttribute(
+      "title",
+      expect.stringContaining("pulls as much as it's able to spare"),
+    );
+  });
 });
 
 describe("<SourcesPanel /> — raising a short exporter", () => {

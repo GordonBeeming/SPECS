@@ -217,9 +217,9 @@ describe("<NodeRow />", () => {
     );
     fireEvent.click(screen.getByLabelText("Edit"));
     await user.click(screen.getByRole("combobox", { name: /factory/i }));
-    // Name-filtered: the row also renders the (still-native) Extractor
-    // <select>, whose <option>s share the "option" role and would
-    // otherwise pollute this list.
+    // Name-filtered to the factory options — the row's own Extractor
+    // combobox stays closed throughout this test, so it never
+    // contributes any "option" role elements here.
     const options = await screen.findAllByRole("option", { name: /Plant/ });
     expect(options.map((o) => o.textContent)).toEqual([
       expect.stringContaining("Iron Plant"),
@@ -273,7 +273,8 @@ describe("<NodeRow />", () => {
     );
   });
 
-  it("oil node editor offers only the Oil Extractor", () => {
+  it("oil node editor offers only the Oil Extractor, tier-badged", async () => {
+    const user = userEvent.setup();
     renderWithProviders(
       <NodeRow
         row={{
@@ -294,9 +295,11 @@ describe("<NodeRow />", () => {
       />,
     );
     fireEvent.click(screen.getByLabelText("Edit"));
-    // Labelled with its unlock tier now — same "name · T{tier}" shape
-    // the generator picker uses.
-    expect(screen.getByRole("option", { name: "Oil Extractor · T5" })).toBeInTheDocument();
+    await user.click(screen.getByRole("combobox", { name: /extractor/i }));
+    // Tier now comes from the shared `TierBadge` (reused from the Alts
+    // screen) rendered beside the option, not baked into the label text.
+    const option = await screen.findByRole("option", { name: /Oil Extractor/ });
+    expect(option).toHaveTextContent("Tier 5");
     expect(screen.queryByRole("option", { name: /Miner Mk/ })).toBeNull();
   });
 
@@ -326,8 +329,41 @@ describe("<NodeRow />", () => {
     expect(screen.getByText("wrong extractor")).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Edit"));
     // Editor coerces the selection to the valid building so a plain
-    // Save repairs the claim.
-    expect(screen.getByRole("combobox", { name: /extractor/i })).toHaveValue("Build_OilPump_C");
+    // Save repairs the claim. The combobox's value is the option's
+    // display label now, not the raw building id a native `<select>`
+    // would report.
+    expect(screen.getByRole("combobox", { name: /extractor/i })).toHaveValue("Oil Extractor");
+  });
+
+  it("keeps a stored above-tier extractor selected in the picker instead of falling back to the family's first option", () => {
+    // Regression: the options list here is already the tier-preserved
+    // one `list_resource_nodes_impl` builds — a legacy claim's extractor
+    // stays in `allowedExtractors` even above the current tier
+    // (`tier_eligible_extractors` narrows to what's *newly* pickable,
+    // then the stored id is appended back in if narrowing dropped it).
+    // The picker's job is to actually show that preserved entry as
+    // selected — falling back to the first (lowest) option once
+    // silently downgraded a stored Mk.2 to Mk.1 on save.
+    const aboveTierClaim: ResourceNodeRow = {
+      ...unclaimed,
+      id: "BP_Iron3",
+      claim: {
+        minerId: "Build_MinerMk3_C",
+        clockPct: 100,
+        factoryId: null,
+        notes: null,
+        createdAt: "2026-05-11T00:00:00Z",
+        updatedAt: "2026-05-11T00:00:00Z",
+      },
+      // Tier 4 current: only Mk1 is newly pickable, but the stored Mk3
+      // (unlockTier 8) rides along.
+      allowedExtractors: [MINER_EXTRACTORS[0], MINER_EXTRACTORS[2]],
+    };
+    renderWithProviders(
+      <NodeRow row={aboveTierClaim} factories={[]} index={0} preferredMinerId={null} />,
+    );
+    fireEvent.click(screen.getByLabelText("Edit"));
+    expect(screen.getByRole("combobox", { name: /extractor/i })).toHaveValue("Miner Mk.3");
   });
 
   it("flags a claim over its port capacity inline, at the point the clock was set (#101)", () => {

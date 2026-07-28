@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Combobox,
   ComboboxButton,
@@ -36,6 +36,13 @@ export interface FilterOption {
     inputs: Array<{ itemId: string; perMinute: number }>;
     outputs: Array<{ itemId: string; perMinute: number }>;
   };
+  /**
+   * Optional trailing badge, e.g. a `TierBadge` for pickers whose
+   * options carry an unlock tier. Purely visual — unlike `hint`, it
+   * doesn't participate in the type-to-filter search, since a caller
+   * building it (a game-data tier + lock state) isn't plain text.
+   */
+  badge?: ReactNode;
 }
 
 interface BaseProps {
@@ -286,6 +293,7 @@ function DropdownPanel({ filtered, value, multiple, optionsCount, query }: Dropd
                     <span>{option.label}</span>
                   </div>
                   <div className="flex items-center gap-2">
+                    {option.badge}
                     {option.hint && (
                       <span className="text-xs opacity-70">{option.hint}</span>
                     )}
