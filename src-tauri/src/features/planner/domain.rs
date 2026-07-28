@@ -992,6 +992,16 @@ fn compute_plan_graph_solved(
     // scale shifts).
     let mut ext_supply: HashMap<String, f32> = HashMap::new();
     let mut solution: Option<solver::PlanSolution> = None;
+    // The supply map `solution` was actually solved against — kept as
+    // its own variable rather than reading `ext_supply` after the loop,
+    // because `ext_supply` moves on to `next` (the *following* pass's
+    // input) as soon as a pass converges or gets a solution, while a
+    // budget trip can stop the loop one iteration later. Assembling the
+    // graph from `ext_supply` in that case paired a solution solved
+    // against the previous (initially empty) supply with a newer supply
+    // it never saw — the import share and the recipe mix it's laid on
+    // top of would then belong to two different passes.
+    let mut solved_ext_supply: HashMap<String, f32> = HashMap::new();
     let started = std::time::Instant::now();
     for pass in 0..4 {
         // The budget guards further work, never an answer already in
@@ -1016,6 +1026,7 @@ fn compute_plan_graph_solved(
             tier_allowed,
         };
         let sol = solve_with_gate_relaxation(game_data, &input, &weights)?;
+        solved_ext_supply = ext_supply.clone();
 
         let mut next: HashMap<String, f32> = HashMap::new();
         for item in &mixed {
@@ -1067,7 +1078,7 @@ fn compute_plan_graph_solved(
     let mut graph = assemble_solved_graph(
         &sol,
         &target_ipms,
-        &ext_supply,
+        &solved_ext_supply,
         &external_specs,
         available_supply,
         export_capacity,
@@ -2435,6 +2446,74 @@ mod tests {
             .filter(|e| e.to_node == "recipe:Desc_Cable_C" && e.item_id == "Desc_Wire_C")
             .collect();
         assert_eq!(to_cable.len(), 2, "one edge from the local line, one from the import");
+    }
+
+    #[test]
+    fn a_budget_trip_mid_refinement_keeps_the_solution_paired_with_its_own_supply() {
+        // Same mixed-source shape as the test above (Cable @60 needs 120
+        // Wire, external caps at 50, a self row keeps the local line
+        // elastic) but with the budget forced to zero so the refinement
+        // loop stops after pass 0's solve — before the external share it
+        // computed ever gets used as an *input* to another solve.
+        //
+        // Pass 0 solves with an empty external-supply map (nothing
+        // reserved yet), so its recipe mix builds Wire fully local at
+        // 120/min. The loop then computes what pass 1 *would* reserve
+        // externally (50/min) and, before this fix, threw that number
+        // into the assembled graph anyway — pairing a 120/min-local
+        // solution with a 50/min import on top of it, 170/min supplied
+        // against 120/min of actual demand. The graph must only ever
+        // reflect what `sol` itself produced: fully local here, with no
+        // import riding along uninvited.
+        let gd = GameData::from_bundled().unwrap();
+        let mut supply = HashMap::new();
+        supply.insert("Desc_OreCopper_C".into(), 100000.0);
+        let options = PlanComputeOptions { include_sam: false, solver_budget_ms: 0 };
+        let graph = compute_plan_graph(
+            "fac-self",
+            &[target("Desc_Cable_C", 60.0)],
+            &unlocked(),
+            None,
+            &supply,
+            &[
+                import_spec("Desc_Wire_C", Some("fac-wire"), Some(50.0)),
+                import_spec("Desc_Wire_C", Some("fac-self"), None),
+            ],
+            &HashMap::new(),
+            &HashMap::new(),
+            &options,
+            &gd,
+        )
+        .unwrap();
+
+        let wire_local = graph
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                PlanNode::Recipe { item_id, output_ipm, .. } if item_id == "Desc_Wire_C" =>
+                    Some(*output_ipm),
+                _ => None,
+            })
+            .expect("local wire line exists");
+        let wire_import = graph
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                PlanNode::Import { item_id, ipm, .. } if item_id == "Desc_Wire_C" => Some(*ipm),
+                _ => None,
+            })
+            .unwrap_or(0.0);
+
+        assert!(
+            (wire_local + wire_import - 120.0).abs() < 0.5,
+            "total wire supplied must equal the 120/min Cable actually demands, got \
+             {wire_local} local + {wire_import} import = {}",
+            wire_local + wire_import
+        );
+        // Pass 0 (the only pass that ran) solved fully local — the
+        // import share it computed afterward was never solved against.
+        assert!((wire_local - 120.0).abs() < 0.5, "got {wire_local}");
+        assert_eq!(wire_import, 0.0, "no import was ever solved for; none should be assembled");
     }
 
     #[test]

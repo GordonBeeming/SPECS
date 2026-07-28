@@ -415,6 +415,52 @@ pub fn solve(
     // plan's headline count. A step feeding a plan target is kept
     // whatever its size — a deliberately tiny target is still the thing
     // the user asked for.
+    //
+    // "Feeds a target" has to mean the whole chain beneath a
+    // *deliberately tiny* target, not just its own direct output — but
+    // only for a target that's tiny itself. A target at ordinary scale
+    // (Cable @60) whose local line has withered to a hair because
+    // almost everything comes in externally is exactly the phantom this
+    // filter exists to drop; its own recipe stays kept by the direct-
+    // output match below, but a leftover feeder above it is still noise
+    // and must still go. A target *below* REPORTABLE_IPM is different:
+    // every recipe on its chain is that same tiny size by construction,
+    // so checking only the last step drops the raws and intermediates
+    // and leaves the kept target step with nothing supplying it (0.01/
+    // min Cable keeping its own recipe while the Wire and Copper Ore
+    // beneath it get filtered out). Walk backward from each *tiny*
+    // target through the recipes the LP actually chose (runs > 0) to
+    // find every item genuinely on a path to it, however small.
+    let tiny_targets: Vec<String> = input
+        .demands
+        .iter()
+        .filter(|(_, ipm)| **ipm < REPORTABLE_IPM)
+        .map(|(item, _)| item.clone())
+        .collect();
+    let mut needed_items: Vec<String> = tiny_targets.clone();
+    let mut items_on_a_tiny_target_chain: HashSet<String> = needed_items.iter().cloned().collect();
+    let mut recipes_on_a_tiny_target_chain: HashSet<usize> = HashSet::new();
+    while let Some(item) = needed_items.pop() {
+        for (idx, var) in &recipe_vars {
+            if recipes_on_a_tiny_target_chain.contains(idx) {
+                continue;
+            }
+            if solution[*var] <= LP_ZERO_RUNS {
+                continue;
+            }
+            let recipe = recipes[*idx];
+            if !recipe.outputs.iter().any(|o| o.item_id == item) {
+                continue;
+            }
+            recipes_on_a_tiny_target_chain.insert(*idx);
+            for io in &recipe.inputs {
+                if items_on_a_tiny_target_chain.insert(io.item_id.clone()) {
+                    needed_items.push(io.item_id.clone());
+                }
+            }
+        }
+    }
+
     let mut chosen: Vec<(String, f64)> = Vec::new();
     for (idx, var) in &recipe_vars {
         let runs = solution[*var];
@@ -428,7 +474,8 @@ pub fn solve(
             .map(|o| o.per_minute as f64 * runs)
             .fold(0.0_f64, f64::max);
         let feeds_a_target =
-            recipe.outputs.iter().any(|o| input.demands.contains_key(&o.item_id));
+            recipe.outputs.iter().any(|o| input.demands.contains_key(&o.item_id))
+                || recipes_on_a_tiny_target_chain.contains(idx);
         if largest_output < REPORTABLE_IPM as f64 && !feeds_a_target {
             continue;
         }
@@ -437,12 +484,19 @@ pub fn solve(
     chosen.sort_by(|a, b| a.0.cmp(&b.0));
 
     // Same threshold on the leaves, so a dropped phantom chain doesn't
-    // leave a raw node behind still asking for ore it no longer needs.
+    // leave a raw node behind still asking for ore it no longer needs —
+    // but a leaf on a *tiny* target's own chain is exempt for the same
+    // reason the recipes above are, so a deliberately tiny target's raws
+    // don't vanish out from under the step that was just kept for it.
     let collect = |vars: &HashMap<String, Vec<Variable>>| -> HashMap<String, f64> {
         vars.iter()
             .filter_map(|(item, segments)| {
                 let val: f64 = segments.iter().map(|v| solution[*v]).sum();
-                (val >= REPORTABLE_IPM as f64).then(|| (item.clone(), val))
+                if val <= LP_ZERO_RUNS {
+                    return None;
+                }
+                let on_tiny_target_chain = items_on_a_tiny_target_chain.contains(item);
+                (val >= REPORTABLE_IPM as f64 || on_tiny_target_chain).then(|| (item.clone(), val))
             })
             .collect()
     };
@@ -548,6 +602,47 @@ mod tests {
             let fluid = gd.item(item).map(|i| i.is_fluid).unwrap_or(false);
             assert!(!fluid || *ipm < 1e-3, "stranded fluid {item}: {ipm}");
         }
+    }
+
+    #[test]
+    fn a_tiny_target_keeps_its_whole_chain_not_just_its_own_recipe() {
+        // A 0.01/min Cable target is below REPORTABLE_IPM (0.05) at
+        // every step of its own chain — Cable, its Wire, and Wire's
+        // Copper Ingot and Copper Ore all render below the threshold,
+        // because the whole chain is scaled down together. Only the
+        // Cable recipe's own output matches a target id directly; the
+        // Wire recipe beneath it does not, and used to get filtered out
+        // as a phantom even though the LP genuinely chose it to supply
+        // Cable. A kept target step with nothing supplying it is worse
+        // than dropping it entirely.
+        let gd = gd();
+        let mut demands = HashMap::new();
+        demands.insert("Desc_Cable_C".to_string(), 0.01);
+        let external = HashMap::new();
+        let cuts = HashSet::new();
+        let overrides = HashMap::new();
+        let alts = HashSet::new();
+        let limits = no_limits();
+        let input = base_input(&demands, &external, &cuts, &overrides, &alts, &limits);
+        let sol = solve(&gd, &input, &rarity_weights(&gd)).unwrap();
+
+        let makes = |item: &str| {
+            sol.recipes.iter().any(|(id, _)| {
+                gd.recipe(id).map(|r| r.outputs.iter().any(|o| o.item_id == item)).unwrap_or(false)
+            })
+        };
+        assert!(makes("Desc_Cable_C"), "the target itself must survive: {:?}", sol.recipes);
+        assert!(
+            makes("Desc_Wire_C"),
+            "Cable's own producer needs Wire — a chain with nothing behind the \
+             target step is worse than not making it at all: {:?}",
+            sol.recipes
+        );
+        assert!(
+            sol.raw_extraction.contains_key("Desc_OreCopper_C"),
+            "the chain grounds out on raw copper ore too: {:?}",
+            sol.raw_extraction
+        );
     }
 
     #[test]
