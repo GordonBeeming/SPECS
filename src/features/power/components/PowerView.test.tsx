@@ -95,11 +95,19 @@ describe("<PowerView />", () => {
     });
   });
 
-  it("lists a factory with no generators instead of hiding it, and flags it prominently", async () => {
+  it("lists a factory with no generators instead of hiding it, without a false alarm when the shared grid covers it", async () => {
     // The bug this regresses: a factory that draws power but never
     // built a generator used to be absent from the sidebar entirely,
     // and the header could read a healthy green net while a third of
     // the grid's draw was invisible.
+    //
+    // This fixture's grid nets +33.4 MW (0+75 generated vs 24+17.6
+    // consumed) — comfortably positive. A factory with no local
+    // generators on a healthy shared grid is completely normal (it's
+    // just drawing the difference from elsewhere), which is also what
+    // the validation sweep's own per-factory suppression rule says, so
+    // Iron Works must appear but must NOT get the urgent "No power"
+    // treatment here.
     vi.spyOn(playthroughApi, "current").mockResolvedValue({
       id: "p",
       displayName: "Run",
@@ -157,18 +165,91 @@ describe("<PowerView />", () => {
     ]);
     renderWithProviders(<PowerView />);
 
-    // Iron Works now appears in the sidebar (it used to be hidden)
-    // and is flagged "No power", sorted ahead of the healthy factory.
+    // Iron Works now appears in the sidebar (it used to be hidden).
     await waitFor(() => {
       expect(screen.getByText("Iron Works")).toBeInTheDocument();
     });
-    expect(screen.getByText(/No power/i)).toBeInTheDocument();
-
     // The grid-wide total reflects both factories and reads as a
-    // deficit (0 + 75 generated vs 24 + 17.6 consumed = 33.4 net).
+    // healthy surplus (0 + 75 generated vs 24 + 17.6 consumed = +33.4).
     await waitFor(() => {
       expect(screen.getByText(/33.4 MW/i)).toBeInTheDocument();
     });
+    // No urgent badge for Iron Works — the grid comfortably covers it.
+    expect(screen.queryByText(/No power/i)).not.toBeInTheDocument();
+  });
+
+  it("flags a factory with no generators as urgent once the shared grid itself is short", async () => {
+    // Codex P2: the counterpart to the test above. The same zero-
+    // generator shape is a real problem once the grid can no longer
+    // cover it — Copper Works generates less than the combined draw
+    // this time, so the grid nets negative and the validation sweep
+    // would surface both factories' deficits. Iron Works must get the
+    // urgent "No power" badge here.
+    vi.spyOn(playthroughApi, "current").mockResolvedValue({
+      id: "p",
+      displayName: "Run",
+      gameVersion: "1.1",
+      createdAt: "2026-05-10T00:00:00Z",
+      currentTier: 0,
+      currentMilestoneProgress: 0,
+    });
+    vi.spyOn(factoryApi, "list").mockResolvedValue([
+      {
+        id: "iron",
+        name: "Iron Works",
+        worldX: 0,
+        worldY: 0,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+        machineCount: 6,
+      },
+      {
+        id: "copper",
+        name: "Copper Works",
+        worldX: 0,
+        worldY: 0,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+        machineCount: 5,
+      },
+    ]);
+    vi.spyOn(powerApi, "list").mockResolvedValue([]);
+    vi.spyOn(powerApi, "listAll").mockResolvedValue([
+      {
+        id: "g1",
+        factoryId: "copper",
+        generatorId: "Build_GeneratorCoal_C",
+        fuelItemId: "Desc_Coal_C",
+        count: 1,
+        clockPct: 100,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+      },
+    ]);
+    vi.spyOn(powerApi, "balance").mockResolvedValue({
+      factoryId: "copper",
+      generatedMw: 15,
+      consumedMw: 17.6,
+      netMw: -2.6,
+      fuelFlows: [],
+    });
+    // 0 + 15 generated vs 24 + 17.6 consumed = -26.6 net — the grid
+    // itself is short.
+    vi.spyOn(powerApi, "listBalances").mockResolvedValue([
+      { factoryId: "iron", generatedMw: 0, consumedMw: 24, netMw: -24, fuelFlows: [] },
+      { factoryId: "copper", generatedMw: 15, consumedMw: 17.6, netMw: -2.6, fuelFlows: [] },
+    ]);
+    renderWithProviders(<PowerView />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Iron Works")).toBeInTheDocument();
+    });
+    // Grid deficit hint (unambiguous vs. the Net figure, which the
+    // same "26.6" also appears in elsewhere on the page).
+    await waitFor(() => {
+      expect(screen.getByText(/draws 26.6 mw more than it generates/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/No power/i)).toBeInTheDocument();
   });
 
   it("badges the generator count summed across rows, not the row count", async () => {

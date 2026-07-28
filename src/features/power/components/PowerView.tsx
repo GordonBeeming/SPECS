@@ -47,9 +47,20 @@ function fuelDemandUnitLabel(flows: PowerFuelFlow[]): string {
  * deficit, then everything else. Matches the severities the backend
  * validation sweep already assigns (`PowerDeficit` = warning per
  * factory, `GridDeficit` = error for the whole playthrough) so the
- * ordering agrees with what Validate would flag. */
-function powerUrgencyRank(genCount: number, balance: FactoryPowerBalance | undefined): number {
-  if (!balance) return 2;
+ * ordering agrees with what Validate would flag — including the sweep's
+ * own suppression rule: a factory with no local generators, or one
+ * whose own generators fall short of its own draw, is completely normal
+ * on a shared grid, since it's just drawing the difference from
+ * elsewhere on the grid. The sweep only surfaces either as a per-factory
+ * finding once the *grid* overall is short (`gridDeficit`); this must
+ * agree; otherwise every grid-supplied consumer reads as urgent even
+ * when the grid comfortably covers it. */
+function powerUrgencyRank(
+  genCount: number,
+  balance: FactoryPowerBalance | undefined,
+  gridDeficit: boolean,
+): number {
+  if (!balance || !gridDeficit) return 2;
   if (genCount === 0 && balance.consumedMw > DEFICIT_EPSILON) return 0;
   if (balance.netMw < -DEFICIT_EPSILON) return 1;
   return 2;
@@ -104,14 +115,15 @@ export function PowerView() {
   // is exactly what a player comes here to find, so nothing gets
   // filtered out of the list anymore. Sort by urgency instead so the
   // factories that need attention aren't buried below idle ones.
+  const gridDeficit = gridTotal.netMw < -DEFICIT_EPSILON;
   const factoryListSorted = useMemo(() => {
     const all = factories.data ?? [];
     return [...all].sort((a, b) => {
-      const rankA = powerUrgencyRank(genCountByFactory.get(a.id) ?? 0, balanceByFactory.get(a.id));
-      const rankB = powerUrgencyRank(genCountByFactory.get(b.id) ?? 0, balanceByFactory.get(b.id));
+      const rankA = powerUrgencyRank(genCountByFactory.get(a.id) ?? 0, balanceByFactory.get(a.id), gridDeficit);
+      const rankB = powerUrgencyRank(genCountByFactory.get(b.id) ?? 0, balanceByFactory.get(b.id), gridDeficit);
       return rankA - rankB;
     });
-  }, [factories.data, genCountByFactory, balanceByFactory]);
+  }, [factories.data, genCountByFactory, balanceByFactory, gridDeficit]);
 
   if (!playthrough.data) {
     return (
@@ -162,6 +174,7 @@ export function PowerView() {
                 active={activeId === f.id}
                 genCount={genCountByFactory.get(f.id) ?? 0}
                 balance={balanceByFactory.get(f.id)}
+                gridDeficit={gridDeficit}
                 onSelect={() => setSelectedFactoryId(f.id)}
               />
             ))}
@@ -247,11 +260,12 @@ interface PowerFactoryRowProps {
   active: boolean;
   genCount: number;
   balance: FactoryPowerBalance | undefined;
+  gridDeficit: boolean;
   onSelect: () => void;
 }
 
-function PowerFactoryRow({ factory, active, genCount, balance, onSelect }: PowerFactoryRowProps) {
-  const urgency = powerUrgencyRank(genCount, balance);
+function PowerFactoryRow({ factory, active, genCount, balance, gridDeficit, onSelect }: PowerFactoryRowProps) {
+  const urgency = powerUrgencyRank(genCount, balance, gridDeficit);
   const unpowered = urgency === 0;
   const deficit = urgency === 1;
   return (
