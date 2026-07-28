@@ -7,6 +7,7 @@ import { PowerView } from "./PowerView";
 import { playthroughApi } from "@/features/playthrough/api";
 import { factoryApi } from "@/features/factory/api";
 import { libraryApi } from "@/features/library/api";
+import { plannerApi } from "@/features/planner/api";
 import { powerApi } from "../api";
 
 function renderWithProviders(node: ReactNode) {
@@ -276,27 +277,13 @@ describe("<PowerView />", () => {
       { id: "Desc_LiquidFuel_C", name: "Fuel", category: "fluid", stackSize: 0, isFluid: true },
       { id: "Desc_RocketFuel_C", name: "Rocket Fuel", category: "fluid", stackSize: 0, isFluid: true },
     ]);
-    vi.spyOn(libraryApi, "recipes").mockResolvedValue([
-      {
-        id: "Recipe_LiquidFuel_C",
-        name: "Fuel",
-        buildingId: "Build_OilRefinery_C",
-        isAlt: false,
-        unlockTier: 4,
-        cycleSeconds: 6,
-        inputs: [],
-        outputs: [{ itemId: "Desc_LiquidFuel_C", perMinute: 40 }],
-      },
-      {
-        id: "Recipe_RocketFuel_C",
-        name: "Rocket Fuel",
-        buildingId: "Build_OilRefinery_C",
-        isAlt: false,
-        unlockTier: 8,
-        cycleSeconds: 6,
-        inputs: [],
-        outputs: [{ itemId: "Desc_RocketFuel_C", perMinute: 20 }],
-      },
+    // Whole-chain tiers, not each fuel's own recipe stamp — Rocket Fuel's
+    // standard recipe is stamped T8 here specifically because its real
+    // chain (not exercised by this fixture) is what should gate it, not
+    // the Fuel Generator's own T4 unlock.
+    vi.spyOn(plannerApi, "listItemTiers").mockResolvedValue([
+      { itemId: "Desc_LiquidFuel_C", tier: 4, standardTier: 4 },
+      { itemId: "Desc_RocketFuel_C", tier: 8, standardTier: 8 },
     ]);
     vi.spyOn(powerApi, "list").mockResolvedValue([]);
     vi.spyOn(powerApi, "listAll").mockResolvedValue([]);

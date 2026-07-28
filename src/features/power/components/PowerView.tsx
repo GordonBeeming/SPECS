@@ -17,8 +17,8 @@ import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { FilterSelect } from "@/shared/ui/FilterSelect";
 import { useFactoryList } from "@/features/factory/hooks/useFactories";
-import { useGenerators, useItems, useRecipes } from "@/features/library/hooks/useLibrary";
-import { deriveItemUnlockTiers } from "@/features/library/tiers";
+import { useGenerators, useItems } from "@/features/library/hooks/useLibrary";
+import { useItemTiers } from "@/features/planner/hooks/useItemTiers";
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import {
   useAddPowerGen,
@@ -324,7 +324,7 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
   const remove = useRemovePowerGen(factoryId);
   const generators = useGenerators();
   const items = useItems();
-  const recipes = useRecipes();
+  const itemTiers = useItemTiers();
   const playthrough = useCurrentPlaythrough();
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<PowerGen | null>(null);
@@ -361,12 +361,21 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
   // A generator can list fuels from across the whole game (e.g. the Fuel
   // Generator takes Fuel through Ionized Fuel), so its own unlockTier
   // isn't a stand-in for its fuels' tiers — each fuel item needs its own
-  // gate via `deriveItemUnlockTiers`, or a T8/T9 fuel leaks in at
-  // whatever tier the generator itself unlocks.
-  const itemTierById = useMemo(
-    () => deriveItemUnlockTiers(recipes.data ?? []),
-    [recipes.data],
-  );
+  // gate. `useItemTiers` walks the whole input chain, the same table the
+  // product picker uses — a fuel's own recipe stamp isn't enough:
+  // Ionized Fuel is stamped T5 but consumes Rocket Fuel, whose standard
+  // recipe doesn't ground out until T7, so gating on the stamp let a
+  // fuel through before its own inputs were reachable. An item absent
+  // from the table (no chain reaches it) falls back to 99 — effectively
+  // "never" — rather than 0, so an unreachable fuel is excluded instead
+  // of treated as always available.
+  const itemTierById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const t of itemTiers.data ?? []) {
+      if (t.tier !== null) map.set(t.itemId, t.tier);
+    }
+    return map;
+  }, [itemTiers.data]);
 
   return (
     <>
@@ -520,7 +529,7 @@ function PowerFactoryPanel({ factoryId }: { factoryId: string }) {
           .filter(
             (f) =>
               f.fuelItemId === editing.fuelItemId ||
-              (itemTierById.get(f.fuelItemId) ?? 0) <= tierCap,
+              (itemTierById.get(f.fuelItemId) ?? 99) <= tierCap,
           )
           .map((f) => ({
             id: f.fuelItemId,
@@ -622,7 +631,7 @@ function AddPowerGenForm({
       // spans Fuel through Ionized Fuel, so gating on its own unlockTier
       // would let T8/T9 fuels through as soon as the generator itself is
       // available.
-      .filter((f) => (itemTierById.get(f.fuelItemId) ?? 0) <= tierCap)
+      .filter((f) => (itemTierById.get(f.fuelItemId) ?? 99) <= tierCap)
       .map((f) => ({
         value: f.fuelItemId,
         label: itemsById.get(f.fuelItemId)?.name ?? f.fuelItemId,
