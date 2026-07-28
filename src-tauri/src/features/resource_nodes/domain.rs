@@ -305,6 +305,48 @@ pub fn supply_for_factory(
     out
 }
 
+/// For each fracking well (keyed by `core_id`, or a satellite's own id
+/// for the rare one the map data never grouped), the one factory whose
+/// claimed satellite owns that well's shared Pressuriser charge.
+///
+/// Deterministic and independent of `HashMap` iteration order —
+/// whichever active (`clock_pct > 0`), factory-bound satellite has the
+/// lexicographically smallest node id wins. Any single, stable rule
+/// works here; the only thing that matters is that every caller picks
+/// the same one, so the charge lands on exactly one factory instead of
+/// being split by iteration order or omitted entirely.
+fn fracking_core_owners(
+    claims: &HashMap<String, ClaimRow>,
+    game_data: &GameData,
+) -> HashMap<String, String> {
+    // core -> (best node id seen so far, its factory)
+    let mut best: HashMap<String, (String, String)> = HashMap::new();
+    for (node_id, claim) in claims {
+        let Some(claim_factory_id) = claim.factory_id.as_deref() else {
+            continue;
+        };
+        if claim.clock_pct <= 0.0 || !claim.clock_pct.is_finite() {
+            continue;
+        }
+        let Some(node) = game_data.node(node_id) else {
+            continue;
+        };
+        if node.kind != NodeKind::FrackingWell {
+            continue;
+        }
+        let core = node.core_id.clone().unwrap_or_else(|| node.id.clone());
+        best.entry(core)
+            .and_modify(|(best_node_id, best_factory)| {
+                if node_id < best_node_id {
+                    *best_node_id = node_id.clone();
+                    *best_factory = claim_factory_id.to_string();
+                }
+            })
+            .or_insert_with(|| (node_id.clone(), claim_factory_id.to_string()));
+    }
+    best.into_iter().map(|(core, (_, factory_id))| (core, factory_id)).collect()
+}
+
 /// Total MW drawn by one factory's bound extractor claims and bound
 /// water extractor groups — the extractor-side counterpart to
 /// `supply_for_factory`'s ipm.
@@ -324,10 +366,16 @@ pub fn power_for_factory(
     let mut total = 0.0_f32;
     // A well's satellites share one Pressuriser, so claiming N satellites
     // from the same well must charge its power once, not N times —
-    // `extractor_power_mw` already returns 0 for a `FrackingWell` node;
-    // this tracks which wells (by `core_id`, falling back to the node's
-    // own id for a satellite the map data never grouped) this factory
-    // has an active claim on, and adds the Pressuriser once per well.
+    // `extractor_power_mw` already returns 0 for a `FrackingWell` node.
+    // Satellites of the same well can be bound to *different* factories
+    // though, and this function only ever sees one `factory_id` at a
+    // time — deduping per call still let two factories each own one
+    // satellite and each charge the Pressuriser once, for two charges
+    // total once `list_power_balances` sums every factory's balance.
+    // `fracking_core_owners` picks one deterministic owning factory per
+    // well across the *whole* claims table (not just this factory's
+    // slice), so only that factory ever adds the charge.
+    let well_owners = fracking_core_owners(claims, game_data);
     let mut fracking_cores_seen: HashSet<String> = HashSet::new();
     for (node_id, claim) in claims {
         if claim.factory_id.as_deref() != Some(factory_id) {
@@ -342,7 +390,8 @@ pub fn power_for_factory(
             && claim.clock_pct.is_finite()
         {
             let core = node.core_id.clone().unwrap_or_else(|| node.id.clone());
-            if fracking_cores_seen.insert(core) {
+            let owns_this_well = well_owners.get(&core).map(String::as_str) == Some(factory_id);
+            if owns_this_well && fracking_cores_seen.insert(core) {
                 total += game_data
                     .building("Build_FrackingSmasher_C")
                     .map(|b| b.power_mw)
@@ -957,6 +1006,53 @@ mod tests {
         assert!(
             (mw - pressuriser_mw).abs() < 0.01,
             "3 satellites off one well should charge the Pressuriser once ({pressuriser_mw} MW), got {mw}"
+        );
+    }
+
+    #[test]
+    fn power_for_factory_never_double_charges_a_well_split_across_two_factories() {
+        // Codex P2: the round-1 fix deduped satellites *within* one
+        // `power_for_factory` call, but a well's satellites can be bound
+        // to different factories — each factory's own call then sees "I
+        // have one satellite of this well" and adds the Pressuriser once
+        // each, for two charges total once a caller like
+        // `list_power_balances` sums every factory's balance. One
+        // satellite bound to F1, another satellite of the *same well* to
+        // F2: only one of the two factories may ever charge the shared
+        // Pressuriser, and neither factory's charge (0 or the full
+        // wattage) may depend on `HashMap` iteration order.
+        let gd = GameData::from_bundled().unwrap();
+        let core_groups: std::collections::HashMap<String, Vec<&crate::shared::gamedata::types::MapNode>> = gd
+            .nodes()
+            .iter()
+            .filter(|n| n.kind == NodeKind::FrackingWell && n.core_id.is_some())
+            .fold(std::collections::HashMap::new(), |mut acc, n| {
+                acc.entry(n.core_id.clone().unwrap()).or_default().push(n);
+                acc
+            });
+        let satellites = core_groups
+            .into_values()
+            .find(|group| group.len() >= 2)
+            .expect("bundled map data has a well with at least 2 satellites");
+
+        let mut claims = HashMap::new();
+        claims.insert(
+            satellites[0].id.clone(),
+            claim(&satellites[0].id, "Build_FrackingSmasher_C", 100.0, Some("F1")),
+        );
+        claims.insert(
+            satellites[1].id.clone(),
+            claim(&satellites[1].id, "Build_FrackingSmasher_C", 100.0, Some("F2")),
+        );
+        let pressuriser_mw = gd.building("Build_FrackingSmasher_C").unwrap().power_mw;
+
+        let f1_mw = power_for_factory(&claims, &[], "F1", &gd);
+        let f2_mw = power_for_factory(&claims, &[], "F2", &gd);
+        let total = f1_mw + f2_mw;
+        assert!(
+            (total - pressuriser_mw).abs() < 0.01,
+            "one well split across two factories must charge the Pressuriser once in total \
+             ({pressuriser_mw} MW), got F1={f1_mw} + F2={f2_mw} = {total}"
         );
     }
 
