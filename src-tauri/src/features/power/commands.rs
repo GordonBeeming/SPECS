@@ -308,11 +308,20 @@ pub(crate) fn power_balance_with_supply(
     // nuclear waste builds a Nuclear Power Plant that contributes
     // neither its generation nor its fuel/byproduct flows to the grid,
     // and the only way to see them was to re-declare the same physical
-    // plant as a manual `power_gen` row — double-counting it. Fuel and
-    // byproduct flows aren't added here: they already flow through
-    // `consumed_mw` as the recipe's own ordinary inputs/outputs, so
-    // mirroring them into `fuel_totals`/`byproduct_totals` would
-    // double-count those instead.
+    // plant as a manual `power_gen` row — double-counting it.
+    //
+    // Fuel and byproduct flows are credited here too, the same as
+    // generation. This does not double-count `consumed_mw`: that's a
+    // single MW scalar from `compose_ledger_with_supply`, not a sum of
+    // these per-item totals, so the two never touch. The one thing this
+    // does duplicate is *display*, not counting — the factory's own
+    // ledger table already lists the fuel rod and waste as the recipe's
+    // ordinary inputs/outputs, and the Power view's fuel/byproduct cards
+    // now show the same fact from a different angle (what this factory
+    // draws from and emits into the grid). Showing the same real number
+    // on two screens for two different questions is fine; the failure
+    // mode this avoids is a plant reading 1,250 MW generated with an
+    // empty fuel-demand card, which is what a reader distrusts.
     for m in &machines {
         let Some(gen) = game_data.generator(&m.building_id) else {
             continue;
@@ -326,6 +335,14 @@ pub(crate) fn power_balance_with_supply(
         };
         if let Some(fuel) = gen.fuels.iter().find(|f| f.fuel_item_id == fuel_item_id) {
             generated_mw += generator_power_mw(gen, fuel, m.count, m.clock_pct);
+            let (main, supp) = generator_fuel_flows(fuel, m.count, m.clock_pct);
+            *fuel_totals.entry(main.0).or_insert(0.0) += main.1;
+            if let Some((id, rate)) = supp {
+                *fuel_totals.entry(id).or_insert(0.0) += rate;
+            }
+            if let Some((id, rate)) = generator_byproduct_flow(fuel, m.count, m.clock_pct) {
+                *byproduct_totals.entry(id).or_insert(0.0) += rate;
+            }
         }
     }
 
@@ -463,16 +480,19 @@ mod tests {
     }
 
     #[test]
-    fn power_balance_counts_generation_from_a_plan_saved_nuclear_plant() {
+    fn power_balance_counts_generation_and_flows_from_a_plan_saved_nuclear_plant() {
         // A plan that produces nuclear waste materializes the burn
         // recipe as an ordinary factory_machine (Build_GeneratorNuclear_C
         // / Recipe_NuclearWaste_C) so the planner can chain through it.
-        // Before this fix that machine's generation never reached the
-        // balance — only manual power_gen rows did — so the plant
-        // appeared to produce nothing on a grid it draws 0 MW from too
-        // (its power_mw is deliberately authored as 0; a generator's
-        // draw side is nothing). One plant at 50% clock generates
-        // 2,500 × 0.5 = 1,250 MW.
+        // Before this fix that machine's generation, fuel demand and
+        // byproduct output never reached the balance — only manual
+        // power_gen rows did — so the Power view showed a plant
+        // generating nothing, burning nothing and emitting nothing, on a
+        // building whose power_mw is deliberately authored as 0 (a
+        // generator's draw side is nothing; see convert-game-data.ts).
+        // One plant at 50% clock: 2,500 × 0.5 = 1,250 MW, 0.2 × 0.5 =
+        // 0.1 rods/min, 240 × 0.5 = 120 m³/min water, 10 × 0.5 = 5
+        // Uranium Waste/min.
         let db = open_test_db(9);
         let gd = GameData::from_bundled().unwrap();
         db.with(|c| factory_repo::factory_insert(c, "f1", "Nuclear", None, None, None, NOW))
@@ -491,18 +511,24 @@ mod tests {
             "expected 1,250 MW from one plant at 50%, got {}",
             balance.generated_mw
         );
-        // No manual power_gen row exists, so the generator-loop's own
-        // fuel/byproduct totals must stay empty — the rod and waste
-        // already flow through consumed_mw as the recipe's ordinary
-        // inputs/outputs, and mirroring them here would double-count.
-        assert!(
-            balance.fuel_flows.is_empty(),
-            "fuel flows should come from the recipe ledger, not be duplicated here"
-        );
-        assert!(
-            balance.byproduct_flows.is_empty(),
-            "byproduct flows should come from the recipe ledger, not be duplicated here"
-        );
+        let rod = balance
+            .fuel_flows
+            .iter()
+            .find(|f| f.item_id == "Desc_NuclearFuelRod_C")
+            .expect("fuel demand shows the rod, not just an empty card");
+        assert!((rod.per_minute - 0.1).abs() < 0.001, "got {}", rod.per_minute);
+        let water = balance
+            .fuel_flows
+            .iter()
+            .find(|f| f.item_id == "Desc_Water_C")
+            .expect("fuel demand shows the coolant too");
+        assert!((water.per_minute - 120.0).abs() < 0.01, "got {}", water.per_minute);
+        let waste = balance
+            .byproduct_flows
+            .iter()
+            .find(|f| f.item_id == "Desc_NuclearWaste_C")
+            .expect("byproducts show the waste, not just an empty card");
+        assert!((waste.per_minute - 5.0).abs() < 0.01, "got {}", waste.per_minute);
     }
 
     #[test]

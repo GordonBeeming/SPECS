@@ -155,13 +155,19 @@ export function LogisticsLinkEditor({ link, onClose, onSaved }: LogisticsLinkEdi
     setDistanceText(String(derivedDistanceM));
   }, [derivedDistanceM, distanceTouched]);
   // What the source factory could plausibly ship: it's made something
-  // (a machine output) or a bound resource-node claim/water group feeds
-  // it directly — either way there's real supply to draw the link from.
+  // (a machine output), a bound resource-node claim/water group feeds it
+  // directly, or it's already receiving the item over an incoming link —
+  // a relay factory that imports something and forwards it on has real
+  // supply to draw a new link from too, same as one that makes it.
   const producibleItemIds = useMemo(() => {
     const flows = sourceFactory.data?.ledger.flows ?? [];
     const ids = new Set<string>();
     for (const flow of flows) {
-      if (flow.producedPerMinute > 0 || (flow.fromNodesPerMinute ?? 0) > 0) {
+      if (
+        flow.producedPerMinute > 0 ||
+        (flow.fromNodesPerMinute ?? 0) > 0 ||
+        (flow.fromLinksPerMinute ?? 0) > 0
+      ) {
         ids.add(flow.itemId);
       }
     }

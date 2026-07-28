@@ -346,6 +346,42 @@ describe("<LogisticsLinkEditor /> — item picker narrowed to the source's outpu
     expect(screen.queryByRole("option", { name: /Copper Ingot/i })).not.toBeInTheDocument();
   });
 
+  it("also offers an item the source only has because it's forwarding an incoming link, not making it (relay factory)", async () => {
+    // A relay factory imports an item from one factory and ships it on
+    // to another — its own ledger shows that supply as
+    // `fromLinksPerMinute`, not `producedPerMinute`/`fromNodesPerMinute`.
+    // Narrowing the picker to the source's own outputs (#61) must not
+    // exclude supply the factory only has because it's forwarding it.
+    vi.spyOn(factoryApi, "detail").mockResolvedValue({
+      factory: copperWorks,
+      machines: [],
+      ledger: {
+        factoryId: copperWorks.id,
+        powerMw: 0,
+        flows: [
+          {
+            itemId: "Desc_IronIngot_C",
+            itemName: "Iron Ingot",
+            isFluid: false,
+            producedPerMinute: 0,
+            consumedPerMinute: 0,
+            netPerMinute: 60,
+            fromNodesPerMinute: 0,
+            fromLinksPerMinute: 60,
+          },
+        ],
+      },
+    });
+
+    const user = userEvent.setup();
+    renderWithProviders(<LogisticsLinkEditor onClose={() => {}} />);
+    await pickFactory(user, /from factory/i, /Copper Works/i);
+
+    await user.click(screen.getByRole("combobox", { name: /^item$/i }));
+    expect(await screen.findByRole("option", { name: /Iron Ingot/i })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Copper Ingot/i })).not.toBeInTheDocument();
+  });
+
   it("falls back to the full catalogue when the source factory has no outputs yet, instead of an empty picker", async () => {
     vi.spyOn(factoryApi, "detail").mockResolvedValue({
       factory: copperWorks,
