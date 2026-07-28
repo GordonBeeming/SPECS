@@ -7397,7 +7397,7 @@
       "name": "Alternate: OC Supercomputer",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 7,
+      "unlockTier": 8,
       "cycleSeconds": 20,
       "inputs": [
         {
@@ -8241,7 +8241,7 @@
       "name": "Alternate: Super-State Computer",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 7,
+      "unlockTier": 8,
       "cycleSeconds": 25,
       "inputs": [
         {

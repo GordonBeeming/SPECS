@@ -314,7 +314,10 @@ function resolveSchematicTier(schematicId: string, seen: Set<string>): number | 
   let best: number | undefined;
   for (const reqPath of schem.requirements ?? []) {
     const resolved = tierFromRequirementPath(reqPath) ?? resolveSchematicTier(classId(reqPath), seen);
-    if (resolved !== undefined && (best === undefined || resolved < best)) best = resolved;
+    // A schematic's requirements are AND'd — every one must be unlocked
+    // before the schematic is — so its own tier is the latest of them, not
+    // the earliest.
+    if (resolved !== undefined && (best === undefined || resolved > best)) best = resolved;
   }
   return best;
 }
