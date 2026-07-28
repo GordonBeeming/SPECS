@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 
 import { useFactoryList } from "@/features/factory/hooks/useFactories";
@@ -52,7 +52,14 @@ export function LogisticsLinkEditor({ link, onClose, onSaved }: LogisticsLinkEdi
   const [distanceText, setDistanceText] = useState<string>(link?.distanceM != null ? String(link.distanceM) : "");
   // A stored/typed distance is the user's word over the map's; only keep
   // auto-filling from the map while nobody has touched the field yet.
-  const [distanceTouched, setDistanceTouched] = useState<boolean>(link?.distanceM != null);
+  // A freshly-persisted link's distance is itself often just the map's
+  // own measurement at save time (this editor writes it that way by
+  // default) — starting `touched` true for every stored value blocked
+  // that link from ever re-deriving again, even after a factory moved.
+  // The real signal (whether the player typed it) isn't persisted, so
+  // this starts `false` and a one-time effect below decides once the
+  // map's current measurement is known — see `distanceTouchedInitRef`.
+  const [distanceTouched, setDistanceTouched] = useState<boolean>(false);
   const [notes, setNotes] = useState<string>(link?.notes ?? "");
   const [selectedJson, setSelectedJson] = useState<string | null>(link?.transportPlanJson ?? null);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -114,6 +121,27 @@ export function LogisticsLinkEditor({ link, onClose, onSaved }: LogisticsLinkEdi
     const meters = factoryDistanceMeters(from, to);
     return meters != null ? Math.round(meters) : null;
   }, [factories.data, fromFactoryId, toFactoryId]);
+
+  // One-time decision for an existing link's starting `distanceTouched`,
+  // made once the map's current measurement is available (it isn't yet
+  // on first render — `factories.data` loads async). A stored distance
+  // that still matches what the map would derive today is exactly the
+  // "we persisted a derived value" case and should keep tracking future
+  // moves like a brand-new link; a stored value that disagrees really
+  // was overridden (typed, or the map moved since it was saved) and
+  // must stay locked. Runs once — after that, only the field's own
+  // `onChange` below may set `distanceTouched`.
+  const distanceTouchedInitRef = useRef(false);
+  useEffect(() => {
+    if (distanceTouchedInitRef.current) return;
+    if (!link || link.distanceM == null) {
+      distanceTouchedInitRef.current = true;
+      return;
+    }
+    if (derivedDistanceM == null) return; // wait for factory positions to load
+    setDistanceTouched(link.distanceM !== derivedDistanceM);
+    distanceTouchedInitRef.current = true;
+  }, [link, derivedDistanceM]);
 
   // Keep the field in sync with the map's measurement until the player
   // overrides it — matching or picking new endpoints should re-derive,

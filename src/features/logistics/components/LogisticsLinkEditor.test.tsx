@@ -165,6 +165,38 @@ describe("<LogisticsLinkEditor /> — map-derived distance", () => {
     // The map would measure 500m for this pair — the stored 42m (the
     // player's own number) must win.
     await waitFor(() => expect(screen.getByLabelText(/distance/i)).toHaveValue(42));
+    // And it must read as locked, not as still-tracking the map — the
+    // "from the map" hint is exactly what the round-3 regression below
+    // checks is present in the opposite case.
+    expect(screen.queryByText(/from the map/i)).not.toBeInTheDocument();
+  });
+
+  it("still treats a stored distance as map-derived when it matches today's measurement, so a later map move keeps updating it", async () => {
+    // Codex P2: `distanceTouched` used to start `true` for any stored
+    // distance, purely because the value was non-null — even when that
+    // stored number is itself just what the map derived at save time
+    // (the default write path). That locked the field forever, so
+    // moving either factory afterward never refreshed a link's distance
+    // again. A stored 500m for this exact pair is indistinguishable
+    // from "we persisted the map's own measurement" — it must keep
+    // behaving like a brand-new link (the same "from the map" hint),
+    // not like a typed override.
+    const link: LogisticsLink = {
+      id: "link-2",
+      fromFactoryId: copperWorks.id,
+      toFactoryId: ironWorks.id,
+      itemId: "Desc_CopperIngot_C",
+      itemsPerMinute: 60,
+      transportKind: "truck",
+      transportPlanJson: "{}",
+      distanceM: 500, // exactly what the map derives for this pair today
+      createdAt: "2026-05-10T00:00:00Z",
+      updatedAt: "2026-05-10T00:00:00Z",
+    };
+    renderWithProviders(<LogisticsLinkEditor link={link} onClose={() => {}} />);
+
+    await waitFor(() => expect(screen.getByLabelText(/distance/i)).toHaveValue(500));
+    expect(await screen.findByText(/from the map/i)).toBeInTheDocument();
   });
 });
 
