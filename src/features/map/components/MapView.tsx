@@ -150,8 +150,9 @@ function scopedKey(base: string, playthroughId: string | null): string {
   return playthroughId ? `${base}:${playthroughId}` : base;
 }
 
-// Where the map starts when there's no saved view (and where the
-// Reset button returns to).
+// Where the Reset button returns to, and the initial value used for a
+// frame or two before the fit-to-container effect further down
+// measures the real container and replaces it.
 const DEFAULT_SCALE = 0.6;
 
 /** Last pan/zoom state, restored on mount so leaving the tab and
@@ -269,6 +270,38 @@ export function MapView() {
   // every marker on every sub-pixel tick; the resulting steps are
   // imperceptible.
   const [zoomScale, setZoomScale] = useState(initialTransform?.scale ?? DEFAULT_SCALE);
+
+  // A fresh map (no saved pan/zoom for this playthrough) opened at the
+  // fixed DEFAULT_SCALE regardless of window size — on a typical
+  // widescreen window the 2048px map rendered at 0.6x (~1229px) didn't
+  // reach the canvas's right edge, leaving several hundred px of bare
+  // canvas visible. Covering the container (rather than fitting inside
+  // it, the way `PlanGraphCanvas`'s `fitView` does) is the right model
+  // here — unlike a plan graph, the map is meant to be panned, so it's
+  // fine for the map to run past the container in one axis as long as
+  // neither axis leaves canvas showing. A ResizeObserver rather than a
+  // plain effect: the container can still be 0×0 on this component's
+  // first render (e.g. the playthrough query hasn't resolved yet, which
+  // renders the empty-state Card below instead of this one), the same
+  // measurement problem `useNodesInitialized` exists for over there.
+  useEffect(() => {
+    if (initialTransform) return; // a saved view always wins
+    const el = containerRef.current;
+    if (!el) return;
+    let applied = false;
+    const observer = new ResizeObserver(([entry]) => {
+      if (applied) return;
+      const { width, height } = entry.contentRect;
+      if (width <= 0 || height <= 0) return;
+      applied = true;
+      const cover = Math.max(width / MAP_W, height / MAP_H);
+      const scale = Math.min(Math.max(cover, 0.4), 6); // matches TransformWrapper's own min/maxScale
+      wrapRef.current?.setTransform(0, 0, scale, 0);
+      observer.disconnect();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [initialTransform]);
 
   // Filter state survives reloads via localStorage, scoped per
   // playthrough (see the STORAGE comment above) — this is what's on
@@ -1042,6 +1075,35 @@ export function MapView() {
                           // size marker no longer covers its
                           // neighbour.
                           transform: `translate(-50%, -50%) scale(${DEFAULT_SCALE / zoomScale})`,
+                          // A factory pin's rendered footprint (icon +
+                          // name label) is routinely several times a
+                          // node's 24×24 box, and factories are meant
+                          // to sit right on the cluster they claim
+                          // from — so without an explicit stacking
+                          // order, a pin fully swallows every click on
+                          // the nodes underneath it. Nodes need to win
+                          // that contest: claiming/inspecting a node is
+                          // the finer-grained, more frequent action,
+                          // and the factory pin stays reachable from
+                          // whatever part of its box isn't covered by a
+                          // node. Factory/water pins are left at the
+                          // default stacking level, so this only
+                          // changes node-vs-pin priority, not their
+                          // order relative to each other.
+                          //
+                          // This has to live here, on the wrapper — the
+                          // `transform` above already starts a new
+                          // stacking context for this marker, so a
+                          // z-index on the *button* inside it only ever
+                          // competes against its own (nonexistent)
+                          // siblings and never reaches the pin's
+                          // separate stacking context to outrank it.
+                          // `elementFromPoint` at a covered node's
+                          // center kept resolving to the pin with the
+                          // z-index down on the button; moving it here,
+                          // onto the element actually siblinged against
+                          // the pin's own wrapper, is what makes it win.
+                          zIndex: 2,
                         }}
                       >
                         <button
@@ -1066,22 +1128,6 @@ export function MapView() {
                               ? "2px solid var(--color-primary)"
                               : undefined,
                             outlineOffset: 3,
-                            // A factory pin's rendered footprint (icon +
-                            // name label) is routinely several times a
-                            // node's 24×24 box, and factories are meant
-                            // to sit right on the cluster they claim
-                            // from — so without an explicit stacking
-                            // order, a pin fully swallows every click on
-                            // the nodes underneath it. Nodes need to win
-                            // that contest: claiming/inspecting a node is
-                            // the finer-grained, more frequent action,
-                            // and the factory pin stays reachable from
-                            // whatever part of its box isn't covered by a
-                            // node. Factory/water pins are left at the
-                            // default stacking level, so this only
-                            // changes node-vs-pin priority, not their
-                            // order relative to each other.
-                            zIndex: 2,
                           }}
                           onMouseDown={(e) => {
                             e.preventDefault();

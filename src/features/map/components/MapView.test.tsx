@@ -256,14 +256,26 @@ describe("<MapView /> — reaching a claimed node from the map", () => {
     // covered the node's entire 24×24 hit box — the node couldn't be
     // clicked at all. jsdom doesn't lay out real pixels to assert the
     // occlusion directly, so this pins the fix's actual mechanism: the
-    // marker carries an explicit positive z-index and the pin doesn't,
-    // so the marker always wins the stacking contest wherever they
-    // overlap.
+    // marker's wrapper carries an explicit positive z-index and the
+    // pin's doesn't, so the marker always wins the stacking contest
+    // wherever they overlap.
+    //
+    // The z-index has to live on the *wrapper* div, not the marker
+    // button rendered inside it — the wrapper's own `transform` (the
+    // counter-scale that holds the marker's on-screen size steady at
+    // every zoom level) already starts a new stacking context, so a
+    // z-index on the button only ever competes against siblings inside
+    // that same context and never reaches the pin's separate wrapper to
+    // outrank it. A live app confirmed this the hard way:
+    // `document.elementFromPoint` at a covered node's center kept
+    // resolving to the pin until the z-index moved here.
     renderWithProviders(<MapView />);
     const marker = await screen.findByRole("button", { name: /feeds Iron Works/i });
     const pin = await screen.findByTitle(/click for details, double-click to open the plan/i);
-    const markerZ = Number(marker.style.zIndex);
-    const pinZ = Number(pin.style.zIndex) || 0;
+    const markerWrapper = marker.closest(".specs-map-marker") as HTMLElement;
+    const pinWrapper = pin.parentElement as HTMLElement;
+    const markerZ = Number(markerWrapper.style.zIndex);
+    const pinZ = Number(pinWrapper.style.zIndex) || 0;
     expect(markerZ).toBeGreaterThan(0);
     expect(markerZ).toBeGreaterThan(pinZ);
   });
