@@ -5,6 +5,7 @@ import { Icon } from "@/shared/ui/Icon";
 import { FilterSelect, type FilterOption } from "@/shared/ui/FilterSelect";
 import type { PlanNode } from "@/features/planner/types";
 import { RateInput } from "./RateInput";
+import { rate } from "./rates";
 
 export const PLAN_NODE_WIDTH = 250;
 
@@ -21,10 +22,6 @@ export function planNodeHeight(node: PlanNode): number {
     case "byproduct":
       return 64;
   }
-}
-
-function rate(n: number): string {
-  return `${n % 1 === 0 ? n.toFixed(0) : n.toFixed(1)}/min`;
 }
 
 /**
