@@ -28,6 +28,10 @@ export interface RateInputProps {
 function parseRate(draft: string, allowZero: boolean): number | null {
   const trimmed = draft.trim();
   if (trimmed === "") return null;
+  // `Number("2.")` is `2` — a trailing decimal point still parses, but the
+  // user is mid-keystroke toward something like "2.5". Treat it as
+  // incomplete rather than committing the truncated value.
+  if (trimmed.endsWith(".")) return null;
   const parsed = Number(trimmed);
   if (!Number.isFinite(parsed)) return null;
   if (allowZero ? parsed < 0 : parsed <= 0) return null;
