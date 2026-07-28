@@ -744,15 +744,19 @@ fn export_offers_impl(
             drawn_ipm,
             remaining_ipm: spare_ipm(export, drawn_ipm),
             spare_ipm: spare_ipm(t.ipm, drawn_ipm),
+            has_target: true,
         });
     }
 
     // Intermediates. Every factory produces several items on the way to
     // what it was told to build, and from Tier 4 on those — ingots,
     // sheets, rods, wire — are exactly what a new factory wants. There's
-    // no export slice to widen here and none is needed: the surplus is
-    // already coming off the machines, so `export_ipm` is the surplus
-    // itself and the panel has nothing to ask the user to raise.
+    // no export slice to widen here and none to declare: whatever the
+    // machines leave over is available as it stands, so `export_ipm` is
+    // that figure directly. Where it's zero the row still belongs, for
+    // the same reason a target with nothing left keeps its row: "makes
+    // it, none spare" and "nobody makes it" are different answers and
+    // the panel has to be able to tell them apart.
     // Sorted before they're appended: the source is a HashMap, and a
     // panel whose rows reshuffle between two identical loads is its own
     // bug. Targets keep their declared order ahead of them.
@@ -760,7 +764,10 @@ fn export_offers_impl(
         intermediate_surplus(db, game_data)?.into_iter().collect();
     intermediates.sort_by(|a, b| a.0.cmp(&b.0));
     for ((fid, item_id), surplus) in intermediates {
-        if planned.contains(&(fid.clone(), item_id.clone())) || surplus <= 0.0 {
+        // A target of the same factory is the raise path's business and
+        // already has its row above. A surplus of zero is not a reason
+        // to drop the row — see `intermediate_surplus`.
+        if planned.contains(&(fid.clone(), item_id.clone())) {
             continue;
         }
         let drawn_ipm = *drawn.get(&(fid.clone(), item_id.clone())).unwrap_or(&0.0);
@@ -775,6 +782,9 @@ fn export_offers_impl(
             drawn_ipm,
             remaining_ipm: spare_ipm(surplus, drawn_ipm),
             spare_ipm: spare_ipm(surplus, drawn_ipm),
+            // No target here by construction — `planned` skipped every
+            // item that has one, so a raise on this would only 400.
+            has_target: false,
         });
     }
 
@@ -2294,11 +2304,15 @@ mod tests {
     }
 
     #[test]
-    fn an_intermediate_its_own_factory_eats_is_not_offered_as_spare() {
-        // The honest half. A plan that consumes every rod it makes has
-        // nothing going free, and saying otherwise would offer capacity
-        // that only exists if somebody raises that factory's target —
-        // which is `raise_export_target`'s deliberate refusal, not this.
+    fn an_intermediate_its_own_factory_eats_is_listed_with_nothing_spare() {
+        // The honest half, and the distinction that matters: "makes it,
+        // none spare" and "nobody makes it" are different answers, and
+        // hiding the first makes it indistinguishable from the second.
+        // The screw line consumes every rod it makes, so the row's spare
+        // is zero — taking any of it needs that factory to grow, which
+        // is a target change and `raise_export_target`'s refusal, not
+        // this. Same shape as a target with `remaining_ipm == 0`, which
+        // has always kept its row.
         let db = Arc::new(open_test_db());
         let gd = GameData::from_bundled().unwrap();
         insert_test_factory(&db, "fac-screws", "Screw works");
@@ -2319,13 +2333,133 @@ mod tests {
         .unwrap();
 
         let offers = export_offers_impl(&db, &gd).unwrap();
-        let rod = offers
+        let screw_works = offers
             .iter()
             .find(|o| o.factory_id == "fac-screws")
-            .and_then(|o| o.products.iter().find(|p| p.item_id == "Desc_IronRod_C"));
+            .expect("the factory has products to offer");
+        // Ingots, not rods: the rod line's clock lands a ten-thousandth
+        // of an ipm above its own draw, so it has a hair of "spare" by
+        // accident and would pass this test either way. The ingot line
+        // balances exactly, which is the case that was being hidden.
+        let ingot = screw_works
+            .products
+            .iter()
+            .find(|p| p.item_id == "Desc_IronIngot_C")
+            .expect("it makes ingots, so it is listed as an ingot producer");
         assert!(
-            rod.map(|p| p.spare_ipm < super::super::domain::REPORTABLE_IPM).unwrap_or(true),
-            "rods the screw line eats are not spare: {rod:?}"
+            ingot.spare_ipm < super::super::domain::REPORTABLE_IPM,
+            "and honestly: {} spare",
+            ingot.spare_ipm
+        );
+
+        // The other side of the same coin — an item nothing in this
+        // factory produces must still be absent, or "listed" stops
+        // carrying any information at all. Nothing here makes Copper
+        // Ingot, and its ore isn't a product either.
+        assert!(
+            screw_works.products.iter().all(|p| p.item_id != "Desc_CopperIngot_C"),
+            "a factory that doesn't make it is not a source: {:?}",
+            screw_works.products.iter().map(|p| &p.item_id).collect::<Vec<_>>()
+        );
+        assert!(
+            screw_works.products.iter().all(|p| p.item_id != "Desc_OreIron_C"),
+            "an item it only consumes is not a source either"
+        );
+    }
+
+    #[test]
+    fn an_offer_says_whether_a_raise_is_even_possible_on_it() {
+        // `raise_export_target` refuses without a plan target, so a UI
+        // that offers a raise on an intermediate offers a button whose
+        // only outcome is an error. The rates can't be used to tell them
+        // apart: a *partial*-surplus intermediate — some spare, less
+        // than the asker needs — has exactly the shape of a small
+        // target, which is the case a rate-based guess gets wrong.
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+
+        // A target: 100/min of wire, none of it consumed here.
+        insert_test_factory(&db, "fac-wire", "Wire farm");
+        plan_save_impl(
+            &db,
+            &gd,
+            save_input(
+                "fac-wire",
+                vec![PlanTargetSpec {
+                    item_id: "Desc_Wire_C".into(),
+                    ipm: 100.0,
+                    export_ipm: Some(100.0),
+                }],
+                vec![],
+            ),
+            NOW,
+        )
+        .unwrap();
+
+        // An intermediate with real spare: a manual Constructor makes
+        // 15 rods/min beside a screw plan that builds its own rod line,
+        // so those 15 are genuinely free — and no target names them.
+        // The asker below wants 20, so the panel is in exactly the state
+        // that offers a raise: a source that helps but doesn't cover it.
+        insert_test_factory(&db, "fac-mixed", "Rod and screw works");
+        insert_manual_rod_bank(&db, "fac-mixed");
+        plan_save_impl(
+            &db,
+            &gd,
+            save_input(
+                "fac-mixed",
+                vec![PlanTargetSpec {
+                    item_id: "Desc_IronScrew_C".into(),
+                    ipm: 40.0,
+                    export_ipm: None,
+                }],
+                vec![],
+            ),
+            NOW,
+        )
+        .unwrap();
+
+        let offers = export_offers_impl(&db, &gd).unwrap();
+        let product = |fid: &str, item: &str| {
+            offers
+                .iter()
+                .find(|o| o.factory_id == fid)
+                .and_then(|o| o.products.iter().find(|p| p.item_id == item))
+                .unwrap_or_else(|| panic!("{fid} must offer {item}"))
+        };
+
+        let wire = product("fac-wire", "Desc_Wire_C");
+        assert!(wire.has_target, "a plan target can be raised");
+
+        let rod = product("fac-mixed", "Desc_IronRod_C");
+        assert!(!rod.has_target, "an intermediate cannot — a raise on it would 400");
+        // The half that makes the flag necessary. Both rates are well
+        // clear of zero, so this row is shaped exactly like the wire
+        // target above: any signature read off the numbers alone calls
+        // it a target and offers the button.
+        assert!(rod.spare_ipm > 1.0, "real spare, not zero: {} spare", rod.spare_ipm);
+        assert!(rod.produced_ipm > 1.0, "and a non-zero produced rate: {}", rod.produced_ipm);
+        assert!(
+            rod.spare_ipm < 20.0,
+            "and short of the 20/min asked for below, which is what makes the panel \
+             reach for a raise: {} spare",
+            rod.spare_ipm
+        );
+
+        // And the refusal it protects is still there, unchanged.
+        let err = raise_export_target_impl(
+            &db,
+            &gd,
+            "fac-mixed",
+            "Desc_IronRod_C",
+            20.0,
+            Some("fac-asker"),
+            NOW,
+        )
+        .unwrap_err();
+        assert!(
+            format!("{err:?}").contains("open it and add the product first"),
+            "the guard stays: {err:?}"
         );
     }
 
@@ -2410,6 +2544,7 @@ mod tests {
             drawn_ipm: 0.0,
             remaining_ipm: spare,
             spare_ipm: spare,
+            has_target: false,
         };
         let offers = vec![
             super::super::dto::ExportOffer {
@@ -2485,6 +2620,7 @@ mod tests {
                 drawn_ipm: 0.0,
                 remaining_ipm: 15.0,
                 spare_ipm: 15.0,
+                has_target: false,
             }],
         }];
         attach_existing_producers(&mut graph, "fac-self", &offers);

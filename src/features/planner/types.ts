@@ -266,6 +266,17 @@ export interface ExportOfferProduct {
   /** produced − drawn, floored at 0: what opening the export slice
    * alone would free up, with no extra machines. Always ≥ remaining. */
   spareIpm: number;
+  /** True when the exporter has a plan target for this item; false when
+   * it only makes it as an intermediate.
+   *
+   * This is the "can raising this exporter's target ever succeed?"
+   * flag — `raise_export_target` refuses without one, deliberately,
+   * since giving another factory a new product target changes what
+   * that factory is. The rates can't answer this on their own: a zero
+   * `producedIpm` happens to imply an intermediate today, but a
+   * partial-surplus intermediate is indistinguishable from a small
+   * target by its numbers alone. */
+  hasTarget: boolean;
 }
 
 export interface ExportOffer {

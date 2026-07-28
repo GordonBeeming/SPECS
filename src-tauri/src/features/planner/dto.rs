@@ -461,6 +461,22 @@ pub struct ExportOfferProduct {
     /// alone would free up, with no extra machines and no cost to the
     /// exporter's own plan. Always ≥ `remaining_ipm`.
     pub spare_ipm: f32,
+    /// True when the exporter has a plan target for this item; false
+    /// when it only makes it as an intermediate.
+    ///
+    /// This is the "can `raise_export_target` be called at all?" flag.
+    /// That command refuses without a target — deliberately, because
+    /// giving another factory a new product target changes what that
+    /// factory is — so a UI that offers a raise on an intermediate is
+    /// offering a button whose only outcome is an error.
+    ///
+    /// The rates can't answer this. A zero `produced_ipm` happens to
+    /// imply an intermediate today (a target's rate is never zero), but
+    /// an intermediate with *partial* surplus is indistinguishable from
+    /// a small target by its numbers alone, and that's precisely the
+    /// case a rate-based guess gets wrong.
+    #[serde(default)]
+    pub has_target: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
