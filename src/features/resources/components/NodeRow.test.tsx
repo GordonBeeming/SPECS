@@ -175,6 +175,29 @@ describe("<NodeRow />", () => {
     );
   });
 
+  it("the clock editor's rate preview tracks the unsaved input, not the saved claim (#49)", () => {
+    // claimedMk2 is a Pure node on Miner Mk.2 (base 120) saved at
+    // 100% — 240 ipm, matching its `itemsPerMinute` fixture. Dragging
+    // to 50% without saving used to leave the row reading the stale
+    // "240 ipm" the whole time; the preview here has to move with the
+    // still-unsaved 50%, and the saved chip must NOT move with it.
+    renderWithProviders(<NodeRow row={claimedMk2} factories={[]} index={0} preferredMinerId={null} />);
+    fireEvent.click(screen.getByLabelText("Edit"));
+    expect(screen.getByText("240 ipm at this clock")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Claim clock percent"), { target: { value: "50" } });
+
+    // 120 base × 2.0 (Pure) × 0.5 (50% clock) = 120 — the preview
+    // follows the drag.
+    expect(screen.getByText("120 ipm at this clock")).toBeInTheDocument();
+    expect(screen.queryByText("240 ipm at this clock")).toBeNull();
+    // The saved chip is a separate number and must not have moved —
+    // this is the exact split the issue is about: a live preview that
+    // silently became the "saved" readout would be just as confusing
+    // as no preview at all.
+    expect(screen.getByText("240 ipm")).toBeInTheDocument();
+  });
+
   it("editing surfaces the bound-factory combobox with the playthrough's factories", async () => {
     const user = userEvent.setup();
     renderWithProviders(

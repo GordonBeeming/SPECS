@@ -61,6 +61,44 @@ function purityInitial(purity: Purity): string {
 }
 
 /**
+ * Satisfactory's purity multiplier — mirrors `NodePurity::multiplier()`
+ * on the Rust side (`shared/gamedata/types.rs`). Every *saved* extractor
+ * rate is meant to come from Rust over IPC (`extractor_output_ipm`), not
+ * be recomputed here — this exists only for `previewExtractorIpm` below,
+ * where there's no saved rate yet to read.
+ */
+function purityMultiplier(purity: Purity): number {
+  switch (purity) {
+    case "Impure":
+      return 0.5;
+    case "Normal":
+      return 1;
+    case "Pure":
+      return 2;
+  }
+}
+
+/**
+ * Live preview of an extractor's output while the clock editor is open
+ * and still unsaved — `base × purity × clock`, the same formula
+ * `extractor_output_ipm` uses server-side to produce the row's own ipm
+ * chip once a claim is saved. A claim mid-edit has no saved rate to
+ * read yet, which is the one case where re-deriving this on the
+ * TypeScript side is the right call rather than a drift risk: the
+ * alternative is a round trip to the backend per keystroke/drag tick,
+ * or no feedback at all until Save.
+ *
+ * Deliberately the *theoretical* rate, not belt-capped — the row
+ * already has a separate "over port cap" flag for that, and a preview
+ * that silently caps itself would hide the exact thing dragging the
+ * clock is trying to avoid.
+ */
+export function previewExtractorIpm(baseIpm: number, purity: Purity, clockPct: number): number {
+  if (!Number.isFinite(clockPct) || clockPct <= 0) return 0;
+  return baseIpm * purityMultiplier(purity) * (clockPct / 100);
+}
+
+/**
  * The one thing a bare resource name/purity can't tell apart: a Crude
  * Oil well satellite (`fracking_well`, a single Resource Well Extractor
  * option) versus an oil seep (`miner_node`, the Oil Extractor) — both

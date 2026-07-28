@@ -10,7 +10,7 @@ import { factoryPickerOptions, type FactoryPickerCandidate } from "@/features/ma
 import { floorClockPct } from "@/features/validation/clock";
 import type { Finding } from "@/features/validation/types";
 
-import { claimDefaultExtractor, nodeDisplayLabel, nodeKindLabel } from "../display";
+import { claimDefaultExtractor, nodeDisplayLabel, nodeKindLabel, previewExtractorIpm } from "../display";
 import { useClearNodeClaim, useSetNodeClaim } from "../hooks/useResources";
 import type { ResourceNodeRow } from "../types";
 
@@ -238,6 +238,14 @@ function ClaimEditor({
   // `set_node_claim` validates against. Geysers come back empty (they
   // feed the power slice).
   const minerOptions = row.allowedExtractors;
+  // Live rate for whatever's currently dragged/picked, not yet saved —
+  // without this the row above kept showing the *last saved* clock's
+  // ipm the whole time the slider moved, so landing on an exact target
+  // rate was guess → save → check → reopen.
+  const selectedExtractor = minerOptions.find((m) => m.id === minerId);
+  const previewIpm = selectedExtractor
+    ? previewExtractorIpm(selectedExtractor.baseIpm, row.purity, clockPct)
+    : 0;
 
   return (
     <div className="grid grid-cols-1 gap-2 rounded-md border border-border bg-bg/50 p-3 md:grid-cols-4">
@@ -262,6 +270,11 @@ function ClaimEditor({
       <label className="flex flex-col gap-1 text-xs">
         <span className="text-fg-muted">Clock</span>
         <ClockInput value={clockPct} onChange={setClockPct} ariaLabel="Claim clock percent" />
+        {row.kind !== "geyser" && (
+          <span className="text-[11px] font-medium text-fg">
+            {Math.round(previewIpm)} ipm at this clock
+          </span>
+        )}
       </label>
       <label className="flex flex-col gap-1 text-xs">
         <span className="text-fg-muted">Factory</span>
