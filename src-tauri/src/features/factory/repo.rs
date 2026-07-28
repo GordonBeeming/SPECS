@@ -112,7 +112,10 @@ pub fn factory_list(conn: &Connection) -> Result<Vec<Factory>> {
     let mut stmt = conn.prepare(
         "SELECT f.id, f.name, f.world_x, f.world_y, f.color, f.notes, f.icon_id,
                 f.created_at, f.updated_at,
-                (SELECT COUNT(*) FROM factory_machine m WHERE m.factory_id = f.id) AS machine_count
+                -- SUM(count), not COUNT(*): each factory_machine row is a recipe
+                -- node that can represent several physical machines via its
+                -- own `count` column.
+                (SELECT COALESCE(SUM(m.count), 0) FROM factory_machine m WHERE m.factory_id = f.id) AS machine_count
          FROM factory f
          ORDER BY LOWER(f.name)",
     )?;
@@ -141,7 +144,7 @@ pub fn factory_get(conn: &Connection, id: &str) -> Result<Option<Factory>> {
     let mut stmt = conn.prepare(
         "SELECT f.id, f.name, f.world_x, f.world_y, f.color, f.notes, f.icon_id,
                 f.created_at, f.updated_at,
-                (SELECT COUNT(*) FROM factory_machine m WHERE m.factory_id = f.id) AS machine_count
+                (SELECT COALESCE(SUM(m.count), 0) FROM factory_machine m WHERE m.factory_id = f.id) AS machine_count
          FROM factory f WHERE f.id = ?",
     )?;
     let mut rows = stmt.query_map([id], |r| {
@@ -267,6 +270,24 @@ pub fn machine_delete(conn: &Connection, id: &str) -> Result<()> {
     Ok(())
 }
 
+fn map_machine_row(r: &rusqlite::Row) -> rusqlite::Result<FactoryMachine> {
+    let clock_x100: i64 = r.get(5)?;
+    let use_som: i64 = r.get(6)?;
+    Ok(FactoryMachine {
+        id: r.get(0)?,
+        factory_id: r.get(1)?,
+        building_id: r.get(2)?,
+        recipe_id: r.get(3)?,
+        count: r.get(4)?,
+        clock_pct: clock_pct_from_x100(clock_x100),
+        use_somersloop: use_som != 0,
+        somersloop_slots_filled: r.get(7)?,
+        power_shard_count: r.get(8)?,
+        created_at: r.get(9)?,
+        updated_at: r.get(10)?,
+    })
+}
+
 pub fn machines_for_factory(conn: &Connection, factory_id: &str) -> Result<Vec<FactoryMachine>> {
     let mut stmt = conn.prepare(
         "SELECT id, factory_id, building_id, recipe_id, count, clock_pct_x100,
@@ -276,23 +297,30 @@ pub fn machines_for_factory(conn: &Connection, factory_id: &str) -> Result<Vec<F
          WHERE factory_id = ?
          ORDER BY created_at ASC",
     )?;
-    let rows = stmt.query_map([factory_id], |r| {
-        let clock_x100: i64 = r.get(5)?;
-        let use_som: i64 = r.get(6)?;
-        Ok(FactoryMachine {
-            id: r.get(0)?,
-            factory_id: r.get(1)?,
-            building_id: r.get(2)?,
-            recipe_id: r.get(3)?,
-            count: r.get(4)?,
-            clock_pct: clock_pct_from_x100(clock_x100),
-            use_somersloop: use_som != 0,
-            somersloop_slots_filled: r.get(7)?,
-            power_shard_count: r.get(8)?,
-            created_at: r.get(9)?,
-            updated_at: r.get(10)?,
-        })
-    })?;
+    let rows = stmt.query_map([factory_id], map_machine_row)?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
+/// The subset of `machines_for_factory` a plan save never touches
+/// (`plan_node_key IS NULL`) — real machines a player added by hand
+/// that a saved plan's own graph knows nothing about. Validation needs
+/// this split: a plan graph's `raw_demand` only covers the machines it
+/// generated, so a manual foundry sitting alongside a computed plan is
+/// otherwise invisible to the generator-fuel check.
+pub fn manual_machines_for_factory(conn: &Connection, factory_id: &str) -> Result<Vec<FactoryMachine>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, factory_id, building_id, recipe_id, count, clock_pct_x100,
+                use_somersloop, somersloop_slots_filled, power_shard_count,
+                created_at, updated_at
+         FROM factory_machine
+         WHERE factory_id = ? AND plan_node_key IS NULL
+         ORDER BY created_at ASC",
+    )?;
+    let rows = stmt.query_map([factory_id], map_machine_row)?;
     let mut out = Vec::new();
     for row in rows {
         out.push(row?);
@@ -323,7 +351,28 @@ mod tests {
             assert_eq!(factories[0].name, "Copper Plant");
             assert_eq!(factories[0].machine_count, 0);
             assert_eq!(factories[1].name, "Iron Plant");
-            assert_eq!(factories[1].machine_count, 1);
+            // One recipe-node row with count=4 is four physical machines, not one.
+            assert_eq!(factories[1].machine_count, 4);
+        });
+    }
+
+    /// Pins machine_count as SUM(count) across multiple recipe nodes, with a
+    /// recipe-node total (2) that differs from the true machine total (6) —
+    /// the exact shape that let COUNT(*) masquerade as a believable answer.
+    #[test]
+    fn machine_count_sums_machines_across_recipe_nodes_not_node_count() {
+        let pt = db();
+        pt.with(|c| {
+            factory_insert(c, "f1", "Iron Works", None, None, None, "2026-05-10T00:00:00Z").unwrap();
+            machine_insert(c, "m1", "f1", "Build_SmelterMk1_C", "Recipe_IronIngot_C",
+                           2, 100.0, false, 0, 0, None, "2026-05-10T00:00:01Z").unwrap();
+            machine_insert(c, "m2", "f1", "Build_ConstructorMk1_C", "Recipe_IronPlate_C",
+                           4, 100.0, false, 0, 0, None, "2026-05-10T00:00:02Z").unwrap();
+            // Two recipe-node rows, six physical machines.
+            let f = factory_get(c, "f1").unwrap().unwrap();
+            assert_eq!(f.machine_count, 6);
+            let listed = factory_list(c).unwrap();
+            assert_eq!(listed[0].machine_count, 6);
         });
     }
 

@@ -23,6 +23,7 @@ export const queryKeys = {
   power: {
     list: (factoryId: string) => ["power", "list", factoryId] as const,
     balance: (factoryId: string) => ["power", "balance", factoryId] as const,
+    balances: ["power", "balances"] as const,
   },
   factory: {
     list: ["factory", "list"] as const,
@@ -31,6 +32,9 @@ export const queryKeys = {
     plan: (id: string) => ["factory", "plan", id] as const,
     unsourcedInputs: ["factory", "unsourced-inputs"] as const,
     exportOffers: ["factory", "export-offers"] as const,
+  },
+  planner: {
+    itemTiers: ["planner", "item-tiers"] as const,
   },
   logistics: {
     list: ["logistics", "list"] as const,
@@ -52,5 +56,8 @@ export const queryKeys = {
   },
   elevator: {
     overview: ["elevator", "overview"] as const,
+  },
+  validation: {
+    sweep: ["validation", "sweep"] as const,
   },
 };

@@ -125,6 +125,7 @@ pub fn run() {
             features::power::commands::update_power_gen,
             features::power::commands::remove_power_gen,
             features::power::commands::factory_power_balance,
+            features::power::commands::list_power_balances,
             features::power::commands::list_all_power_gens,
             features::power::commands::set_power_gen_position,
             features::alts::commands::list_unlocked_alt_recipes,
@@ -145,6 +146,8 @@ pub fn run() {
             features::planner::commands::list_unsourced_inputs,
             features::planner::commands::list_export_offers,
             features::planner::commands::factory_plan_assign_import_source,
+            features::planner::commands::factory_plan_raise_export_target,
+            features::planner::commands::list_item_tiers,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

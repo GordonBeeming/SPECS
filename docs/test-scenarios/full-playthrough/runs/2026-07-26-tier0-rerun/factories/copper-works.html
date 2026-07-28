@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Copper Works — Tier 0 layout</title>
+<style>
+  :root {
+    --bg: #1a1a1a; --bg-raised: #232323; --fg: #e0e0e0; --fg-muted: #d1d5db;
+    --primary: #46cbff; --border: #2c2c2c;
+    --success: #4ade80; --warning: #fbbf24; --danger: #f87171;
+    --mk1: #9ca3af; --mk2: #46cbff; --mk3: #4ade80;
+    --mk4: #fcd34d; --mk5: #fb923c; --mk6: #d8b4fe;
+    --pipe1: #5eead4; --pipe2: #67e8f9;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--fg);
+         font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 24px 0 8px; color: var(--primary); }
+  .meta { color: var(--fg-muted); font-size: 12px; margin-bottom: 16px; }
+  .meta a { color: var(--primary); }
+  table { border-collapse: collapse; width: 100%; max-width: 720px; }
+  th, td { border: 1px solid var(--border); padding: 5px 9px; text-align: left;
+           font-size: 13px; overflow-wrap: anywhere; }
+  th { background: var(--bg-raised); }
+  .grid { display: grid; gap: 2px; margin: 8px 0;
+          grid-template-columns: repeat(var(--cols, 12), minmax(44px, 1fr)); }
+  .cell { background: var(--bg-raised); border: 1px solid var(--border);
+          min-height: 44px; border-radius: 3px; position: relative;
+          font-size: 10px; color: var(--fg-muted); padding: 2px 4px;
+          overflow-wrap: anywhere; min-width: 0; }
+  .machine { background: #1e3a4c; border-color: var(--primary); color: var(--fg);
+             display: flex; align-items: center; justify-content: center;
+             text-align: center; font-size: 11px; }
+  .extractor { background: #2d2433; border-color: var(--mk6); }
+  .gen { background: #213326; border-color: var(--success); }
+  .belt { display: flex; align-items: center; justify-content: center;
+          font-size: 10px; font-weight: 600; }
+  .belt.mk1 { color: var(--mk1); border-color: var(--mk1); }
+  .split { background: #3a2f1e; border-color: var(--warning); }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px;
+            color: var(--fg-muted); margin: 6px 0 18px; }
+  .legend span::before { content: "■ "; }
+  .ok { color: var(--success); } .warn { color: var(--warning); } .bad { color: var(--danger); }
+  footer { margin-top: 28px; font-size: 11px; color: var(--fg-muted); }
+</style>
+</head>
+<body>
+<h1>Copper Works — Tier 0</h1>
+<p class="meta">
+  Run: <a href="../index.html">2026-07-26-tier0-rerun</a> ·
+  Grass Fields, 1.7 km W · 1.3 km N ·
+  Claims: Copper Normal #8 (1.7 km W · 1.3 km N) Miner Mk.1 @ 100% = 60/min, Limestone Pure #3 (1.7 km W · 1.3 km N) Miner Mk.1 @ 37.5% = 45/min ·
+  Power: +30 MW gen / −17.6 MW draw = +12.4 MW
+</p>
+
+<h2>Purpose</h2>
+<p>The copper and concrete line — Wire 30/min, Cable 15/min and Concrete 15/min.
+Everything is consumed on site or by hand for milestone costs; there are no
+exports, because Tier 0 has no logistics links.</p>
+
+<p>The copper and limestone nodes share the same map coordinates, which is why
+this factory sits where it does: both extractors are on the doorstep and the
+longest belt run in the whole build is a few foundations.</p>
+
+<h2>Rate derivation</h2>
+<p>Cable is the reason Wire runs hot. The recipe takes 2 Wire per Cable
+(60 Wire → 30 Cable), so 15 Cable/min eats 30 Wire/min on top of the 30 Wire/min
+that is itself a product. Wire therefore produces 60/min total, which needs
+30 Copper Ingot/min and so 30 Copper Ore/min — half of what the Normal copper
+node yields.</p>
+
+<p>Concrete is the opposite shape: it is limestone-hungry and machine-cheap.
+45 Limestone → 15 Concrete/min on a single Constructor. The limestone node is a
+Pure one (120/min at 100%), so it is underclocked to 37.5% to land exactly on
+45/min instead of running three times the needed rate into a belt that could not
+carry it anyway.</p>
+
+<h2>Foundation layout (8×8 m per cell)</h2>
+<div class="legend">
+  <span style="color: var(--primary)">machine</span>
+  <span style="color: var(--mk6)">extractor</span>
+  <span style="color: var(--success)">generator</span>
+  <span style="color: var(--warning)">splitter/merger</span>
+  <span style="color: var(--mk1)">belt Mk1 60</span>
+</div>
+<div class="grid" style="--cols: 7">
+  <!-- row 1: copper chain -->
+  <div class="cell extractor">Miner Mk.1<br/>Copper Normal #8 @ 100%<br/>60/min</div>
+  <div class="cell belt mk1">Mk1 →<br/>30/min ore</div>
+  <div class="cell machine">Smelter ×1<br/>@ 100%<br/>Copper Ingot 30/min<br/>4.0 MW</div>
+  <div class="cell belt mk1">Mk1 →<br/>30/min ingot</div>
+  <div class="cell machine">Constructor ×2<br/>Wire 60/min<br/>8.0 MW</div>
+  <div class="cell split">Splitter<br/>30 out + 30</div>
+  <div class="cell machine">Constructor ×1 @ 50%<br/>Cable 15/min<br/>1.6 MW</div>
+
+  <!-- row 2: limestone chain and power -->
+  <div class="cell extractor">Miner Mk.1<br/>Limestone Pure #3 @ 37.5%<br/>45/min</div>
+  <div class="cell belt mk1">Mk1 →<br/>45/min limestone</div>
+  <div class="cell machine">Constructor ×1<br/>Concrete 15/min<br/>4.0 MW</div>
+  <div class="cell">out: Concrete<br/>15/min</div>
+  <div class="cell gen">Biomass Burner ×1<br/>30 MW<br/>Biomass 4.00/min</div>
+  <div class="cell">out: Wire<br/>30/min</div>
+  <div class="cell">out: Cable<br/>15/min</div>
+</div>
+<p>The copper miner runs at 100% but only 30/min of its 60/min is drawn; the
+belt off it is loaded to 30/min. The spare 30/min is headroom for the Tier 1–2
+copper expansion.</p>
+
+<h2>Belt audit</h2>
+<table>
+  <tr><th>Segment</th><th>Mark</th><th>Carrying</th><th>Cap</th><th>Status</th></tr>
+  <tr><td>Copper miner → Smelter</td><td>Mk1</td><td>30/min copper ore</td><td>60/min</td><td class="ok">50%</td></tr>
+  <tr><td>Smelter → Wire constructors</td><td>Mk1</td><td>30/min copper ingot</td><td>60/min</td><td class="ok">50%</td></tr>
+  <tr><td>Wire constructors → Cable constructor</td><td>Mk1</td><td>30/min wire</td><td>60/min</td><td class="ok">50%</td></tr>
+  <tr><td>Limestone miner → Concrete constructor</td><td>Mk1</td><td>45/min limestone</td><td>60/min</td><td class="ok">75%</td></tr>
+</table>
+<p>No segment exceeds the Mk1 60/min cap, and none sits at it — this factory has
+more belt headroom than Iron Works does.</p>
+
+<h2>Machines and power</h2>
+<table>
+  <tr><th>Machine</th><th>Count</th><th>Clock</th><th>Making</th><th>Draw</th></tr>
+  <tr><td>Smelter</td><td>1</td><td>100%</td><td>Copper Ingot 30/min</td><td>4.0 MW</td></tr>
+  <tr><td>Constructor</td><td>2</td><td>100%</td><td>Wire 60/min</td><td>8.0 MW</td></tr>
+  <tr><td>Constructor</td><td>1</td><td>50%</td><td>Cable 15/min</td><td>1.6 MW</td></tr>
+  <tr><td>Constructor</td><td>1</td><td>100%</td><td>Concrete 15/min</td><td>4.0 MW</td></tr>
+  <tr><td>Biomass Burner</td><td>1</td><td>100%</td><td>30 MW on Biomass 4.00/min</td><td class="ok">+30 MW</td></tr>
+  <tr><th>Net</th><td colspan="3">5 production machines</td><th class="ok">+12.4 MW</th></tr>
+</table>
+<p class="warn">The 1.6 MW figure for the underclocked Cable constructor is the
+Power view's number. The plan graph labels the same machine 1.0 MW and totals
+the factory at 17.0 MW where Power says 17.6 MW — see the run's findings; the
+Power view's figure is the one used here because it matches Satisfactory's
+non-linear clock scaling and it is what the Validate panel totals.</p>
+
+<h2>Imports / exports</h2>
+<table>
+  <tr><th>Direction</th><th>Item</th><th>Rate</th><th>Partner factory</th><th>Transport</th></tr>
+  <tr><td colspan="5">None. Self-contained at Tier 0 — no logistics links exist in this playthrough.</td></tr>
+</table>
+
+<footer>SPECS full-playthrough run artifact · Tier 0 · run 2026-07-26-tier0-rerun</footer>
+</body>
+</html>

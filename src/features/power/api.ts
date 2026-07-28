@@ -18,6 +18,7 @@ export const powerApi = {
   remove: (id: string) => invoke<void>("remove_power_gen", { id }),
   balance: (factoryId: string) =>
     invoke<FactoryPowerBalance>("factory_power_balance", { factoryId }),
+  listBalances: () => invoke<FactoryPowerBalance[]>("list_power_balances"),
   setPosition: (input: SetPowerGenPositionInput) =>
     invoke<void>("set_power_gen_position", { input }),
 };

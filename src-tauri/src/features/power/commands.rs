@@ -7,9 +7,10 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
 
-use crate::features::factory::commands::compose_ledger;
+use crate::features::factory::commands::compose_ledger_with_supply;
 use crate::features::factory::repo as factory_repo;
 use crate::features::playthrough::state::ActivePlaythrough;
+use crate::features::resource_nodes::repo as nodes_repo;
 use crate::shared::error::{AppError, AppResult};
 use crate::shared::gamedata::GameData;
 
@@ -205,17 +206,82 @@ pub fn factory_power_balance(
     power_balance_impl(&db, &game_data, &factory_id)
 }
 
+/// Every factory's power balance in one call — the Power screen's grid
+/// total and its "which factories have no power" prominence both need
+/// every factory, not just the ones that already carry a generator.
+#[tauri::command]
+pub fn list_power_balances(
+    active: State<ActivePlaythrough>,
+    game_data: State<GameData>,
+) -> AppResult<Vec<FactoryPowerBalance>> {
+    let db = require_active(&active)?;
+    list_power_balances_impl(&db, &game_data)
+}
+
+fn list_power_balances_impl(
+    db: &crate::shared::db::playthrough_db::PlaythroughDb,
+    game_data: &GameData,
+) -> AppResult<Vec<FactoryPowerBalance>> {
+    let factories = db.with(|c| factory_repo::factory_list(c).map_err(AppError::from))?;
+    // Claims and water groups are whole-playthrough tables, not
+    // per-factory — load each once and thread it through every factory's
+    // balance instead of letting `power_balance_with_supply` re-query
+    // them per factory, which turned one Power screen load into N full
+    // table scans.
+    let claims = db.with(|c| nodes_repo::claims_all(c).map_err(AppError::from))?;
+    let water_groups = db.with(|c| nodes_repo::water_groups_all(c).map_err(AppError::from))?;
+    factories
+        .iter()
+        .map(|f| power_balance_with_supply(db, game_data, &f.id, &claims, &water_groups))
+        .collect()
+}
+
 /// Command-free balance composition so other slices (the validation
-/// sweep) reuse the same math instead of reimplementing it.
+/// sweep) reuse the same math instead of reimplementing it. Fetches
+/// claims/water groups itself — the single-factory case this backs
+/// (`factory_power_balance`) only ever needs one query each, so there's
+/// no batching to be done here. A caller computing balances for several
+/// factories in one pass (`list_power_balances_impl`, the validation
+/// sweep) should call `power_balance_with_supply` directly with claims
+/// and water groups it already loaded, instead of this.
 pub(crate) fn power_balance_impl(
     db: &crate::shared::db::playthrough_db::PlaythroughDb,
     game_data: &GameData,
     factory_id: &str,
 ) -> AppResult<FactoryPowerBalance> {
+    let claims = db.with(|c| nodes_repo::claims_all(c).map_err(AppError::from))?;
+    let water_groups = db.with(|c| nodes_repo::water_groups_all(c).map_err(AppError::from))?;
+    power_balance_with_supply(db, game_data, factory_id, &claims, &water_groups)
+}
+
+/// Same math as `power_balance_impl`, but takes already-loaded claims
+/// and water groups instead of querying them itself — see that
+/// function's doc for why a multi-factory caller wants this one.
+pub(crate) fn power_balance_with_supply(
+    db: &crate::shared::db::playthrough_db::PlaythroughDb,
+    game_data: &GameData,
+    factory_id: &str,
+    claims: &std::collections::HashMap<String, nodes_repo::ClaimRow>,
+    water_groups: &[nodes_repo::WaterGroupRow],
+) -> AppResult<FactoryPowerBalance> {
     let machines = db.with(|c| {
         factory_repo::machines_for_factory(c, factory_id).map_err(AppError::from)
     })?;
-    let consumed_mw = compose_ledger(factory_id, &machines, game_data).power_mw;
+    // Extractors (miners, water/oil pumps, resource wells) never show up
+    // as factory machines — they're claimed against a map node, not
+    // added to a factory's machine bank. `compose_ledger_with_supply`
+    // folds their draw onto `power_mw` itself given the raw claims/water
+    // groups, so passing them through here is enough to get the true
+    // consumption rather than having to add it on by hand.
+    let consumed_mw = compose_ledger_with_supply(
+        factory_id,
+        &machines,
+        game_data,
+        claims,
+        water_groups,
+        &std::collections::HashMap::new(),
+    )
+    .power_mw;
 
     let gens = db.with(|c| repo::power_gens_for_factory(c, factory_id).map_err(AppError::from))?;
     let mut generated_mw = 0.0_f32;
@@ -260,6 +326,112 @@ pub(crate) fn power_balance_impl(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shared::db::playthrough_db::PlaythroughDb;
+
+    const NOW: &str = "2026-06-11T00:00:00Z";
+
+    #[test]
+    fn power_balance_includes_bound_extractor_draw_alongside_machines() {
+        // Tier-0 acceptance shape: a Cable constructor at 50% clock
+        // (1.6 MW under the real curve) plus one Miner Mk1 (5 MW) bound
+        // to the same factory. Before this fix the miner contributed 0
+        // MW and this factory's `consumed_mw` read 1.6 instead of 6.6 —
+        // the exact hole issue #55 was filed against.
+        let db = PlaythroughDb::open_in_memory().expect("open in-memory playthrough db");
+        let gd = GameData::from_bundled().unwrap();
+        db.with(|c| factory_repo::factory_insert(c, "f1", "Copper Works", None, None, None, NOW))
+            .expect("insert factory");
+        db.with(|c| {
+            factory_repo::machine_insert(
+                c, "m1", "f1", "Build_ConstructorMk1_C", "Recipe_Cable_C", 1, 50.0, false, 0, 0,
+                None, NOW,
+            )
+        })
+        .expect("insert machine");
+        let iron_node = gd
+            .nodes()
+            .iter()
+            .find(|n| n.resource_item_id == "Desc_OreIron_C")
+            .expect("dataset ships an iron node")
+            .id
+            .clone();
+        db.with(|c| {
+            nodes_repo::claim_upsert(c, &iron_node, Some("Build_MinerMk1_C"), 100.0, Some("f1"), None, NOW)
+        })
+        .expect("claim node for f1");
+
+        let balance = power_balance_impl(&db, &gd, "f1").expect("balance computes");
+        assert!(
+            (balance.consumed_mw - 6.6).abs() < 0.01,
+            "expected 1.6 MW machine + 5 MW miner = 6.6, got {}",
+            balance.consumed_mw
+        );
+    }
+
+    #[test]
+    fn list_power_balances_includes_factories_with_no_generators() {
+        // The Power view's old data source only ever fetched a balance
+        // for the one selected factory, so a generator-less factory
+        // never rendered — this is the query the fixed screen uses to
+        // show every factory (and its grid-wide total) at once.
+        let db = PlaythroughDb::open_in_memory().expect("open in-memory playthrough db");
+        let gd = GameData::from_bundled().unwrap();
+        db.with(|c| factory_repo::factory_insert(c, "powered", "Has Gens", None, None, None, NOW))
+            .expect("insert factory");
+        db.with(|c| factory_repo::factory_insert(c, "unpowered", "No Gens", None, None, None, NOW))
+            .expect("insert factory");
+        db.with(|c| {
+            factory_repo::machine_insert(
+                c, "m1", "unpowered", "Build_SmelterMk1_C", "Recipe_IngotIron_C", 1, 100.0, false,
+                0, 0, None, NOW,
+            )
+        })
+        .expect("insert machine");
+
+        let balances = list_power_balances_impl(&db, &gd).expect("balances compute");
+        assert_eq!(balances.len(), 2, "every factory must appear, not just powered ones");
+        let unpowered = balances
+            .iter()
+            .find(|b| b.factory_id == "unpowered")
+            .expect("unpowered factory present");
+        assert!(unpowered.consumed_mw > 0.0, "its Smelter still draws power");
+        assert_eq!(unpowered.generated_mw, 0.0);
+        assert!(unpowered.net_mw < 0.0, "draw with no generators is a deficit");
+    }
+
+    #[test]
+    fn list_power_balances_attributes_claims_to_the_right_factory() {
+        // Codex nit: `list_power_balances_impl` now loads claims/water
+        // groups once and threads them into `power_balance_with_supply`
+        // per factory instead of each factory re-querying both tables.
+        // Two factories with an extractor claim bound to only one of
+        // them is the case that would leak if the threading mixed claims
+        // up across factories instead of keeping the per-factory filter
+        // `compose_ledger_with_supply` already applies.
+        let db = PlaythroughDb::open_in_memory().expect("open in-memory playthrough db");
+        let gd = GameData::from_bundled().unwrap();
+        db.with(|c| factory_repo::factory_insert(c, "f1", "Claims Iron", None, None, None, NOW))
+            .expect("insert f1");
+        db.with(|c| factory_repo::factory_insert(c, "f2", "No Claims", None, None, None, NOW))
+            .expect("insert f2");
+        let iron_node = gd
+            .nodes()
+            .iter()
+            .find(|n| n.resource_item_id == "Desc_OreIron_C")
+            .expect("dataset ships an iron node")
+            .id
+            .clone();
+        db.with(|c| {
+            nodes_repo::claim_upsert(c, &iron_node, Some("Build_MinerMk1_C"), 100.0, Some("f1"), None, NOW)
+        })
+        .expect("claim node for f1");
+
+        let balances = list_power_balances_impl(&db, &gd).expect("balances compute");
+        let f1 = balances.iter().find(|b| b.factory_id == "f1").unwrap();
+        let f2 = balances.iter().find(|b| b.factory_id == "f2").unwrap();
+        assert!((f1.consumed_mw - 5.0).abs() < 0.01, "f1's Miner Mk1 draws 5 MW, got {}", f1.consumed_mw);
+        assert_eq!(f2.consumed_mw, 0.0, "f2's claim-free balance must not pick up f1's extractor");
+    }
 
     #[test]
     fn validate_count_rejects_zero_negative_and_huge_values() {

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Run 2026-07-26-tier0-rerun — SPECS full playthrough</title>
+<style>
+  :root {
+    --bg: #1a1a1a; --bg-raised: #232323; --fg: #e0e0e0; --fg-muted: #d1d5db;
+    --primary: #46cbff; --border: #2c2c2c;
+    --success: #4ade80; --warning: #fbbf24; --danger: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--fg);
+         font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 26px 0 8px; color: var(--primary); }
+  .meta { color: var(--fg-muted); font-size: 12px; margin-bottom: 18px; }
+  a { color: var(--primary); }
+  table { border-collapse: collapse; width: 100%; max-width: 860px; }
+  th, td { border: 1px solid var(--border); padding: 6px 10px; text-align: left;
+           font-size: 13px; overflow-wrap: anywhere; }
+  th { background: var(--bg-raised); }
+  .verdict { display: inline-block; padding: 3px 10px; border-radius: 4px;
+             font-size: 12px; font-weight: 600; }
+  .worked-with-bugs { background: #3a2f1e; color: var(--warning); border: 1px solid var(--warning); }
+  .ok { color: var(--success); } .warn { color: var(--warning); } .bad { color: var(--danger); }
+  ul { max-width: 860px; }
+  footer { margin-top: 30px; font-size: 11px; color: var(--fg-muted); }
+</style>
+</head>
+<body>
+<h1>Run 2026-07-26-tier0-rerun</h1>
+<p class="meta">
+  Playthrough <strong>2026-07-26-tier0-rerun</strong> · game 1.2 · started at Tier 0 ·
+  Verdict for Tier 0: <span class="verdict worked-with-bugs">worked-with-bugs</span>
+</p>
+
+<h2>Tier groups</h2>
+<table>
+  <tr><th>Group</th><th>State</th><th>Factories</th><th>Findings</th></tr>
+  <tr>
+    <td>Tier 0</td>
+    <td class="ok">done — Validate clean</td>
+    <td><a href="factories/iron-works.html">Iron Works</a>, <a href="factories/copper-works.html">Copper Works</a></td>
+    <td>13 reported to the run lead for filing</td>
+  </tr>
+  <tr><td>Tiers 1–2</td><td>not started</td><td>—</td><td>—</td></tr>
+  <tr><td>Tiers 3–4</td><td>not started</td><td>—</td><td>—</td></tr>
+  <tr><td>Tiers 5–6</td><td>not started</td><td>—</td><td>—</td></tr>
+  <tr><td>Tiers 7–8</td><td>not started</td><td>—</td><td>—</td></tr>
+  <tr><td>Tier 9</td><td>not started</td><td>—</td><td>—</td></tr>
+</table>
+
+<h2>Tier 0 checkpoint</h2>
+<table>
+  <tr><th>Check</th><th>Result</th></tr>
+  <tr><td>Validate → no findings</td><td class="ok">pass — "everything checks out at T0. Grid: 60 MW gen / 42 MW draw (+18 MW)"</td></tr>
+  <tr><td>No belt segment over 60/min</td><td class="ok">pass — worst are two segments at exactly 60/min in Iron Works</td></tr>
+  <tr><td>Layout artifacts for both factories</td><td class="ok">written</td></tr>
+  <tr><td>Screenshots: plan graphs, map, validation panel</td><td class="ok">in <code>screenshots/</code></td></tr>
+  <tr><td>Alts with <code>unlock_tier &lt;= 0</code> unlocked</td><td class="ok">none exist at T0 — 0 unlocked is correct</td></tr>
+</table>
+
+<h2>Headline findings</h2>
+<p>Full ranked report went to the run lead; the repo issues are filed from
+there, not from this page. The ones that matter most:</p>
+<ul>
+  <li><span class="bad">wrong-data</span> — the extractor picker offers Miner Mk.2 and Mk.3 at Tier 0, both enabled and unlabelled, where only Mk.1 exists. The generator picker on the next screen gets the same job right ("Biomass Burner — 30 MW · T0").</li>
+  <li><span class="bad">wrong-data</span> — Alts "Select all" at T0 unlocks all 111 alternates including Tier 7 recipes, and Validate then reports no findings.</li>
+  <li><span class="bad">wrong-data</span> — Copper Works draws 17.0 MW per the plan header and 17.6 MW per the Power view. The two disagree whenever a machine is underclocked.</li>
+  <li><span class="warn">friction</span> — nothing anywhere warns that a belt segment exceeds the best belt unlocked. A 90/min ore segment rendered identically to a compliant one at Tier 0.</li>
+  <li><span class="ok">worked well</span> — the production plan graph, the tier-grouped product picker, and the Power view are the bar the rest of the app should be measured against.</li>
+</ul>
+
+<h2>What was built</h2>
+<table>
+  <tr><th>Factory</th><th>Products</th><th>Machines</th><th>Power</th></tr>
+  <tr><td><a href="factories/iron-works.html">Iron Works</a></td><td>Iron Plate 20/min, Iron Rod 20/min, Screws 40/min</td><td>6</td><td>30 MW gen / 24.0 MW draw</td></tr>
+  <tr><td><a href="factories/copper-works.html">Copper Works</a></td><td>Wire 30/min, Cable 15/min, Concrete 15/min</td><td>5</td><td>30 MW gen / 17.6 MW draw</td></tr>
+</table>
+<p>4 nodes claimed, 225 ipm total. No logistics links — correct for Tier 0,
+where both factories are self-contained.</p>
+
+<p>See <a href="RUN.md">RUN.md</a> for the ledger and the two caveats on this
+run (node→factory assignment and map panning were not drivable over the MCP
+bridge).</p>
+
+<footer>SPECS full-playthrough run artifact · run 2026-07-26-tier0-rerun</footer>
+</body>
+</html>

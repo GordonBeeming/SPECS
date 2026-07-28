@@ -223,15 +223,50 @@ pub enum PlanWarning {
     /// The optimizer failed or ran out of budget; the graph shown is
     /// the greedy standard-recipe chain instead.
     OptimizerFellBack { reason: String },
+    /// Steps in this plan need a tier the playthrough hasn't reached —
+    /// their whole input chain, not just the recipe's own stamp. Kept
+    /// as one aggregated warning: an above-tier product drags its chain
+    /// with it, and a line per step would bury every other warning.
+    AboveTier {
+        current_tier: u8,
+        /// The highest tier any above-tier step needs — "get to here
+        /// and this plan is buildable".
+        required_tier: u8,
+        /// Item faces of the above-tier steps, sorted and deduped.
+        item_names: Vec<String>,
+    },
+    /// A target has no way to be produced — a raw resource, an id the
+    /// current dataset no longer knows, or a chain whose leaves never
+    /// bottom out in something buildable. Excluded from this compute
+    /// (warn, don't block) instead of failing the whole graph: the
+    /// factory must always stay openable so the user can fix or remove
+    /// the offending target, even right after a dataset update orphans
+    /// it.
+    TargetUnplannable {
+        item_id: String,
+        item_name: String,
+        reason: String,
+    },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanGraph {
     pub nodes: Vec<PlanNode>,
     pub edges: Vec<PlanEdge>,
     pub total_machines: i64,
+    /// Machines plus the factory's bound extractors — the extractors
+    /// aren't graph nodes, so `total_machines` alone can't account for
+    /// this figure. `extractor_count`/`extractor_power_mw` carry their
+    /// share so a header can show both sides counting the same set.
     pub total_power_mw: f32,
+    /// Extractors claimed for this factory (miners, oil/water pumps,
+    /// well satellites), folded into `total_power_mw`.
+    #[serde(default)]
+    pub extractor_count: i64,
+    /// The extractors' share of `total_power_mw`.
+    #[serde(default)]
+    pub extractor_power_mw: f32,
     /// Raw demand at the leaves, per item.
     pub raw_demand: HashMap<String, f32>,
     pub warnings: Vec<PlanWarning>,
@@ -333,14 +368,6 @@ pub struct SavePlanInput {
     pub recipe_overrides: HashMap<String, String>,
     #[serde(default)]
     pub options: PlanComputeOptions,
-    /// Distance baked into materialized logistics links. The React
-    /// side defaults this to 1000 m; the picker refines it later.
-    #[serde(default = "default_link_distance")]
-    pub default_link_distance_m: i64,
-}
-
-fn default_link_distance() -> i64 {
-    1000
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -353,18 +380,33 @@ pub struct SavePlanResult {
     pub link_ids: Vec<String>,
 }
 
-/// One product a factory offers for export, with how much of the
-/// offer other factories already draw via logistics links.
+/// One product a factory makes for others to take, with how much of it
+/// is promised (`export_ipm`) and how much is already spoken for
+/// (`drawn_ipm`).
+///
+/// A factory that produces an item and has never declared an export
+/// slice still belongs here. Leaving it out makes a plant with 60/min
+/// entirely spare read as "not exporting this, plan it there later", so
+/// the panel answers "who can feed me?" with "nobody" while the answer
+/// sits one click away.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportOfferProduct {
     pub item_id: String,
     pub item_name: String,
+    /// The target's own rate — what's left after this factory's other
+    /// steps have taken their share, so it's the ceiling on what any
+    /// export slice could ever offer.
+    pub produced_ipm: f32,
     pub export_ipm: f32,
     pub drawn_ipm: f32,
     /// `export - drawn`, floored at 0 — 0 still means "exportable,
     /// bump production there first".
     pub remaining_ipm: f32,
+    /// `produced - drawn`, floored at 0: what widening the export slice
+    /// alone would free up, with no extra machines and no cost to the
+    /// exporter's own plan. Always ≥ `remaining_ipm`.
+    pub spare_ipm: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -373,6 +415,54 @@ pub struct ExportOffer {
     pub factory_id: String,
     pub factory_name: String,
     pub products: Vec<ExportOfferProduct>,
+}
+
+/// What raising an exporter's target did — the numbers that moved, and
+/// what it cost the exporter's own plan.
+///
+/// The two warning lists are a diff, not the exporter's whole warning
+/// list, and they're separate because they read as different sentences.
+/// A factory that was already 20/min short on ore didn't break because
+/// of this raise, so saying "that left it short" sends the user hunting
+/// for damage that predates the click; the same shortfall widening to
+/// 60/min is worth saying out loud, but as "widened", not "caused".
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RaiseExportTargetResult {
+    pub factory_id: String,
+    pub factory_name: String,
+    pub item_id: String,
+    pub item_name: String,
+    pub previous_target_ipm: f32,
+    pub new_target_ipm: f32,
+    pub previous_export_ipm: f32,
+    pub new_export_ipm: f32,
+    /// Export slice minus what other factories already draw — what a
+    /// new consumer can actually take.
+    pub remaining_ipm: f32,
+    /// Findings that weren't there before this raise. Reported, never
+    /// actioned: closing one of these could mean claiming a node,
+    /// raising a further exporter, swapping a recipe or accepting the
+    /// gap, and only the user can pick.
+    pub introduced_warnings: Vec<PlanWarning>,
+    /// Findings that were already open and got bigger.
+    pub worsened_warnings: Vec<PlanWarning>,
+}
+
+/// The earliest tier an item is really reachable at — its whole input
+/// chain, not the stamp on one recipe. Feeds the product pickers so
+/// they can group honestly and mark what's still out of reach.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemTier {
+    pub item_id: String,
+    /// With alts counted as available at their own unlock tier — the
+    /// same rule the planner plans by. `None` = no chain ever grounds
+    /// out (event items, anything gated behind a missing ingredient).
+    pub tier: Option<u8>,
+    /// Standard recipes only. Higher than `tier` for an item whose
+    /// early route is an alt, `None` when the item is alt-only.
+    pub standard_tier: Option<u8>,
 }
 
 /// One input across the playthrough still waiting on a source factory

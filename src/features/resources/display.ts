@@ -1,4 +1,4 @@
-import type { ResourceNodeRow } from "./types";
+import type { ExtractorOption, ResourceNodeRow } from "./types";
 
 /**
  * The extractor a fresh claim should default to: the caller's preferred
@@ -19,6 +19,15 @@ export function claimDefaultExtractor(
 }
 
 /**
+ * Extractor option label for pickers — same shape as the generator
+ * picker's "Biomass Burner — 30 MW · T0" hint, so a Miner Mk2 reads
+ * "Miner Mk.2 · T4" instead of leaving the tier invisible.
+ */
+export function extractorOptionLabel(option: Pick<ExtractorOption, "name" | "unlockTier">): string {
+  return `${option.name} · T${option.unlockTier}`;
+}
+
+/**
  * Human-friendly label for a resource node. The bundled catalog ids
  * (e.g. `BP_ResourceNode114`) are unique-stable but mean nothing to a
  * player; show a sequential index within the node's (resource, purity)
@@ -28,6 +37,22 @@ export function claimDefaultExtractor(
  */
 export function nodeDisplayLabel(node: ResourceNodeRow, index: number): string {
   return `#${index + 1} · ${coordChip(node.x, node.y)}`;
+}
+
+/**
+ * The one thing a bare resource name/purity can't tell apart: a Crude
+ * Oil well satellite (`fracking_well`, a single Resource Well Extractor
+ * option) versus an oil seep (`miner_node`, the Oil Extractor) — both
+ * read "Crude Oil · Pure" otherwise, and the well's extractor is
+ * usually still tier-locked when the seep's isn't. Returns `null` for
+ * every other node kind, where the resource name alone is unambiguous.
+ */
+export function nodeKindLabel(
+  node: Pick<ResourceNodeRow, "kind" | "resourceItemId">,
+): string | null {
+  if (node.kind === "fracking_well") return "Well satellite";
+  if (node.kind === "miner_node" && node.resourceItemId === "Desc_LiquidOil_C") return "Oil seep";
+  return null;
 }
 
 /**

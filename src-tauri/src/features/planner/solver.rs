@@ -40,7 +40,7 @@ const UNKNOWN_RAW_WEIGHT: f64 = 1000.0;
 pub const SAM_ITEM_ID: &str = "Desc_SAM_C";
 pub const WATER_ITEM_ID: &str = "Desc_Water_C";
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct SolveInput<'a> {
     /// item → ipm the plan must produce (targets, full rate incl. exports).
     pub demands: &'a HashMap<String, f32>,
@@ -55,6 +55,12 @@ pub struct SolveInput<'a> {
     pub recipe_overrides: &'a HashMap<String, String>,
     pub unlocked_alts: &'a HashSet<String>,
     pub include_sam: bool,
+    /// Recipe ids whose whole input chain the playthrough can build at
+    /// its current tier (`planner::tier::recipes_reachable_at`). `None`
+    /// lifts the gate — which is what planning ahead for a product that
+    /// is itself above tier needs, and what a caller with no tier to
+    /// gate on passes.
+    pub tier_allowed: Option<&'a HashSet<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -104,12 +110,14 @@ pub fn rarity_weights(game_data: &GameData) -> HashMap<String, f64> {
 }
 
 /// Fixpoint of "what can this playthrough craft" from the extracted
-/// raws (optionally without SAM). Drives both the SAM candidate filter
-/// and the "this target NEEDS SAM" auto-force.
+/// raws (optionally without SAM, optionally limited to the recipes the
+/// current tier allows). Drives both the SAM candidate filter and the
+/// "this target NEEDS SAM" auto-force.
 pub(crate) fn producible_items(
     game_data: &GameData,
     unlocked_alts: &HashSet<String>,
     include_sam: bool,
+    tier_allowed: Option<&HashSet<String>>,
 ) -> HashSet<String> {
     let mut producible: HashSet<String> = game_data
         .items()
@@ -122,6 +130,9 @@ pub(crate) fn producible_items(
         let mut grew = false;
         for r in game_data.recipes() {
             if is_inverse_recipe(&r.id) || (r.is_alt && !unlocked_alts.contains(&r.id)) {
+                continue;
+            }
+            if tier_allowed.is_some_and(|allowed| !allowed.contains(&r.id)) {
                 continue;
             }
             if r.inputs.iter().all(|io| producible.contains(&io.item_id)) {
@@ -168,6 +179,9 @@ fn candidates<'a>(
         .iter()
         .filter(|r| !is_inverse_recipe(&r.id))
         .filter(|r| !r.is_alt || input.unlocked_alts.contains(&r.id))
+        // Tier gate: a recipe whose chain needs a later tier is not a
+        // candidate, however early its own `unlock_tier` is stamped.
+        .filter(|r| input.tier_allowed.map_or(true, |allowed| allowed.contains(&r.id)))
         // SAM off: a recipe is only usable when every input is
         // reachable without SAM.
         .filter(|r| match &producible {
@@ -205,7 +219,8 @@ pub fn solve(
     let started = Instant::now();
     // Sanity: every demanded item must be reachable at all, otherwise
     // report which one (the UI shows "needs SAM" / "no recipe").
-    let reachable = producible_items(game_data, input.unlocked_alts, input.include_sam);
+    let reachable =
+        producible_items(game_data, input.unlocked_alts, input.include_sam, input.tier_allowed);
     let recipes = candidates(game_data, input, &reachable);
     for item in input.demands.keys() {
         let exogenous = input.cut_items.contains(item)
@@ -357,6 +372,7 @@ mod tests {
             recipe_overrides: overrides,
             unlocked_alts: alts,
             include_sam: false,
+            tier_allowed: None,
         }
     }
 
@@ -441,7 +457,7 @@ mod tests {
         // and flipping the toggle actually plans down to SAM ore.
         let gd = gd();
         let alts = HashSet::new();
-        let producible = producible_items(&gd, &alts, false);
+        let producible = producible_items(&gd, &alts, false, None);
         assert!(!requires_sam_with(&producible, "Desc_IronPlate_C", &gd));
         assert!(requires_sam_with(&producible, "Desc_FicsiteIngot_C", &gd));
 
@@ -498,6 +514,54 @@ mod tests {
             sol.recipes
         );
         assert_eq!(sol.recipes.len(), 1);
+    }
+
+    #[test]
+    fn the_tier_gate_keeps_above_tier_recipes_out_of_the_mix() {
+        // Computer at Tier 6, alts reachable at that tier. Ungated, the
+        // optimizer reaches for `Alternate: Crystal Computer` (stamped
+        // Tier 5, but its Crystal Oscillator input needs Tier 6 and its
+        // standard route Tier 7) — fine here, since the whole chain
+        // does ground out at Tier 6. Gated at Tier 5, that route has to
+        // disappear rather than plan a chain the player can't build.
+        use crate::features::planner::tier::{item_tier_table, recipes_reachable_at, AltMode};
+
+        let gd = gd();
+        let table = item_tier_table(&gd, AltMode::On);
+        let mut demands = HashMap::new();
+        demands.insert("Desc_Computer_C".to_string(), 10.0);
+        let external = HashMap::new();
+        let cuts = HashSet::new();
+        let overrides = HashMap::new();
+        let alts: HashSet<String> = gd
+            .recipes()
+            .iter()
+            .filter(|r| r.is_alt && r.unlock_tier <= 6)
+            .map(|r| r.id.clone())
+            .collect();
+
+        let t6 = recipes_reachable_at(&gd, &table, 6);
+        let mut gated = base_input(&demands, &external, &cuts, &overrides, &alts);
+        gated.tier_allowed = Some(&t6);
+        let sol = solve(&gd, &gated, &rarity_weights(&gd), 2000).unwrap();
+        assert!(
+            sol.recipes.iter().all(|(id, _)| t6.contains(id)),
+            "every chosen recipe must be buildable at Tier 6: {:?}",
+            sol.recipes
+        );
+
+        // Supercomputer is Tier 7 top to bottom: at Tier 6 the gate has
+        // to report it unreachable rather than quietly plan it.
+        let mut super_demands = HashMap::new();
+        super_demands.insert("Desc_ComputerSuper_C".to_string(), 5.0);
+        let mut above = base_input(&super_demands, &external, &cuts, &overrides, &alts);
+        above.tier_allowed = Some(&t6);
+        assert!(matches!(
+            solve(&gd, &above, &rarity_weights(&gd), 2000),
+            Err(SolveError::Unreachable { .. })
+        ));
+        let ungated = base_input(&super_demands, &external, &cuts, &overrides, &alts);
+        assert!(solve(&gd, &ungated, &rarity_weights(&gd), 2000).is_ok());
     }
 
     #[test]

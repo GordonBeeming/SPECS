@@ -1,10 +1,11 @@
 //! Pure throughput math for resource nodes. Kept out of `commands.rs`
 //! so the planner can call it without going through Tauri state.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::Deserialize;
 
+use crate::features::factory::domain::machine_power_mw_amp;
 use crate::shared::gamedata::GameData;
 use crate::shared::gamedata::types::{MapNode, Miner, NodeKind, NodePurity};
 
@@ -48,9 +49,32 @@ pub fn water_group_output_ipm(group: &WaterGroupRow) -> f32 {
         }
 }
 
-/// The extractor buildings a node can legally take. Single source of
-/// truth for the pickers (NodeRow, map popover, placement loadout) and
-/// for `set_node_claim` validation — they must never disagree again.
+/// MW a group of free-placed water extractors draws — both banks
+/// summed, each on the same overclock curve as every other extractor.
+pub fn water_group_power_mw(group: &WaterGroupRow, game_data: &GameData) -> f32 {
+    let base_power_mw = game_data
+        .building("Build_WaterPump_C")
+        .map(|b| b.power_mw)
+        .unwrap_or(0.0);
+    let bank = |count: i64, clock_pct: f32| -> f32 {
+        if clock_pct <= 0.0 || !clock_pct.is_finite() || count < 1 {
+            return 0.0;
+        }
+        machine_power_mw_amp(base_power_mw, count, clock_pct, 0, 0)
+    };
+    bank(group.count, group.clock_pct)
+        + match (group.count2, group.clock2_pct) {
+            (Some(c), Some(p)) => bank(c, p),
+            _ => 0.0,
+        }
+}
+
+/// The extractor buildings a node's *family* can legally take, tier
+/// aside. Single source of truth for `set_node_claim`'s family check
+/// and `validation::check_claims` — they must never disagree on what
+/// counts as the right building for a node. Pickers (NodeRow, map
+/// popover, placement loadout) get this narrowed further by
+/// `tier_eligible_extractors` before it reaches the UI.
 pub fn allowed_extractors(node: &MapNode, game_data: &GameData) -> Vec<ExtractorOption> {
     // One lookup per building; the fallbacks (catalog names) only fire
     // if the dataset somehow drops the building.
@@ -103,6 +127,37 @@ pub fn allowed_extractors(node: &MapNode, game_data: &GameData) -> Vec<Extractor
     }
 }
 
+/// Narrows a node's `allowed_extractors` to what a *fresh pick* should
+/// offer: only marks unlocked at `tier`. This is presentation-only —
+/// `set_node_claim`'s family check and `validation::check_claims` both
+/// keep calling `allowed_extractors` directly (unfiltered), so an
+/// existing above-tier claim is still recognised as the right building
+/// family and reported as `ClaimExtractorAboveTier`, not misfiled as
+/// `ClaimInvalidExtractor`. Called for every family alike — miner marks
+/// and the single-option oil/well families both go through this, so a
+/// well satellite's Tier 8 extractor carries the same tier-gating
+/// contract a Miner Mk2 does instead of an exemption reserved for
+/// families with more than one mark to choose between.
+///
+/// Never returns empty: the lowest-tier option survives even when
+/// nothing in the family is unlocked yet, so the picker always has a
+/// starting choice (mirrors `best_miner_for_tier`'s tier-0 fallback).
+/// For a single-option family this means the one extractor keeps
+/// showing up below its unlock tier too — there's nothing else in the
+/// family to fall back to — so the picker's `unlock_tier` field is what
+/// tells the UI it isn't buildable yet, not the option's presence or
+/// absence in the list.
+pub fn tier_eligible_extractors(options: &[ExtractorOption], tier: u8) -> Vec<ExtractorOption> {
+    let eligible: Vec<ExtractorOption> =
+        options.iter().filter(|e| e.unlock_tier <= tier).cloned().collect();
+    if !eligible.is_empty() {
+        return eligible;
+    }
+    let mut sorted = options.to_vec();
+    sorted.sort_by_key(|e| e.unlock_tier);
+    sorted.into_iter().take(1).collect()
+}
+
 /// Items-per-minute a single extractor produces on a node at the given
 /// clock. Geysers produce nothing — they're for power.
 ///
@@ -148,6 +203,53 @@ pub fn extractor_output_ipm(
     }
 }
 
+/// MW a single extractor draws on `node` at the given clock. Extractors
+/// overclock on the same curve as manufacturing machines (there's no
+/// Somersloop slot on an extractor, so amp is always 0/0) — reuses
+/// `machine_power_mw_amp` rather than a fourth power formula.
+///
+/// Mirrors `extractor_output_ipm`'s node-kind dispatch for oil: the Oil
+/// Extractor always charges its one building regardless of what a legacy
+/// claim's `miner_id` says, for the same reason the ipm side does —
+/// there's only one building per family. Purity doesn't affect power,
+/// only throughput, so it's absent here.
+///
+/// A Resource Well satellite is unpowered — only the well's shared
+/// Pressuriser draws power, once per well rather than once per
+/// satellite — so this always returns 0 for `FrackingWell`. Callers that
+/// aggregate a factory's claimed satellites (`power_for_factory`) add
+/// the Pressuriser's draw themselves, once per distinct `core_id`.
+pub fn extractor_power_mw(
+    node: &MapNode,
+    miner_building_id: Option<&str>,
+    clock_pct: f32,
+    game_data: &GameData,
+) -> f32 {
+    if clock_pct <= 0.0 || !clock_pct.is_finite() {
+        return 0.0;
+    }
+    let base_power_mw = if is_oil_node(node) {
+        // `None` still means "claimed but no extractor built yet".
+        if miner_building_id.is_none() {
+            return 0.0;
+        }
+        game_data
+            .building("Build_OilPump_C")
+            .map(|b| b.power_mw)
+            .unwrap_or(0.0)
+    } else {
+        match node.kind {
+            NodeKind::MinerNode => {
+                let Some(id) = miner_building_id else { return 0.0 };
+                game_data.building(id).map(|b| b.power_mw).unwrap_or(0.0)
+            }
+            NodeKind::FrackingWell => return 0.0,
+            NodeKind::Geyser => 0.0,
+        }
+    };
+    machine_power_mw_amp(base_power_mw, 1, clock_pct, 0, 0)
+}
+
 /// Convenience for callers that just have a purity + clock + miner
 /// reference (e.g. the planner picking a hypothetical Mk2 setup
 /// without an actual claim row).
@@ -160,40 +262,16 @@ pub fn miner_node_ipm(
     miner_base_ipm * purity.multiplier() * (clock_pct / 100.0)
 }
 
-/// Aggregate ipm per item across *all* claimed nodes plus water
-/// extractor groups, regardless of factory binding. The planner uses
-/// this as its raw "what could in principle be supplied" pool; the
-/// bound vs. unbound split is the caller's responsibility.
-#[allow(dead_code)]
-pub fn available_supply(
-    claims: &HashMap<String, ClaimRow>,
-    water_groups: &[WaterGroupRow],
-    game_data: &GameData,
-) -> HashMap<String, f32> {
-    let mut out: HashMap<String, f32> = HashMap::new();
-    for (node_id, claim) in claims {
-        let Some(node) = game_data.node(node_id) else {
-            continue;
-        };
-        let ipm = extractor_output_ipm(node, claim.miner_id.as_deref(), claim.clock_pct, game_data);
-        if ipm <= 0.0 {
-            continue;
-        }
-        *out.entry(node.resource_item_id.clone()).or_insert(0.0) += ipm;
-    }
-    for group in water_groups {
-        let ipm = water_group_output_ipm(group);
-        if ipm <= 0.0 {
-            continue;
-        }
-        *out.entry("Desc_Water_C".to_string()).or_insert(0.0) += ipm;
-    }
-    out
-}
-
 /// Supply pool fed into one factory by its bound claims and bound
 /// water extractor groups. Used by the factory ledger's "From nodes:
-/// X ipm" chip.
+/// X ipm" chip, and by the planner's per-factory raw-supply figures
+/// (`gather_plan_context`) so a claim never silently feeds a factory
+/// it isn't bound to.
+///
+/// A claim with no `factory_id` counts toward nobody, not "everybody"
+/// or some default factory — crediting an unbound claim to any factory
+/// would just reintroduce a global pool from a different angle, which
+/// is the exact bug this function exists to prevent.
 pub fn supply_for_factory(
     claims: &HashMap<String, ClaimRow>,
     water_groups: &[WaterGroupRow],
@@ -225,6 +303,109 @@ pub fn supply_for_factory(
         *out.entry("Desc_Water_C".to_string()).or_insert(0.0) += ipm;
     }
     out
+}
+
+/// For each fracking well (keyed by `core_id`, or a satellite's own id
+/// for the rare one the map data never grouped), the one factory whose
+/// claimed satellite owns that well's shared Pressuriser charge.
+///
+/// Deterministic and independent of `HashMap` iteration order —
+/// whichever active (`clock_pct > 0`), factory-bound satellite has the
+/// lexicographically smallest node id wins. Any single, stable rule
+/// works here; the only thing that matters is that every caller picks
+/// the same one, so the charge lands on exactly one factory instead of
+/// being split by iteration order or omitted entirely.
+fn fracking_core_owners(
+    claims: &HashMap<String, ClaimRow>,
+    game_data: &GameData,
+) -> HashMap<String, String> {
+    // core -> (best node id seen so far, its factory)
+    let mut best: HashMap<String, (String, String)> = HashMap::new();
+    for (node_id, claim) in claims {
+        let Some(claim_factory_id) = claim.factory_id.as_deref() else {
+            continue;
+        };
+        if claim.clock_pct <= 0.0 || !claim.clock_pct.is_finite() {
+            continue;
+        }
+        let Some(node) = game_data.node(node_id) else {
+            continue;
+        };
+        if node.kind != NodeKind::FrackingWell {
+            continue;
+        }
+        let core = node.core_id.clone().unwrap_or_else(|| node.id.clone());
+        best.entry(core)
+            .and_modify(|(best_node_id, best_factory)| {
+                if node_id < best_node_id {
+                    *best_node_id = node_id.clone();
+                    *best_factory = claim_factory_id.to_string();
+                }
+            })
+            .or_insert_with(|| (node_id.clone(), claim_factory_id.to_string()));
+    }
+    best.into_iter().map(|(core, (_, factory_id))| (core, factory_id)).collect()
+}
+
+/// Total MW drawn by one factory's bound extractor claims and bound
+/// water extractor groups — the extractor-side counterpart to
+/// `supply_for_factory`'s ipm.
+///
+/// `factory::commands::compose_ledger_with_supply` already calls this
+/// internally and folds the result onto `power_mw`, so a caller building
+/// a real `FactoryLedger` never needs to call it directly — pass the raw
+/// `claims`/`water_groups` through and the total comes back correct.
+/// This function stays public for the few callers that need the raw MW
+/// figure without a full ledger (the planner's `PlanGraph` total).
+pub fn power_for_factory(
+    claims: &HashMap<String, ClaimRow>,
+    water_groups: &[WaterGroupRow],
+    factory_id: &str,
+    game_data: &GameData,
+) -> f32 {
+    let mut total = 0.0_f32;
+    // A well's satellites share one Pressuriser, so claiming N satellites
+    // from the same well must charge its power once, not N times —
+    // `extractor_power_mw` already returns 0 for a `FrackingWell` node.
+    // Satellites of the same well can be bound to *different* factories
+    // though, and this function only ever sees one `factory_id` at a
+    // time — deduping per call still let two factories each own one
+    // satellite and each charge the Pressuriser once, for two charges
+    // total once `list_power_balances` sums every factory's balance.
+    // `fracking_core_owners` picks one deterministic owning factory per
+    // well across the *whole* claims table (not just this factory's
+    // slice), so only that factory ever adds the charge.
+    let well_owners = fracking_core_owners(claims, game_data);
+    let mut fracking_cores_seen: HashSet<String> = HashSet::new();
+    for (node_id, claim) in claims {
+        if claim.factory_id.as_deref() != Some(factory_id) {
+            continue;
+        }
+        let Some(node) = game_data.node(node_id) else {
+            continue;
+        };
+        total += extractor_power_mw(node, claim.miner_id.as_deref(), claim.clock_pct, game_data);
+        if node.kind == NodeKind::FrackingWell
+            && claim.clock_pct > 0.0
+            && claim.clock_pct.is_finite()
+        {
+            let core = node.core_id.clone().unwrap_or_else(|| node.id.clone());
+            let owns_this_well = well_owners.get(&core).map(String::as_str) == Some(factory_id);
+            if owns_this_well && fracking_cores_seen.insert(core) {
+                total += game_data
+                    .building("Build_FrackingSmasher_C")
+                    .map(|b| b.power_mw)
+                    .unwrap_or(0.0);
+            }
+        }
+    }
+    for group in water_groups {
+        if group.factory_id.as_deref() != Some(factory_id) {
+            continue;
+        }
+        total += water_group_power_mw(group, game_data);
+    }
+    total
 }
 
 // ---- Resource budget ("how much of the map is left?") ----
@@ -555,6 +736,140 @@ mod tests {
     }
 
     #[test]
+    fn tier_eligible_extractors_hides_marks_the_playthrough_hasnt_reached() {
+        let gd = GameData::from_bundled().unwrap();
+        let all = allowed_extractors(&iron_node(NodePurity::Normal), &gd);
+        // Mk1 = T0, Mk2 = T4, Mk3 = T8 in the bundled catalog.
+        assert_eq!(
+            tier_eligible_extractors(&all, 0)
+                .iter()
+                .map(|e| e.id.as_str())
+                .collect::<Vec<_>>(),
+            ["Build_MinerMk1_C"],
+            "a fresh Tier 0 playthrough must not offer Mk2/Mk3 as a pick"
+        );
+        assert_eq!(
+            tier_eligible_extractors(&all, 4)
+                .iter()
+                .map(|e| e.id.as_str())
+                .collect::<Vec<_>>(),
+            ["Build_MinerMk1_C", "Build_MinerMk2_C"]
+        );
+        assert_eq!(
+            tier_eligible_extractors(&all, 9)
+                .iter()
+                .map(|e| e.id.as_str())
+                .collect::<Vec<_>>(),
+            ["Build_MinerMk1_C", "Build_MinerMk2_C", "Build_MinerMk3_C"]
+        );
+    }
+
+    #[test]
+    fn tier_eligible_extractors_never_returns_empty() {
+        // A hypothetical family with no tier-0 entry still yields the
+        // lowest-tier option rather than leaving the picker with nothing.
+        let hypothetical = vec![
+            ExtractorOption { id: "b".into(), name: "B".into(), base_ipm: 1.0, unlock_tier: 4 },
+            ExtractorOption { id: "a".into(), name: "A".into(), base_ipm: 1.0, unlock_tier: 2 },
+        ];
+        let picked = tier_eligible_extractors(&hypothetical, 0);
+        assert_eq!(picked.len(), 1);
+        assert_eq!(picked[0].id, "a", "falls back to the lowest-tier option, not just the first");
+    }
+
+    // ---------- extractor power tests ----------
+
+    #[test]
+    fn extractor_power_mw_pins_the_wiki_wattage_per_mark_at_100_pct() {
+        let gd = GameData::from_bundled().unwrap();
+        // Mk1 5 MW, Mk2 12 MW, Mk3 30 MW — the same building wattage the
+        // Power view already charges, so a claimed miner stops being a
+        // free lunch.
+        for (miner_id, want) in [
+            ("Build_MinerMk1_C", 5.0),
+            ("Build_MinerMk2_C", 12.0),
+            ("Build_MinerMk3_C", 30.0),
+        ] {
+            let mw = extractor_power_mw(&iron_node(NodePurity::Normal), Some(miner_id), 100.0, &gd);
+            assert!((mw - want).abs() < 0.01, "{miner_id}: got {mw}, want {want}");
+        }
+    }
+
+    #[test]
+    fn extractor_power_mw_is_purity_independent_unlike_ipm() {
+        // Purity changes throughput, never wattage — a Pure node doesn't
+        // make the miner draw more power.
+        let gd = GameData::from_bundled().unwrap();
+        let pure = extractor_power_mw(&iron_node(NodePurity::Pure), Some("Build_MinerMk1_C"), 100.0, &gd);
+        let impure = extractor_power_mw(&iron_node(NodePurity::Impure), Some("Build_MinerMk1_C"), 100.0, &gd);
+        assert!((pure - 5.0).abs() < 0.01);
+        assert!((impure - 5.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn extractor_power_mw_uses_the_1_321928_curve_when_underclocked() {
+        // Mirrors the planner/machine regression: 50% clock is 0.4× base
+        // under the real curve, not 0.25× (square) or 0.5× (linear).
+        // 5 MW Mk1 miner at 50% = 2.0 MW.
+        let gd = GameData::from_bundled().unwrap();
+        let mw = extractor_power_mw(&iron_node(NodePurity::Normal), Some("Build_MinerMk1_C"), 50.0, &gd);
+        assert!((mw - 2.0).abs() < 0.01, "got {mw}");
+    }
+
+    #[test]
+    fn extractor_power_mw_zero_for_unclaimed_geyser_and_invalid_clock() {
+        let gd = GameData::from_bundled().unwrap();
+        assert_eq!(
+            extractor_power_mw(&iron_node(NodePurity::Normal), None, 100.0, &gd),
+            0.0
+        );
+        assert_eq!(
+            extractor_power_mw(&iron_node(NodePurity::Normal), Some("Build_MinerMk1_C"), 0.0, &gd),
+            0.0
+        );
+        let geyser = MapNode {
+            id: "g".into(),
+            resource_item_id: "Desc_Geyser_C".into(),
+            purity: NodePurity::Normal,
+            kind: NodeKind::Geyser,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            core_id: None,
+        };
+        assert_eq!(extractor_power_mw(&geyser, None, 100.0, &gd), 0.0);
+    }
+
+    #[test]
+    fn extractor_power_mw_charges_oil_extractor_wattage_even_for_a_stale_miner_claim() {
+        // Same coercion the ipm side does: a legacy claim's Mk* id still
+        // charges the Oil Extractor's 40 MW, not a miner's wattage.
+        let gd = GameData::from_bundled().unwrap();
+        let mw = extractor_power_mw(&oil_node(NodePurity::Normal), Some("Build_MinerMk1_C"), 100.0, &gd);
+        assert!((mw - 40.0).abs() < 0.01, "got {mw}");
+    }
+
+    #[test]
+    fn extractor_power_mw_charges_no_wattage_for_a_resource_well_satellite() {
+        // Codex P1: a Resource Well satellite is unpowered — only the
+        // well's shared Pressuriser draws power, and only once per well.
+        // `power_for_factory` adds that separately, keyed by `core_id`.
+        let gd = GameData::from_bundled().unwrap();
+        let well = MapNode {
+            id: "w".into(),
+            resource_item_id: "Desc_Water_C".into(),
+            purity: NodePurity::Normal,
+            kind: NodeKind::FrackingWell,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            core_id: None,
+        };
+        let mw = extractor_power_mw(&well, None, 100.0, &gd);
+        assert_eq!(mw, 0.0);
+    }
+
+    #[test]
     fn oil_budget_independent_of_miner_assumption() {
         let gd = GameData::from_bundled().unwrap();
         let at_tier0 = resource_budget(&HashMap::new(), &gd, 0, BudgetAssumption::CurrentTierBest);
@@ -588,43 +903,6 @@ mod tests {
         // 60 × 2.0 (Pure) × 1.0 (clock) = 120.
         let ipm = extractor_output_ipm(&water_pure, None, 100.0, &gd);
         assert!((ipm - 120.0).abs() < 0.01, "got {ipm}");
-    }
-
-    #[test]
-    fn available_supply_sums_claimed_ipm_by_item() {
-        let gd = GameData::from_bundled().unwrap();
-        // Use real node ids from the bundled catalog so the lookup
-        // resolves. Pick three known iron nodes.
-        let iron_nodes: Vec<&MapNode> = gd
-            .nodes()
-            .iter()
-            .filter(|n| n.resource_item_id == "Desc_OreIron_C")
-            .take(3)
-            .collect();
-        assert_eq!(iron_nodes.len(), 3);
-
-        let mut claims = HashMap::new();
-        for n in &iron_nodes {
-            claims.insert(
-                n.id.clone(),
-                ClaimRow {
-                    node_id: n.id.clone(),
-                    miner_id: Some("Build_MinerMk1_C".into()),
-                    clock_pct: 100.0,
-                    factory_id: None,
-                    notes: None,
-                    created_at: "n".into(),
-                    updated_at: "n".into(),
-                },
-            );
-        }
-        let supply = available_supply(&claims, &[], &gd);
-        // Mk1 = 60 ipm Normal; three claims of mixed purity should yield
-        // a positive total. We don't pin the exact value (varies with
-        // which three nodes the catalog enumerates first) but the
-        // bookkeeping must roll up under Desc_OreIron_C.
-        assert!(supply["Desc_OreIron_C"] > 0.0);
-        assert_eq!(supply.len(), 1);
     }
 
     #[test]
@@ -671,6 +949,113 @@ mod tests {
         assert!(!f1_supply.contains_key("Desc_OreCopper_C"));
     }
 
+    #[test]
+    fn power_for_factory_only_counts_bound_claims() {
+        // Extractors bound to F1 contribute their wattage; an unbound
+        // claim on the same map contributes nothing to F1 — the same
+        // binding rule `supply_for_factory` already enforces for ipm.
+        let gd = GameData::from_bundled().unwrap();
+        let iron = gd
+            .nodes()
+            .iter()
+            .find(|n| n.resource_item_id == "Desc_OreIron_C")
+            .unwrap();
+        let copper = gd
+            .nodes()
+            .iter()
+            .find(|n| n.resource_item_id == "Desc_OreCopper_C")
+            .unwrap();
+        let mut claims = HashMap::new();
+        claims.insert(iron.id.clone(), claim(&iron.id, "Build_MinerMk1_C", 100.0, Some("F1")));
+        claims.insert(copper.id.clone(), claim(&copper.id, "Build_MinerMk1_C", 100.0, None));
+        let f1_mw = power_for_factory(&claims, &[], "F1", &gd);
+        assert!((f1_mw - 5.0).abs() < 0.01, "only the bound Mk1 counts, got {f1_mw}");
+        let f2_mw = power_for_factory(&claims, &[], "F2", &gd);
+        assert_eq!(f2_mw, 0.0);
+    }
+
+    #[test]
+    fn power_for_factory_charges_one_pressuriser_per_well_not_per_satellite() {
+        // Codex P1: claiming N satellites off the same well used to add N
+        // Resource Well Extractor loads (150 MW each). Satellites are
+        // unpowered; the well's shared Pressuriser (300 MW) is charged
+        // once per distinct `core_id`, however many of its satellites
+        // this factory has claimed.
+        let gd = GameData::from_bundled().unwrap();
+        let satellites: Vec<_> = gd
+            .nodes()
+            .iter()
+            .filter(|n| n.kind == NodeKind::FrackingWell && n.core_id.is_some())
+            .fold(std::collections::HashMap::<String, Vec<&crate::shared::gamedata::types::MapNode>>::new(), |mut acc, n| {
+                acc.entry(n.core_id.clone().unwrap()).or_default().push(n);
+                acc
+            })
+            .into_values()
+            .find(|group| group.len() >= 3)
+            .expect("bundled map data has a well with at least 3 satellites");
+
+        let mut claims = HashMap::new();
+        for sat in satellites.iter().take(3) {
+            claims.insert(
+                sat.id.clone(),
+                claim(&sat.id, "Build_FrackingSmasher_C", 100.0, Some("F1")),
+            );
+        }
+        let pressuriser_mw = gd.building("Build_FrackingSmasher_C").unwrap().power_mw;
+        let mw = power_for_factory(&claims, &[], "F1", &gd);
+        assert!(
+            (mw - pressuriser_mw).abs() < 0.01,
+            "3 satellites off one well should charge the Pressuriser once ({pressuriser_mw} MW), got {mw}"
+        );
+    }
+
+    #[test]
+    fn power_for_factory_never_double_charges_a_well_split_across_two_factories() {
+        // Codex P2: the round-1 fix deduped satellites *within* one
+        // `power_for_factory` call, but a well's satellites can be bound
+        // to different factories — each factory's own call then sees "I
+        // have one satellite of this well" and adds the Pressuriser once
+        // each, for two charges total once a caller like
+        // `list_power_balances` sums every factory's balance. One
+        // satellite bound to F1, another satellite of the *same well* to
+        // F2: only one of the two factories may ever charge the shared
+        // Pressuriser, and neither factory's charge (0 or the full
+        // wattage) may depend on `HashMap` iteration order.
+        let gd = GameData::from_bundled().unwrap();
+        let core_groups: std::collections::HashMap<String, Vec<&crate::shared::gamedata::types::MapNode>> = gd
+            .nodes()
+            .iter()
+            .filter(|n| n.kind == NodeKind::FrackingWell && n.core_id.is_some())
+            .fold(std::collections::HashMap::new(), |mut acc, n| {
+                acc.entry(n.core_id.clone().unwrap()).or_default().push(n);
+                acc
+            });
+        let satellites = core_groups
+            .into_values()
+            .find(|group| group.len() >= 2)
+            .expect("bundled map data has a well with at least 2 satellites");
+
+        let mut claims = HashMap::new();
+        claims.insert(
+            satellites[0].id.clone(),
+            claim(&satellites[0].id, "Build_FrackingSmasher_C", 100.0, Some("F1")),
+        );
+        claims.insert(
+            satellites[1].id.clone(),
+            claim(&satellites[1].id, "Build_FrackingSmasher_C", 100.0, Some("F2")),
+        );
+        let pressuriser_mw = gd.building("Build_FrackingSmasher_C").unwrap().power_mw;
+
+        let f1_mw = power_for_factory(&claims, &[], "F1", &gd);
+        let f2_mw = power_for_factory(&claims, &[], "F2", &gd);
+        let total = f1_mw + f2_mw;
+        assert!(
+            (total - pressuriser_mw).abs() < 0.01,
+            "one well split across two factories must charge the Pressuriser once in total \
+             ({pressuriser_mw} MW), got F1={f1_mw} + F2={f2_mw} = {total}"
+        );
+    }
+
     // ---------- water extractor group tests ----------
 
     fn water_group(count: i64, clock: f32, bank2: Option<(i64, f32)>, factory: Option<&str>) -> WaterGroupRow {
@@ -701,14 +1086,6 @@ mod tests {
     }
 
     #[test]
-    fn available_supply_folds_water_groups_into_water() {
-        let gd = GameData::from_bundled().unwrap();
-        let groups = vec![water_group(4, 100.0, None, None)];
-        let supply = available_supply(&HashMap::new(), &groups, &gd);
-        assert!((supply["Desc_Water_C"] - 480.0).abs() < 0.01);
-    }
-
-    #[test]
     fn supply_for_factory_only_counts_bound_water_groups() {
         let gd = GameData::from_bundled().unwrap();
         let groups = vec![
@@ -719,6 +1096,30 @@ mod tests {
         assert!((f1["Desc_Water_C"] - 480.0).abs() < 0.01, "only the bound group counts");
         let f2 = supply_for_factory(&HashMap::new(), &groups, "F2", &gd);
         assert!(!f2.contains_key("Desc_Water_C"));
+    }
+
+    #[test]
+    fn water_group_power_mw_uses_water_extractor_wattage_for_both_banks() {
+        // Water Extractor is 20 MW. Bank 1: 4 × 20 × 100% = 80. Bank 2:
+        // 2 × 20 × 0.5^1.321928 (≈0.4) = 16. Total 96 — not 100, which is
+        // what a linear (non-curved) clock model would give.
+        let gd = GameData::from_bundled().unwrap();
+        let g = water_group(4, 100.0, Some((2, 50.0)), None);
+        let mw = water_group_power_mw(&g, &gd);
+        assert!((mw - 96.0).abs() < 0.01, "got {mw}");
+    }
+
+    #[test]
+    fn power_for_factory_only_counts_bound_water_groups() {
+        let gd = GameData::from_bundled().unwrap();
+        let groups = vec![
+            water_group(4, 100.0, None, Some("F1")), // 4 × 20 = 80 MW
+            water_group(10, 100.0, None, None),      // unbound
+        ];
+        let f1_mw = power_for_factory(&HashMap::new(), &groups, "F1", &gd);
+        assert!((f1_mw - 80.0).abs() < 0.01, "only the bound group counts, got {f1_mw}");
+        let f2_mw = power_for_factory(&HashMap::new(), &groups, "F2", &gd);
+        assert_eq!(f2_mw, 0.0);
     }
 
     // ---------- resource budget tests ----------

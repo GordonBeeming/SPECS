@@ -2629,7 +2629,7 @@
       "name": "Explosive Rebar",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": false,
-      "unlockTier": 3,
+      "unlockTier": 6,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -3045,7 +3045,7 @@
       "name": "Gas Filter",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": false,
-      "unlockTier": 5,
+      "unlockTier": 6,
       "cycleSeconds": 8,
       "inputs": [
         {
@@ -3773,7 +3773,7 @@
       "name": "Nuke Nobelisk",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": false,
-      "unlockTier": 3,
+      "unlockTier": 6,
       "cycleSeconds": 120,
       "inputs": [
         {
@@ -4045,7 +4045,7 @@
       "name": "Packaged Turbofuel",
       "buildingId": "Build_Packager_C",
       "isAlt": false,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -4457,7 +4457,7 @@
       "name": "Reinforced Iron Plate",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": false,
-      "unlockTier": 0,
+      "unlockTier": 2,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -4797,7 +4797,7 @@
       "name": "Smokeless Powder",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": false,
-      "unlockTier": 3,
+      "unlockTier": 5,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -5321,7 +5321,7 @@
       "name": "Turbo Rifle Ammo",
       "buildingId": "Build_Blender_C",
       "isAlt": false,
-      "unlockTier": 3,
+      "unlockTier": 7,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -5349,7 +5349,7 @@
       "name": "Turbo Rifle Ammo",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": false,
-      "unlockTier": 0,
+      "unlockTier": 6,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -5617,7 +5617,7 @@
       "name": "Unpackage Turbofuel",
       "buildingId": "Build_Packager_C",
       "isAlt": false,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -5761,7 +5761,7 @@
       "name": "Alternate: Adhered Iron Plate",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 16,
       "inputs": [
         {
@@ -5785,7 +5785,7 @@
       "name": "Alternate: Alclad Casing",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 7,
       "cycleSeconds": 8,
       "inputs": [
         {
@@ -5809,7 +5809,7 @@
       "name": "Alternate: Aluminum Beam",
       "buildingId": "Build_ConstructorMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 7,
       "cycleSeconds": 8,
       "inputs": [
         {
@@ -5829,7 +5829,7 @@
       "name": "Alternate: Aluminum Rod",
       "buildingId": "Build_ConstructorMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 7,
       "cycleSeconds": 8,
       "inputs": [
         {
@@ -5849,7 +5849,7 @@
       "name": "Alternate: Automated Miner",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 3,
       "cycleSeconds": 60,
       "inputs": [
         {
@@ -5873,7 +5873,7 @@
       "name": "Alternate: Automated Speed Wiring",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 6,
       "cycleSeconds": 32,
       "inputs": [
         {
@@ -5945,7 +5945,7 @@
       "name": "Alternate: Bolted Frame",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 2,
       "cycleSeconds": 24,
       "inputs": [
         {
@@ -6037,7 +6037,7 @@
       "name": "Alternate: Caterium Computer",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 5,
+      "unlockTier": 6,
       "cycleSeconds": 16,
       "inputs": [
         {
@@ -6129,7 +6129,7 @@
       "name": "Alternate: Classic Battery",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 7,
       "cycleSeconds": 8,
       "inputs": [
         {
@@ -6161,7 +6161,7 @@
       "name": "Alternate: Cloudy Diamonds",
       "buildingId": "Build_HadronCollider_C",
       "isAlt": true,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 3,
       "inputs": [
         {
@@ -6185,7 +6185,7 @@
       "name": "Alternate: Coated Cable",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 8,
       "inputs": [
         {
@@ -6209,7 +6209,7 @@
       "name": "Alternate: Coated Iron Canister",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 4,
       "inputs": [
         {
@@ -6233,7 +6233,7 @@
       "name": "Alternate: Coated Iron Plate",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 8,
       "inputs": [
         {
@@ -6257,7 +6257,7 @@
       "name": "Alternate: Coke Steel Ingot",
       "buildingId": "Build_FoundryMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -6305,7 +6305,7 @@
       "name": "Alternate: Compacted Steel Ingot",
       "buildingId": "Build_FoundryMk1_C",
       "isAlt": true,
-      "unlockTier": 4,
+      "unlockTier": 3,
       "cycleSeconds": 24,
       "inputs": [
         {
@@ -6329,7 +6329,7 @@
       "name": "Alternate: Cooling Device",
       "buildingId": "Build_Blender_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 8,
       "cycleSeconds": 24,
       "inputs": [
         {
@@ -6357,7 +6357,7 @@
       "name": "Alternate: Copper Alloy Ingot",
       "buildingId": "Build_FoundryMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 3,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -6381,7 +6381,7 @@
       "name": "Alternate: Copper Rotor",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 2,
       "cycleSeconds": 16,
       "inputs": [
         {
@@ -6429,7 +6429,7 @@
       "name": "Alternate: Dark Matter Crystallization",
       "buildingId": "Build_HadronCollider_C",
       "isAlt": true,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 3,
       "inputs": [
         {
@@ -6449,7 +6449,7 @@
       "name": "Alternate: Dark Matter Trap",
       "buildingId": "Build_HadronCollider_C",
       "isAlt": true,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 2,
       "inputs": [
         {
@@ -6501,7 +6501,7 @@
       "name": "Alternate: Diluted Fuel",
       "buildingId": "Build_Blender_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 7,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -6525,7 +6525,7 @@
       "name": "Alternate: Diluted Packaged Fuel",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 2,
       "inputs": [
         {
@@ -6581,7 +6581,7 @@
       "name": "Alternate: Electric Motor",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 8,
       "cycleSeconds": 16,
       "inputs": [
         {
@@ -6605,7 +6605,7 @@
       "name": "Alternate: Electrode Aluminum Scrap",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 7,
       "cycleSeconds": 4,
       "inputs": [
         {
@@ -6633,7 +6633,7 @@
       "name": "Alternate: Electrode Circuit Board",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -6657,7 +6657,7 @@
       "name": "Alternate: Electromagnetic Connection Rod",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 7,
+      "unlockTier": 8,
       "cycleSeconds": 15,
       "inputs": [
         {
@@ -6705,7 +6705,7 @@
       "name": "Alternate: Fertile Uranium",
       "buildingId": "Build_Blender_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 8,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -6741,7 +6741,7 @@
       "name": "Alternate: Fine Black Powder",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 4,
+      "unlockTier": 3,
       "cycleSeconds": 8,
       "inputs": [
         {
@@ -6789,7 +6789,7 @@
       "name": "Alternate: Flexible Framework",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 6,
       "cycleSeconds": 16,
       "inputs": [
         {
@@ -6865,7 +6865,7 @@
       "name": "Alternate: Fused Wire",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 2,
       "cycleSeconds": 20,
       "inputs": [
         {
@@ -6889,7 +6889,7 @@
       "name": "Alternate: Heat Exchanger",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 7,
+      "unlockTier": 8,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -6913,7 +6913,7 @@
       "name": "Alternate: Heat-Fused Frame",
       "buildingId": "Build_Blender_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 8,
       "cycleSeconds": 20,
       "inputs": [
         {
@@ -6945,7 +6945,7 @@
       "name": "Alternate: Heavy Encased Frame",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 4,
+      "unlockTier": 6,
       "cycleSeconds": 64,
       "inputs": [
         {
@@ -6977,7 +6977,7 @@
       "name": "Alternate: Heavy Flexible Frame",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 6,
       "cycleSeconds": 16,
       "inputs": [
         {
@@ -7009,7 +7009,7 @@
       "name": "Alternate: Heavy Oil Residue",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -7033,7 +7033,7 @@
       "name": "Alternate: Infused Uranium Cell",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 7,
+      "unlockTier": 8,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -7065,7 +7065,7 @@
       "name": "Alternate: Instant Plutonium Cell",
       "buildingId": "Build_HadronCollider_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 8,
       "cycleSeconds": 120,
       "inputs": [
         {
@@ -7089,7 +7089,7 @@
       "name": "Alternate: Instant Scrap",
       "buildingId": "Build_Blender_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 7,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -7149,7 +7149,7 @@
       "name": "Alternate: Insulated Crystal Oscillator",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 5,
+      "unlockTier": 6,
       "cycleSeconds": 32,
       "inputs": [
         {
@@ -7177,7 +7177,7 @@
       "name": "Alternate: Iron Alloy Ingot",
       "buildingId": "Build_FoundryMk1_C",
       "isAlt": true,
-      "unlockTier": 1,
+      "unlockTier": 3,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -7201,7 +7201,7 @@
       "name": "Alternate: Iron Pipe",
       "buildingId": "Build_ConstructorMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 3,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -7241,7 +7241,7 @@
       "name": "Alternate: Leached Caterium Ingot",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 5,
+      "unlockTier": 7,
       "cycleSeconds": 10,
       "inputs": [
         {
@@ -7265,7 +7265,7 @@
       "name": "Alternate: Leached Copper Ingot",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 5,
+      "unlockTier": 7,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -7289,7 +7289,7 @@
       "name": "Alternate: Leached Iron Ingot",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 5,
+      "unlockTier": 7,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -7397,7 +7397,7 @@
       "name": "Alternate: OC Supercomputer",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 8,
       "cycleSeconds": 20,
       "inputs": [
         {
@@ -7421,7 +7421,7 @@
       "name": "Alternate: Oil-Based Diamonds",
       "buildingId": "Build_HadronCollider_C",
       "isAlt": true,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 3,
       "inputs": [
         {
@@ -7441,7 +7441,7 @@
       "name": "Alternate: Petroleum Diamonds",
       "buildingId": "Build_HadronCollider_C",
       "isAlt": true,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 2,
       "inputs": [
         {
@@ -7485,7 +7485,7 @@
       "name": "Alternate: Plastic AI Limiter",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 2,
+      "unlockTier": 5,
       "cycleSeconds": 15,
       "inputs": [
         {
@@ -7509,7 +7509,7 @@
       "name": "Alternate: Plastic Smart Plating",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 6,
       "cycleSeconds": 24,
       "inputs": [
         {
@@ -7537,7 +7537,7 @@
       "name": "Alternate: Plutonium Fuel Unit",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 8,
       "cycleSeconds": 120,
       "inputs": [
         {
@@ -7561,7 +7561,7 @@
       "name": "Alternate: Polyester Fabric",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 3,
+      "unlockTier": 5,
       "cycleSeconds": 2,
       "inputs": [
         {
@@ -7585,7 +7585,7 @@
       "name": "Alternate: Polymer Resin",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -7609,7 +7609,7 @@
       "name": "Alternate: Pure Aluminum Ingot",
       "buildingId": "Build_SmelterMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 7,
       "cycleSeconds": 2,
       "inputs": [
         {
@@ -7629,7 +7629,7 @@
       "name": "Alternate: Pure Caterium Ingot",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 5,
       "inputs": [
         {
@@ -7653,7 +7653,7 @@
       "name": "Alternate: Pure Copper Ingot",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 24,
       "inputs": [
         {
@@ -7677,7 +7677,7 @@
       "name": "Alternate: Pure Iron Ingot",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -7701,7 +7701,7 @@
       "name": "Alternate: Pure Quartz Crystal",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 8,
       "inputs": [
         {
@@ -7725,7 +7725,7 @@
       "name": "Alternate: Quartz Purification",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 5,
+      "unlockTier": 7,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -7801,7 +7801,7 @@
       "name": "Alternate: Radio Connection Unit",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 7,
+      "unlockTier": 8,
       "cycleSeconds": 16,
       "inputs": [
         {
@@ -7829,7 +7829,7 @@
       "name": "Alternate: Radio Control System",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 7,
       "cycleSeconds": 40,
       "inputs": [
         {
@@ -7885,7 +7885,7 @@
       "name": "Alternate: Recycled Rubber",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -7909,7 +7909,7 @@
       "name": "Alternate: Rigor Motor",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 4,
+      "unlockTier": 6,
       "cycleSeconds": 48,
       "inputs": [
         {
@@ -7937,7 +7937,7 @@
       "name": "Alternate: Rubber Concrete",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -7985,7 +7985,7 @@
       "name": "Alternate: Silicon High-Speed Connector",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 5,
+      "unlockTier": 6,
       "cycleSeconds": 40,
       "inputs": [
         {
@@ -8013,7 +8013,7 @@
       "name": "Alternate: Sloppy Alumina",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 7,
       "cycleSeconds": 3,
       "inputs": [
         {
@@ -8037,7 +8037,7 @@
       "name": "Alternate: Solid Steel Ingot",
       "buildingId": "Build_FoundryMk1_C",
       "isAlt": true,
-      "unlockTier": 4,
+      "unlockTier": 3,
       "cycleSeconds": 3,
       "inputs": [
         {
@@ -8061,7 +8061,7 @@
       "name": "Alternate: Steamed Copper Sheet",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 8,
       "inputs": [
         {
@@ -8085,7 +8085,7 @@
       "name": "Alternate: Steel Canister",
       "buildingId": "Build_ConstructorMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 6,
       "inputs": [
         {
@@ -8129,7 +8129,7 @@
       "name": "Alternate: Steel Rod",
       "buildingId": "Build_ConstructorMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 3,
       "cycleSeconds": 5,
       "inputs": [
         {
@@ -8149,7 +8149,7 @@
       "name": "Alternate: Steel Rotor",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 4,
+      "unlockTier": 3,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -8173,7 +8173,7 @@
       "name": "Alternate: Steel Screws",
       "buildingId": "Build_ConstructorMk1_C",
       "isAlt": true,
-      "unlockTier": 4,
+      "unlockTier": 3,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -8193,7 +8193,7 @@
       "name": "Alternate: Steeled Frame",
       "buildingId": "Build_AssemblerMk1_C",
       "isAlt": true,
-      "unlockTier": 4,
+      "unlockTier": 3,
       "cycleSeconds": 60,
       "inputs": [
         {
@@ -8241,7 +8241,7 @@
       "name": "Alternate: Super-State Computer",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 8,
       "cycleSeconds": 25,
       "inputs": [
         {
@@ -8273,7 +8273,7 @@
       "name": "Alternate: Tempered Caterium Ingot",
       "buildingId": "Build_FoundryMk1_C",
       "isAlt": true,
-      "unlockTier": 3,
+      "unlockTier": 5,
       "cycleSeconds": 8,
       "inputs": [
         {
@@ -8297,7 +8297,7 @@
       "name": "Alternate: Tempered Copper Ingot",
       "buildingId": "Build_FoundryMk1_C",
       "isAlt": true,
-      "unlockTier": 3,
+      "unlockTier": 5,
       "cycleSeconds": 12,
       "inputs": [
         {
@@ -8321,7 +8321,7 @@
       "name": "Alternate: Turbo Blend Fuel",
       "buildingId": "Build_Blender_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 7,
       "cycleSeconds": 8,
       "inputs": [
         {
@@ -8353,7 +8353,7 @@
       "name": "Alternate: Turbo Diamonds",
       "buildingId": "Build_HadronCollider_C",
       "isAlt": true,
-      "unlockTier": 8,
+      "unlockTier": 9,
       "cycleSeconds": 3,
       "inputs": [
         {
@@ -8377,7 +8377,7 @@
       "name": "Alternate: Turbo Electric Motor",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 7,
+      "unlockTier": 8,
       "cycleSeconds": 64,
       "inputs": [
         {
@@ -8409,7 +8409,7 @@
       "name": "Alternate: Turbo Heavy Fuel",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 8,
       "inputs": [
         {
@@ -8433,7 +8433,7 @@
       "name": "Alternate: Turbo Pressure Motor",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 8,
       "cycleSeconds": 32,
       "inputs": [
         {
@@ -8465,7 +8465,7 @@
       "name": "Alternate: Uranium Fuel Unit",
       "buildingId": "Build_ManufacturerMk1_C",
       "isAlt": true,
-      "unlockTier": 7,
+      "unlockTier": 8,
       "cycleSeconds": 300,
       "inputs": [
         {
@@ -8497,7 +8497,7 @@
       "name": "Alternate: Wet Concrete",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 0,
+      "unlockTier": 5,
       "cycleSeconds": 3,
       "inputs": [
         {
@@ -8521,7 +8521,7 @@
       "name": "Turbofuel",
       "buildingId": "Build_OilRefinery_C",
       "isAlt": true,
-      "unlockTier": 3,
+      "unlockTier": 5,
       "cycleSeconds": 16,
       "inputs": [
         {
@@ -8663,11 +8663,11 @@
       "parts": [
         {
           "itemId": "Desc_SpaceElevatorPart_1_C",
-          "quantity": 1000
+          "quantity": 500
         },
         {
           "itemId": "Desc_SpaceElevatorPart_2_C",
-          "quantity": 1000
+          "quantity": 500
         },
         {
           "itemId": "Desc_SpaceElevatorPart_3_C",

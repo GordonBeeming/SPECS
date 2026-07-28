@@ -21,6 +21,10 @@ pub enum Category {
     LockedAlts,
     Flow,
     SupplyPower,
+    /// Belt/pipe throughput vs. what's unlocked — distinct from
+    /// `SupplyPower` (which is "is there enough of the item at all")
+    /// because a segment can be over-cap even when supply is ample.
+    Capacity,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -80,6 +84,15 @@ pub enum FindingKind {
         extractor_id: String,
         allowed_names: Vec<String>,
     },
+    /// The Alts screen has this recipe ticked "unlocked", but its own
+    /// unlock tier is above the playthrough's current one. Warning, not
+    /// error — someone may genuinely have the hard drive early — but a
+    /// self-reported inventory claim above tier still needs surfacing.
+    UnlockedAltAboveTier {
+        recipe_id: String,
+        recipe_name: String,
+        unlock_tier: u8,
+    },
     LinkTransportAboveTier {
         link_id: String,
         from_factory_name: String,
@@ -124,8 +137,11 @@ pub enum FindingKind {
         factory_name: String,
         warning: PlanWarning,
     },
-    /// Factory draws more than it generates. Warning-class: in-game
-    /// grids are shared, so a deficit is only fatal playthrough-wide.
+    /// Factory draws more than it generates. Only reported when the
+    /// grid overall is short (alongside `GridDeficit`) — Satisfactory
+    /// has one shared grid, so a factory with no generators of its own
+    /// is normal as long as the grid covers it, not a per-factory
+    /// problem to chase.
     PowerDeficit {
         factory_id: String,
         factory_name: String,
@@ -134,6 +150,87 @@ pub enum FindingKind {
     GridDeficit {
         generated_mw: f32,
         consumed_mw: f32,
+    },
+    /// A factory's generators demand more fuel or supplemental fluid
+    /// (coal, water, oil...) than its claimed nodes supply. `demand_ipm`
+    /// is the combined total — machine recipe draw plus generator
+    /// draw — because both pull from the same claimed pool; a factory
+    /// whose machine draw alone already exceeded supply is already
+    /// covered by `PlanIssue`'s `RawShort`, so this only fires when the
+    /// generator side is what tips it over.
+    GeneratorFuelShort {
+        factory_id: String,
+        factory_name: String,
+        item_id: String,
+        item_name: String,
+        demand_ipm: f32,
+        claimed_ipm: f32,
+    },
+    /// A plan-graph segment (belt run) carries more than the best belt
+    /// tier unlocked at the current playthrough tier moves on its own.
+    /// Not unbuildable — `belts_needed` parallel belts of that tier
+    /// cover it — but the count is exactly what a player has to work
+    /// out by hand today.
+    SegmentOverBeltCapacity {
+        factory_id: String,
+        factory_name: String,
+        item_id: String,
+        item_name: String,
+        ipm: f32,
+        belt_mark: u8,
+        belt_capacity_ipm: f32,
+        belts_needed: u32,
+    },
+    /// Same as `SegmentOverBeltCapacity` for a fluid segment against
+    /// the best pipe tier unlocked. Split from the belt variant because
+    /// a fluid needs another header, not just another belt laid
+    /// alongside — a distinct build decision worth naming as such.
+    SegmentOverPipeCapacity {
+        factory_id: String,
+        factory_name: String,
+        item_id: String,
+        item_name: String,
+        ipm: f32,
+        pipe_mark: u8,
+        pipe_capacity_ipm: f32,
+        pipes_needed: u32,
+    },
+    /// A fluid plan-graph segment at a tier before any pipe is
+    /// unlocked (Mk1 lands at Tier 3). Unlike the capacity variants
+    /// above, there's no "add more" answer yet — the fluid can't move
+    /// at all until a pipe tier unlocks.
+    FluidSegmentNoPipeAtTier {
+        factory_id: String,
+        factory_name: String,
+        item_id: String,
+        item_name: String,
+        ipm: f32,
+    },
+    /// A claimed extractor is clocked past what its one output port can
+    /// carry off the node. Unlike `SegmentOverBeltCapacity`/
+    /// `SegmentOverPipeCapacity`, there's no "add more belts" fix here —
+    /// a splitter after the port can only divide what already made it
+    /// through — so the advice is to underclock or claim a different
+    /// node instead.
+    ClaimOverPortCapacity {
+        node_id: String,
+        resource_item_name: String,
+        /// Position within this node's (resource, purity) bucket, same
+        /// order Resources lists them in — pairs with `node_x`/`node_y`
+        /// to reproduce that screen's "#N · 1.7km W · 1.5km N" label so
+        /// the finding names a specific node among several of the same
+        /// resource, instead of leaving it ambiguous.
+        node_index: u32,
+        node_x: f32,
+        node_y: f32,
+        extractor_name: String,
+        output_ipm: f32,
+        capacity_ipm: f32,
+        is_fluid: bool,
+        capacity_mark: u8,
+        /// Highest clock percent that would land exactly at the port's
+        /// capacity, given `output_ipm` scales linearly with clock.
+        max_fitting_clock_pct: f32,
     },
     /// A check couldn't run (bad generator row, missing node id...).
     /// Reported instead of failing the whole sweep.

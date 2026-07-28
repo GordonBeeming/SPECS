@@ -65,3 +65,83 @@ describe("AltsView bulk select", () => {
     });
   });
 });
+
+describe("AltsView tier-scoped select", () => {
+  it("Select reachable unlocks only alts at or below the current tier, leaving later-tier alts alone", async () => {
+    // Regression for #97: "Select all" reaches above tier on purpose
+    // (#47), so a narrower action is needed for "everything I can
+    // actually build right now" — the action four tier groups in a row
+    // wanted and didn't have. Mocked playthrough sits at T5.
+    const aboveTier = altRecipe("Recipe_Alt_C_C", "Alt C");
+    aboveTier.unlockTier = 7;
+    vi.spyOn(libraryApi, "recipes").mockResolvedValue([...recipes, aboveTier]);
+
+    renderView(<AltsView />);
+    await screen.findByText("Alt C");
+
+    const selectReachable = screen.getByRole("button", { name: /select reachable/i });
+    expect(selectReachable).not.toBeDisabled();
+
+    fireEvent.click(selectReachable);
+    await waitFor(() => {
+      expect(altsApi.setMany).toHaveBeenCalledWith({
+        // Alt A / Alt B unlock at T0 (reachable at T5); Alt C unlocks at
+        // T7 and must not be swept in.
+        recipeIds: ["Recipe_Alt_A_C", "Recipe_Alt_B_C"],
+        unlocked: true,
+      });
+    });
+  });
+
+  it("disables Select reachable once every reachable alt is already unlocked, even with above-tier alts still locked", async () => {
+    const aboveTier = altRecipe("Recipe_Alt_C_C", "Alt C");
+    aboveTier.unlockTier = 7;
+    vi.spyOn(libraryApi, "recipes").mockResolvedValue([...recipes, aboveTier]);
+    vi.spyOn(altsApi, "list").mockResolvedValue([
+      { recipeId: "Recipe_Alt_A_C", unlockedAt: "2026-01-01T00:00:00Z" },
+      { recipeId: "Recipe_Alt_B_C", unlockedAt: "2026-01-01T00:00:00Z" },
+    ]);
+
+    renderView(<AltsView />);
+    await screen.findByText("Alt C");
+
+    expect(screen.getByRole("button", { name: /select reachable/i })).toBeDisabled();
+    // The plain "Select all" still has above-tier Alt C to offer.
+    expect(screen.getByRole("button", { name: "Select all" })).not.toBeDisabled();
+  });
+});
+
+describe("AltsView above-tier labelling", () => {
+  it("badges a recipe that unlocks above the playthrough's current tier", async () => {
+    // The mocked playthrough sits at T5 (see the module-level mock above).
+    const aboveTier = altRecipe("Recipe_Alt_C_C", "Alt C");
+    aboveTier.unlockTier = 7;
+    vi.spyOn(libraryApi, "recipes").mockResolvedValue([...recipes, aboveTier]);
+
+    renderView(<AltsView />);
+    await screen.findByText("Alt C");
+
+    // "Alt A"/"Alt B" unlock at T0 — no badge. "Alt C" unlocks at T7,
+    // above the T5 playthrough — badge shows and the tier line warns.
+    expect(screen.queryAllByText("above your tier")).toHaveLength(1);
+    expect(screen.getByText(/unlocks at T7/)).toHaveClass("text-warning");
+  });
+
+  it("doesn't badge an above-tier alt that's already ticked unlocked, only styles the row", async () => {
+    // Ticking one ahead of tier is permitted (warn, don't block) — the
+    // badge on the name plus the row tint is the whole signal; nothing
+    // here should disable the checkbox or block the toggle.
+    const aboveTier = altRecipe("Recipe_Alt_C_C", "Alt C");
+    aboveTier.unlockTier = 7;
+    vi.spyOn(libraryApi, "recipes").mockResolvedValue([aboveTier]);
+    vi.spyOn(altsApi, "list").mockResolvedValue([
+      { recipeId: "Recipe_Alt_C_C", unlockedAt: "2026-01-01T00:00:00Z" },
+    ]);
+
+    renderView(<AltsView />);
+    const checkbox = await screen.findByRole("checkbox", { name: /Alt C/i });
+    expect(checkbox).toBeChecked();
+    expect(checkbox).not.toBeDisabled();
+    expect(screen.getByText("above your tier")).toBeInTheDocument();
+  });
+});

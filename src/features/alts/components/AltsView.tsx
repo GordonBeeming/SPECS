@@ -46,6 +46,19 @@ export function AltsView() {
   const noneVisibleUnlocked =
     !unlockedReady || alts.length === 0 || alts.every((r) => !unlockedSet.has(r.id));
 
+  // "Select all" deliberately reaches above tier too (warn, don't block —
+  // someone may really have the hard drive early). But every tier group in
+  // the recorded playthrough has wanted the narrower action instead: only
+  // the alts actually reachable right now, without also pulling in the
+  // next tier's alts sitting in the same filtered list (#97).
+  const currentTier = playthrough.data?.currentTier ?? 0;
+  const reachableAlts = useMemo(
+    () => alts.filter((r) => r.unlockTier <= currentTier),
+    [alts, currentTier],
+  );
+  const allReachableUnlocked =
+    !unlockedReady || reachableAlts.length === 0 || reachableAlts.every((r) => unlockedSet.has(r.id));
+
   if (!playthrough.data) {
     return (
       <Card className="mx-auto max-w-2xl">
@@ -69,6 +82,26 @@ export function AltsView() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            onClick={() =>
+              setAlts.mutate({
+                recipeIds: reachableAlts.map((r) => r.id),
+                unlocked: true,
+                currentlyUnlocked: unlocked.data ?? new Set(),
+              })
+            }
+            disabled={allReachableUnlocked}
+            title={
+              filter.trim()
+                ? `Unlock every alt matching the filter that's reachable at T${currentTier}`
+                : `Unlock every alt reachable at T${currentTier} (leaves later-tier alts alone)`
+            }
+            className="px-2.5 py-1.5 text-xs"
+          >
+            <CheckSquare className="h-3.5 w-3.5" />
+            Select reachable
+          </Button>
           <Button
             variant="ghost"
             onClick={() =>
@@ -126,8 +159,20 @@ export function AltsView() {
         <ul className="flex flex-col divide-y divide-border">
           {alts.map((r) => {
             const isUnlocked = unlocked.data?.has(r.id) ?? false;
+            // The screen deliberately doesn't block ticking an
+            // above-tier alt (warn, don't block — someone may really
+            // have found the hard drive early), but the pre-fix state
+            // was silent about it. Validate now flags it too
+            // (`UnlockedAltAboveTier`) — this badge is the up-front half
+            // of that fix, so ticking one is never a silent surprise.
+            const aboveTier = r.unlockTier > (playthrough.data?.currentTier ?? 0);
             return (
-              <li key={r.id} className="flex items-center gap-3 py-2">
+              <li
+                key={r.id}
+                className={`flex items-center gap-3 py-2 ${
+                  isUnlocked && aboveTier ? "rounded-md border border-warning/30 bg-warning/5 px-2" : ""
+                }`}
+              >
                 <input
                   id={`alt-${r.id}`}
                   type="checkbox"
@@ -150,8 +195,15 @@ export function AltsView() {
                     className="h-7 w-7"
                   />
                   <div>
-                    <div className="text-sm font-medium text-fg">{r.name}</div>
-                    <div className="text-xs text-fg-muted">
+                    <div className="flex items-center gap-2 text-sm font-medium text-fg">
+                      {r.name}
+                      {aboveTier && (
+                        <span className="rounded-full border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning">
+                          above your tier
+                        </span>
+                      )}
+                    </div>
+                    <div className={`text-xs ${aboveTier ? "text-warning" : "text-fg-muted"}`}>
                       {r.id} · unlocks at T{r.unlockTier}
                     </div>
                   </div>

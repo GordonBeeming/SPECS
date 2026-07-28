@@ -52,4 +52,21 @@ describe("<CreateFactoryModal />", () => {
       expect(onClose).toHaveBeenCalled();
     });
   });
+
+  it("closes the icon picker on Escape first, then the modal on a second Escape", () => {
+    // Regresses: Escape did nothing at all here, while every other
+    // modal in the app closes on it. The picker is a nested layer, so
+    // it should unwind before the modal itself does.
+    const onClose = vi.fn();
+    renderWithProviders(<CreateFactoryModal onClose={onClose} />);
+    fireEvent.click(screen.getByRole("button", { name: /pick an icon/i }));
+    expect(screen.getByPlaceholderText(/search icons/i)).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByPlaceholderText(/search icons/i)).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalled();
+  });
 });
