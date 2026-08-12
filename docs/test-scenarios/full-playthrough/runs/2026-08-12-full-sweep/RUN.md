@@ -285,8 +285,9 @@ factory a claim belongs to, and #144 (`c3ca7a74`) closed an ordering hole in
 #141's own fix, where two import rows drawing the same item from the same
 producer could swap each other's belts.
 
-Six PRs merged, 32 issues filed and 21 closed. Vitest went from 470 tests to
-523, cargo from 379 to 406.
+Six PRs merged. 26 issues filed, 20 closed, and the 6 still open are the ones
+listed at the end of this file. Vitest went from 470 tests to 523, cargo from
+379 to 406.
 
 ### The pattern this run keeps producing
 
