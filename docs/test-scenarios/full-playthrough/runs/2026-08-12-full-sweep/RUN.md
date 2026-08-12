@@ -9,8 +9,8 @@ to a list screen is recorded as a finding rather than treated as the way through
 | Tier group | State | Issues |
 | ---------- | ----- | ------ |
 | tier-0     | done — shipped as PR #126, merged `fbf6b410` | #113–#121, #124, #125 fixed |
-| tiers-1-2  | built and green; fix batch in review | #127–#132 |
-| tiers-3-4  | not started | — |
+| tiers-1-2  | done — shipped as PR #133, merged `d33c37c0` | #127–#131 fixed, #132 open |
+| tiers-3-4  | started — Steel Mill part-built, checkpoint not attempted | — |
 | tiers-5-6  | not started | — |
 | tiers-7-8  | not started | — |
 | tier-9     | not started | — |
