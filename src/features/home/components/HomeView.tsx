@@ -38,6 +38,8 @@ import { Card } from "@/shared/ui/Card";
 import { Icon } from "@/shared/ui/Icon";
 import { openPlanDesigner } from "@/shared/nav-store";
 
+import { ReplanOffersCard } from "./ReplanOffersCard";
+
 interface HomeViewProps {
   /** Lets the home tiles deep-link into other tabs. */
   goTo: (route:
@@ -316,6 +318,8 @@ function ActiveHome({ goTo }: HomeViewProps) {
           />
         </div>
       </section>
+
+      <ReplanOffersCard tier={tier} />
 
       {/* Stat dashboard ------------------------------------------------- */}
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
