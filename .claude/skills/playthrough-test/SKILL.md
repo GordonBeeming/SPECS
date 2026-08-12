@@ -49,7 +49,27 @@ Each run owns `docs/test-scenarios/full-playthrough/runs/<YYYY-MM-DD>-<label>/RU
 | tiers-1-2  | not started | — |
 ```
 
-## Workflow
+### Verify the ledger's own claims
+
+The ledger is the one artifact written from memory rather than from the app, so
+it's the one that quietly goes wrong. Every factual claim in it gets checked
+against a command before it's committed:
+
+- **Which PR fixed what** — `git log -S"<Identifier>"` against the symbol the fix
+  introduced. PR subjects are vague enough to read several ways, and a batch PR
+  titled "fix what tier N turned up" often carries repairs a later PR looks like
+  it owns.
+- **Issue counts** — `gh issue list`, never arithmetic on the number range.
+  Issues and PRs share one sequence on GitHub, so counting the span from first to
+  last issue silently folds in every PR.
+- **How a mechanism works** — read the code, not the memory of writing it. A
+  module-scoped queue serializing two callers is easy to write up as the opposite.
+- **Every status table in the file** — a run ledger accumulates more than one, and
+  updating the one you're editing leaves the file contradicting itself.
+
+When a tier group's fixes have shipped, update the ledger in the same batch. A
+ledger that still says a merged PR is in review is worse than one that's silent,
+because it reads as current.
 
 1. **Connect and orient.** Start the driver session. Read the ledger if a run is open; otherwise create the run folder and a fresh playthrough through the UI, named after the run folder.
 2. **Open the tier.** Set the playthrough to the group's top tier, then unlock every alternate recipe with `unlock_tier` at or below it on the Alts screen. The run assumes the pioneer sweeps every reachable hard drive the moment a tier opens.
