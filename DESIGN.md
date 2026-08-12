@@ -243,6 +243,20 @@ node markers + draggable factory pins.
   actually landed — the pan clamps to keep bare canvas out of frame, so
   a node near the world's edge doesn't end up centred and a card pinned
   to the middle would point at empty map.
+- **A pre-filled default has to be defensible, or there shouldn't be
+  one.** A fresh claim's factory is picked in falling order of how much
+  the app actually knows: the factory whose card is open, the only
+  factory there is, the nearest factory *that's currently short of this
+  resource*, then the nearest factory of any kind. Need outranks
+  distance because distance alone answers a question nobody asked —
+  offering a copper plant for an iron node is confidently wrong, and a
+  plausible wrong answer gets accepted without reading in a way that
+  "— none —" never does. Where none of those rules applies (two
+  factories, neither placed, neither short) the picker stays empty
+  rather than pre-binding a coin toss dressed as a measurement. The
+  shortfall this reads is the same one the factory card's "Claim a
+  node" button is built on, so the default can't disagree with the
+  number that sent the player here.
 - **The open card's node ignores the filters.** Whatever is selected
   stays rendered even when a resource, purity or claimed-node filter
   would hide it. The alternative — switching filters off to make room —
@@ -472,6 +486,37 @@ plan-managed machines regenerate (manual machines survive via
 `plan_node_key IS NULL`), and sourced inputs become logistics links
 (self rows never do — they're the local-production marker).
 
+**A saved plan keeps the recipes it was saved with.** The recipe each
+step landed on is written back with the plan, so every later solve
+rebuilds the same sheet. This matters because the pool the solver may
+choose from widens on its own as the playthrough reaches new tiers,
+and plenty of saves happen to a factory the player isn't looking at —
+raising an exporter's target from someone else's Sources panel, or
+dropping an unsourced input onto a pin. A plan is a build sheet for
+machines already standing in the game, so a better plan arriving that
+way puts the app and the factory quietly out of step with no record of
+what moved. Collecting alts changes none of this. The checklist is an
+inventory of hard drives; plans are computed against every alt
+*reachable* at the current tier, and an uncollected one comes back as a
+shopping-list note beside the graph.
+
+**Re-optimize** is the only way in to a redesign, so it's always
+available; a plan that already holds recipes is exactly the plan worth
+re-solving, and a disabled button there leaves the player nothing to
+press. It names the tier it would solve against rather than a count of
+recipes, because "drops your 4 pinned recipes" reads as a threat to work
+the player did when most of those recipes were the solver's own choice
+and they pinned nothing. The confirmation says what can move — the
+recipes, plus the imports and links a recipe change drags with them —
+and an Undo rides the save.
+
+The offer that sends people there lives on **Home**, under the tier
+picker, since reaching a tier is what makes a better plan possible.
+Every factory it names carries both sides of its machine and power
+figures and the recipes that would swap. Applying is per factory,
+because the whole point is being able to redesign the new plant and
+leave the one already standing in the game alone.
+
 The header edits the factory in place: click the name to rename,
 the icon to open the icon picker, the trash to delete (the
 confirmation lists factories that currently draw inputs from this
@@ -523,13 +568,23 @@ the whole-playthrough sweep on mount. Presentation rules:
   (CircleAlert danger / TriangleAlert warning / Info note); clickable
   rows deep-link to the owning view and close the panel.
 - **Three severities, and the third one earns its place.** A note is
-  something true the player should know and cannot act on — a
-  hand-fed Biomass Burner has no node to claim, so counting it as a
-  shortfall is an accusation the player can never answer. Notes stay
-  out of the error and warning counts, and the panel keeps its
-  all-clear with the notes listed underneath. Anything the player
-  *can* fix stays a warning; softening one to a note to reach a clean
-  sweep is the failure this level exists to prevent.
+  something true the player should know that no action of theirs will
+  ever retire. Two shapes qualify: nothing to fix (a hand-fed Biomass
+  Burner has no node to claim, so counting it as a shortfall is an
+  accusation the player can never answer), and nothing the app can see
+  fixed (a segment carrying 280/min is four parallel belts, which is
+  ordinary play, and laying them leaves it reading 280/min). Notes
+  stay out of the error and warning counts, and the panel keeps its
+  all-clear with the notes listed underneath, phrased as facts rather
+  than demands: "needs 3 belts at Mk.2", never "or an underclock". A
+  note that does describe an action has to describe one the player can
+  actually take — Liquid Biofuel arrives by pipe, so the row names the
+  hand-gathering at the root of its chain instead of telling anyone to
+  hand-feed a fluid. Anything the player can fix *and the app then
+  reads as fixed* stays a warning: a miner clocked past its single
+  output port is unbuildable, and the warning clears the moment the
+  claim's clock comes down. Softening a warning to a note to reach a
+  clean sweep is the failure this level exists to prevent.
 - The hard-drive shopping list is its own warning-tinted card above
   the categories — it's the actionable output, not just another
   finding row.

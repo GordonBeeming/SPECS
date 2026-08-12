@@ -8,8 +8,8 @@ to a list screen is recorded as a finding rather than treated as the way through
 
 | Tier group | State | Issues |
 | ---------- | ----- | ------ |
-| tier-0     | done — checkpoint green on the fixed build | #113–#121 fixed, #122 split out |
-| tiers-1-2  | not started | — |
+| tier-0     | done — shipped as PR #126, merged `fbf6b410` | #113–#121, #124, #125 fixed |
+| tiers-1-2  | built and green; fix batch in review | #127–#132 |
 | tiers-3-4  | not started | — |
 | tiers-5-6  | not started | — |
 | tiers-7-8  | not started | — |
@@ -141,3 +141,100 @@ record.
 - **#119.3** asked for the claim row to follow the editor live. That row was
   deliberately frozen under #49, with a test guarding it. The fix keeps both
   goals: the row follows the draft and grows an `unsaved` pill when it diverges.
+
+## Tiers 1–2
+
+Tier set to 2 on entry; all 7 alts reachable at T2 unlocked in one press of
+"Select reachable".
+
+### What was built
+
+**Elevator Yard** (new) — 2.1 km W · 1.0 km N. Smart Plating 5/min for Space
+Elevator Phase 1. 3 Assemblers · 35.4 MW. Both inputs imported from Iron Works;
+claims none of its own. Layout: [`factories/elevator-yard.html`](factories/elevator-yard.html).
+
+**Iron Works** (delta) — gained Reinforced Iron Plate 5/min, Rotor 9/min and
+Modular Frame 4/min, and became the run's first exporter. 36 machines +
+4 extractors · 207.8 MW, up from 6 machines · 28.0 MW at Tier 0. Iron ore
+demand went 60 → 280.9/min, covered by two new Pure nodes at 100% (120/min
+each) alongside the two original Normals, 300/min claimed in total.
+
+The optimizer picked Stitched Iron Plate for RIP, which needs Wire, so Iron
+Works grew a wire line of its own — fed by the Iron Wire alt from iron ingot
+rather than by copper.
+
+**Copper Works** (delta) — gained Copper Sheet 10/min. Adding it pushed part of
+the wire production onto the Iron Wire alt, so Copper Works now needs 22.2/min
+of iron ore and claims a Normal node at 50% for it.
+
+**Power** — 11 Biomass Burners across the three factories, 330 MW generated
+against 274 MW drawn.
+
+### Checkpoint
+
+| Check | Result |
+| ----- | ------ |
+| Phase 1 deliverable planned | pass — Smart Plating 5/min |
+| Iron Works → Elevator Yard link with a belt plan | pass — two Mk2 links, 5/min each |
+| No belt segment over 120/min | see below — two segments need parallel belts |
+| Validate (before fixes) | 0 errors, 2 warnings, 3 notes |
+| Validate (on the fixed build) | **"Nothing to fix at T2" — 0 errors, 0 warnings, 5 notes** |
+
+The two belt warnings became notes once #130 landed, phrased as layout facts —
+"Screws segment runs 225.0/min — needs 2 belts at Mk.2 (120/min each)" — because
+running parallel belts is normal play, not a defect to clear. The fuel notes
+were reworded by #131 to "every route to it starts with hand-gathered pickups,
+so no build removes the gathering", which is true of a fluid you can only pipe
+as well as a solid you can shovel; the old wording told you to hand-feed
+Liquid Biofuel.
+
+### Findings
+
+| # | Severity | Title |
+| - | -------- | ----- |
+| #127 | blocking-flow | "import instead" adds the source with zero flow, so nothing changes |
+| #128 | friction | Unlocking alts silently re-plans factories the player already built |
+| #129 | friction | Claim popup defaults to the nearest factory even when it doesn't use that resource |
+| #130 | polish | Belt-capacity warnings can't be cleared by building it correctly |
+
+#127 is the tier's headline: the app offers "Iron Works already makes this,
+5/min spare — import instead", and clicking it changes nothing on screen. It
+adds the source at 0/min, so the solver keeps everything local. Typing the cap
+by hand does the whole job — 21 machines/111.6 MW → 12/74.5 MW. And even done
+correctly, only the consuming end is configured; the producer needs its Export
+set separately or the link draws from nothing.
+
+### What worked
+
+"Select reachable" on the Alts screen unlocks exactly the right set in one
+press, and says what it's about to do first. The plan graph spots surplus in
+other factories on its own and offers the import before being asked — the offer
+is right, it's only the click that doesn't land. And three Tier 0 fixes held up
+under real use: Solid Biofuel appeared in the fuel picker at T2 and not before,
+the stacked-node pager walked a 3-node cluster to find the unclaimed one, and
+every unclaimed node tooltip carried its yield and coordinates before commitment.
+
+### What the Tiers 1–2 fixes turned up
+
+Two of the four issues had the wrong cause written into them, and both corrections
+came from a teammate reading the code rather than from the run.
+
+**#127 named the wrong mechanism, and the fix I suggested would have shipped the
+bug.** A `null` cap on an external source doesn't mean "the solver ignores the
+import" — it resolves to *whatever the producer actually offers*, and a factory
+with no export slice open offers zero. So the zero-flow symptom and the
+"exports cover 0.0" error are one fact seen from two ends, not two bugs. My
+suggested fix — default the cap — would have bound the LP through
+`declared_import_caps`, moved the numbers on screen, and left the link still
+broken. Harder to catch than the original, because it looks fixed.
+
+**#128 named the wrong trigger, and the real one is worse.** Unlocking alts
+cannot change a plan; plans solve against tier-reachable alts, not the collected
+set, and there's a test pinning that now. What rewrote Iron Works was a tier
+bump plus any later plan *save* — and saves fire on factories the player isn't
+looking at, including from `raise_export_target` and `assign_import_source`.
+Which means **#127's own fix makes those saves more frequent**: repairing one
+issue in this batch would have quietly widened the other.
+
+That pairing is the argument for fixing a tier group as one batch rather than
+issue by issue. Neither interaction is visible from a single issue.
