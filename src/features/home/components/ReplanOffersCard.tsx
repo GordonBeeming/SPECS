@@ -85,7 +85,9 @@ function OfferRow({
             from everything reachable at Tier {tier}, alts included. The new choices can
             change what this factory needs, so existing imports or links may end up
             unsourced or unused. Its machine list is rebuilt straight away — there's no
-            save to hold it back — and you can undo it right after.
+            save to hold it back — and you can undo it right after. A link that survives
+            keeps the transport you gave it; one the new recipes drop comes back as a
+            plain belt.
           </p>
           <div className="mt-2 flex items-center gap-2">
             <Button

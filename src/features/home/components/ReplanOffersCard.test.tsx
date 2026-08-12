@@ -123,8 +123,11 @@ describe("<ReplanOffersCard />", () => {
 
     const confirm = await confirmPanel();
     expect(reoptimize).not.toHaveBeenCalled();
-    // It has to say what moves, not just ask twice.
+    // It has to say what moves, not just ask twice — including the one
+    // thing the Undo beside it can't put back.
     expect(confirm).toHaveTextContent(/imports or links/i);
+    expect(confirm).toHaveTextContent(/survives keeps the transport you gave it/);
+    expect(confirm).toHaveTextContent(/comes back as a plain belt/);
 
     await user.click(within(confirm).getByRole("button", { name: "Cancel" }));
     expect(reoptimize).not.toHaveBeenCalled();

@@ -457,7 +457,8 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
             This drops the recipes {factoryName} is built on and picks fresh ones from everything
             reachable at Tier {currentTier}, alts included. The new choices can change what this
             factory needs, so existing imports or links may end up unsourced or unused, and the
-            machine list is rebuilt. You can undo it right after.
+            machine list is rebuilt. You can undo it right after. A link that survives keeps the
+            transport you gave it; one the new recipes drop comes back as a plain belt.
           </p>
           <div className="mt-2 flex items-center gap-2">
             <Button variant="ghost" onClick={() => setConfirmReoptimize(false)} className="px-3 py-1 text-xs">

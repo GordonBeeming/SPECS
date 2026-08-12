@@ -270,6 +270,10 @@ describe("<PlanDesignerView /> — Re-optimize", () => {
     expect(dialog).toHaveTextContent(/reachable at Tier 5/);
     expect(dialog).toHaveTextContent(/imports or links may end up unsourced or unused/);
     expect(dialog).not.toHaveTextContent(/pinned/);
+    // The one thing the Undo can't put back, said before the press
+    // rather than discovered after it.
+    expect(dialog).toHaveTextContent(/survives keeps the transport you gave it/);
+    expect(dialog).toHaveTextContent(/comes back as a plain belt/);
   });
 
   it("is offered on a plan that has products but no recipes recorded against it", async () => {
