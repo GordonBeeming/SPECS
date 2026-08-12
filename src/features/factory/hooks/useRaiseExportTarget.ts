@@ -13,6 +13,52 @@ export interface RaiseExportTargetVars {
 }
 
 /**
+ * The tail of each exporter's chain of in-flight raises.
+ *
+ * Keyed by exporter because that is the width of the write: a raise
+ * reads the exporter's whole plan, rewrites the one target being raised
+ * and saves every target back, so two against the same exporter means
+ * the second save carries the first's stale targets and silently drops
+ * it. Two against *different* exporters touch different plans and are
+ * free to overlap, which is why this is a map and not one queue.
+ *
+ * Module-level, rather than a ref or a context, because the writers
+ * that need ordering do not share a React tree: the graph's "import
+ * instead" and the Sources panel's "Raise target" are separate hook
+ * instances, and a popped-out factory window is a second React root
+ * again. Anything React-scoped hands each of them its own queue and
+ * leaves exactly the race the queue exists to close. One app window is
+ * one process against one playthrough file, so module scope is the same
+ * scope the write actually contends in.
+ */
+const raiseQueues = new Map<string, Promise<void>>();
+
+function enqueueRaise(
+  exporterFactoryId: string,
+  raise: () => Promise<RaiseExportTargetResult>,
+): Promise<RaiseExportTargetResult> {
+  const tail = raiseQueues.get(exporterFactoryId) ?? Promise.resolve();
+  const result = tail.then(raise);
+  // Whatever queues behind this one chains onto a promise that cannot
+  // reject, so a raise that fails hands its error to its own caller
+  // without wedging every later raise against that exporter.
+  const settled = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  raiseQueues.set(exporterFactoryId, settled);
+  void settled.then(() => {
+    // Only the last raise clears the entry. Anything that queued up
+    // while this one ran is the tail now and still has to be waited on,
+    // and dropping it would let the next click run alongside it.
+    if (raiseQueues.get(exporterFactoryId) === settled) {
+      raiseQueues.delete(exporterFactoryId);
+    }
+  });
+  return result;
+}
+
+/**
  * Ask another factory to export enough of an item for this one.
  *
  * A raise moves the exporter's plan, its machines and every link out of
@@ -25,16 +71,24 @@ export interface RaiseExportTargetVars {
  * `beneficiaryFactoryId` is the factory asking; the backend discounts
  * its own existing draw, so topping up a source already supplying you
  * is asked for as the total you want, not the difference.
+ *
+ * Raises against one exporter run one at a time however fast they are
+ * asked for, and the gate is the mutation itself so no caller can go
+ * round it. Clicks are still accepted while one is running: they queue,
+ * the caller sees the mutation as pending the whole time, and an offer
+ * from an unrelated factory is never walled off waiting on it.
  */
 export function useRaiseExportTarget(beneficiaryFactoryId: string) {
   const queryClient = useQueryClient();
   return useMutation<RaiseExportTargetResult, Error, RaiseExportTargetVars>({
     mutationFn: (vars) =>
-      plannerApi.raiseExportTarget(
-        vars.exporterFactoryId,
-        vars.itemId,
-        vars.neededIpm,
-        beneficiaryFactoryId,
+      enqueueRaise(vars.exporterFactoryId, () =>
+        plannerApi.raiseExportTarget(
+          vars.exporterFactoryId,
+          vars.itemId,
+          vars.neededIpm,
+          beneficiaryFactoryId,
+        ),
       ),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.factory.exportOffers });

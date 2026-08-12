@@ -32,14 +32,10 @@ const NO_PENDING: ReadonlySet<string> = new Set();
  * logistics link the exporter never agreed to, which the validation
  * sweep reports as "exports cover 0.0" from the other side.
  *
- * Raises run one at a time, however fast the offers are clicked. A
- * raise is a read-modify-write of the exporter's whole plan — it reads
- * every target, rewrites the one being raised and saves the lot — so
- * two in flight against the same producer means the second one's save
- * carries the first one's stale targets and silently drops it. Clicks
- * are still accepted while one is running: they queue, and an offer
- * from an unrelated factory is never walled off just because some
- * other raise hasn't come back yet.
+ * Clicking several offers before the first comes back is fine.
+ * `useRaiseExportTarget` serializes the raises per producer, so the
+ * source row each click adds lands after that click's own raise, and
+ * offers from different producers still run side by side.
  */
 export function useImportFromProducer({
   factoryId,
@@ -59,7 +55,6 @@ export function useImportFromProducer({
   // remembers its latest call, so a queued raise starting would wipe
   // the message from the one that just failed before it was read.
   const [error, setError] = useState<Error | null>(null);
-  const queueRef = useRef<Promise<void>>(Promise.resolve());
 
   const { mutateAsync } = raise;
   const importFromProducer = useCallback(
@@ -71,13 +66,11 @@ export function useImportFromProducer({
       }
       setError(null);
       setPendingItemIds((prev) => new Set(prev).add(itemId));
-      // The queue only ever grows by chaining onto a promise that
-      // cannot reject, so one failed raise can't strand the ones behind
-      // it. What each raise asks for was decided from the offer as it
-      // read at click time; that stays right while it waits, because
-      // `neededIpm` is this factory's own demand and the backend
+      // What this raise asks for was decided from the offer as it read
+      // at click time, and that stays right however long it waits its
+      // turn: `neededIpm` is this factory's own demand, and the backend
       // re-measures the producer's spare when the raise actually runs.
-      queueRef.current = queueRef.current.then(async () => {
+      void (async () => {
         try {
           const result = await mutateAsync({
             exporterFactoryId: source.factoryId,
@@ -95,7 +88,7 @@ export function useImportFromProducer({
             return next;
           });
         }
-      });
+      })();
     },
     [mutateAsync, addExternalSource],
   );
