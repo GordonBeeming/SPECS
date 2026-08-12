@@ -782,7 +782,7 @@ pub fn compute_plan_graph(
     // One table per compute, shared by the candidate gate and the
     // after-the-fact warning pass.
     let tier_context =
-        current_tier.map(|t| (t, tier::item_tier_table(game_data, tier::AltMode::On)));
+        current_tier.map(|t| (t, tier::item_tier_table(game_data, tier::AltMode::On, tier::Sourcing::Automated)));
     let gate = tier_context
         .as_ref()
         .and_then(|(t, table)| tier_gate(targets, table, *t, game_data));
@@ -2011,7 +2011,7 @@ mod tests {
         // Tier 6 plan may come from it — however a recipe's own
         // `unlock_tier` is stamped.
         let gd = GameData::from_bundled().unwrap();
-        let table = tier::item_tier_table(&gd, tier::AltMode::On);
+        let table = tier::item_tier_table(&gd, tier::AltMode::On, tier::Sourcing::Automated);
         let graph = compute_plan_graph(
             "fac-self",
             &[target("Desc_Computer_C", 5.0)],

@@ -1,4 +1,4 @@
-import { CircleAlert, FlaskConical, RefreshCw, ShieldCheck, TriangleAlert, X } from "lucide-react";
+import { CircleAlert, FlaskConical, Info, RefreshCw, ShieldCheck, TriangleAlert, X } from "lucide-react";
 
 import { Button } from "@/shared/ui/Button";
 import { openPlanDesigner, useNavStore } from "@/shared/nav-store";
@@ -87,7 +87,8 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
 
 function Report({ report, onClose }: { report: ValidationReport; onClose: () => void }) {
   const errors = report.findings.filter((f) => f.severity === "error").length;
-  const warnings = report.findings.length - errors;
+  const notes = report.findings.filter((f) => f.severity === "info").length;
+  const warnings = report.findings.length - errors - notes;
 
   if (report.findings.length === 0 && report.altShoppingList.length === 0) {
     return (
@@ -101,15 +102,42 @@ function Report({ report, onClose }: { report: ValidationReport; onClose: () => 
     );
   }
 
+  // Notes aren't problems, so a playthrough carrying nothing else still
+  // gets its all-clear — with the notes listed underneath rather than
+  // swapped for a count that reads like something went wrong.
+  const allClear = errors === 0 && warnings === 0 && report.altShoppingList.length === 0;
+
   return (
     <div className="flex flex-col gap-5">
+      {allClear && (
+        <div className="flex flex-col items-center gap-2 pt-6 text-center">
+          <ShieldCheck className="h-8 w-8 text-success" />
+          <p className="text-sm font-medium text-fg">
+            Nothing to fix at T{report.currentTier}.
+          </p>
+        </div>
+      )}
+      {/* Each count pill carries colour + icon + label, per DESIGN.md.
+          The icon is what separates the notes pill from the plain
+          `tier T{n}` chip beside it: without one the two were the same
+          neutral pill differing only in font weight, which is not a
+          distinction anyone reads. The tier chip stays bare on purpose
+          — it's metadata, not a status. */}
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="rounded-full border border-danger/40 bg-danger/10 px-2.5 py-0.5 font-medium text-danger">
+        <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger/10 px-2.5 py-0.5 font-medium text-danger">
+          <CircleAlert className="h-3 w-3 shrink-0" aria-hidden="true" />
           {errors} error{errors === 1 ? "" : "s"}
         </span>
-        <span className="rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 font-medium text-warning">
+        <span className="inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 font-medium text-warning">
+          <TriangleAlert className="h-3 w-3 shrink-0" aria-hidden="true" />
           {warnings} warning{warnings === 1 ? "" : "s"}
         </span>
+        {notes > 0 && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 font-medium text-primary">
+            <Info className="h-3 w-3 shrink-0" aria-hidden="true" />
+            {notes} note{notes === 1 ? "" : "s"}
+          </span>
+        )}
         <span className="rounded-full border border-border px-2.5 py-0.5 text-fg-muted">
           tier T{report.currentTier}
         </span>
@@ -200,6 +228,7 @@ function findingTarget(f: Finding): (() => void) | null {
     case "powerDeficit":
     case "gridDeficit":
     case "generatorFuelShort":
+    case "generatorFuelHandFed":
       return () => nav.goTo("power");
     case "segmentOverBeltCapacity":
     case "segmentOverPipeCapacity":
@@ -258,6 +287,8 @@ function findingText(f: Finding): string {
       return `Grid short: ${f.consumedMw.toFixed(0)} MW drawn vs ${f.generatedMw.toFixed(0)} MW generated`;
     case "generatorFuelShort":
       return `${f.factoryName}: generators need ${f.demandIpm.toFixed(1)}/min of ${f.itemName}, claims cover ${f.claimedIpm.toFixed(1)}`;
+    case "generatorFuelHandFed":
+      return `${f.factoryName}: generators burn ${f.demandIpm.toFixed(1)}/min of ${f.itemName} — no belt can supply it, so this one's fed by hand`;
     case "segmentOverBeltCapacity":
       return `${f.factoryName}: ${f.itemName} segment runs ${f.ipm.toFixed(1)}/min — needs ${f.beltsNeeded}× Mk.${f.beltMark} belts (${f.beltCapacityIpm}/min each) or an underclock`;
     case "segmentOverPipeCapacity":
@@ -290,8 +321,18 @@ function planWarningText(w: PlanWarning): string {
 
 function FindingRow({ finding, onNavigate }: { finding: Finding; onNavigate: () => void }) {
   const target = findingTarget(finding);
-  const Icon = finding.severity === "error" ? CircleAlert : TriangleAlert;
-  const tone = finding.severity === "error" ? "text-danger" : "text-warning";
+  const Icon =
+    finding.severity === "error"
+      ? CircleAlert
+      : finding.severity === "warning"
+        ? TriangleAlert
+        : Info;
+  const tone =
+    finding.severity === "error"
+      ? "text-danger"
+      : finding.severity === "warning"
+        ? "text-warning"
+        : "text-fg-muted";
   const body = (
     <span className="flex items-start gap-2 text-left text-xs text-fg">
       <Icon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${tone}`} />

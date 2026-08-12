@@ -2,6 +2,11 @@ import type { FilterOption } from "@/shared/ui/FilterSelect";
 import type { Item, Recipe } from "@/features/library/types";
 import type { ItemTier } from "./types";
 
+/** The one category no factory produces: a miner's output. Equipment
+ * deliberately isn't here — the Portable Miner has an Assembler alt,
+ * and a factory built around it is ordinary mid-game play. */
+const UNPRODUCIBLE_CATEGORIES: ReadonlySet<string> = new Set(["raw"]);
+
 /**
  * Tier-grouped item options for "what should this factory make?"
  * pickers.
@@ -17,6 +22,12 @@ import type { ItemTier } from "./types";
  * supported, and the plan carries an above-tier warning of its own once
  * it computes; the group header and hint are so the choice is an
  * informed one.
+ *
+ * What isn't pickable is anything a factory can't produce: raw
+ * resources (a miner's job, and the planner rejects them as targets)
+ * and items whose only route to the player is hand gathering.
+ * `tier === null` is exactly that second group — Wood, Biomass, Solid
+ * Biofuel, and everything else no belt ever carries.
  */
 export function buildTargetOptions(
   items: Item[] | undefined,
@@ -25,18 +36,20 @@ export function buildTargetOptions(
 ): FilterOption[] {
   if (!items || !itemTiers) return [];
   const tiers = new Map(itemTiers.map((t) => [t.itemId, t]));
-  const eligible = items.filter((i) => i.category !== "raw" && tiers.has(i.id));
-  const tierOf = (itemId: string): number => tiers.get(itemId)?.tier ?? 99;
-  eligible.sort((a, b) => {
-    const at = tierOf(a.id);
-    const bt = tierOf(b.id);
-    return at === bt ? a.name.localeCompare(b.name) : at - bt;
-  });
-  return eligible.map((i) => {
-    const entry = tiers.get(i.id);
-    const tier = entry?.tier ?? null;
-    const aboveTier = tier !== null && currentTier !== undefined && tier > currentTier;
-    const standardTier = entry?.standardTier ?? null;
+
+  const producible: { item: Item; tier: number; standardTier: number | null }[] = [];
+  for (const item of items) {
+    if (UNPRODUCIBLE_CATEGORIES.has(item.category)) continue;
+    const entry = tiers.get(item.id);
+    if (!entry || entry.tier === null) continue;
+    producible.push({ item, tier: entry.tier, standardTier: entry.standardTier });
+  }
+  producible.sort((a, b) =>
+    a.tier === b.tier ? a.item.name.localeCompare(b.item.name) : a.tier - b.tier,
+  );
+
+  return producible.map(({ item, tier, standardTier }) => {
+    const aboveTier = currentTier !== undefined && tier > currentTier;
     // The alt is only load-bearing when the standard route is out of
     // reach *at the tier you're on*. An item whose standard recipe
     // works right now doesn't need an alt just because some alt would
@@ -45,14 +58,13 @@ export function buildTargetOptions(
     // that are. With no tier to compare against, only an alt-only item
     // (no standard route at all) qualifies.
     const needsAlt =
-      tier !== null &&
       !aboveTier &&
       (standardTier === null || (currentTier !== undefined && standardTier > currentTier));
     return {
-      value: i.id,
-      label: i.name,
-      iconId: i.id,
-      group: tier === null ? "Tier ?" : aboveTier ? `Tier ${tier} — not unlocked yet` : `Tier ${tier}`,
+      value: item.id,
+      label: item.name,
+      iconId: item.id,
+      group: aboveTier ? `Tier ${tier} — not unlocked yet` : `Tier ${tier}`,
       hint: aboveTier ? "above your tier" : needsAlt ? "needs an alt recipe" : undefined,
     };
   });

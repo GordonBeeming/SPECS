@@ -233,34 +233,137 @@ impl GameData {
     /// produces its output — which grounds the chain out through the
     /// rod, and through uranium ore, which genuinely is extracted.
     pub fn is_extracted_resource(&self, item_id: &str) -> bool {
-        EXTRACTED_RESOURCE_IDS.contains(&item_id)
+        EXTRACTED_RESOURCES.iter().any(|(id, _)| *id == item_id)
     }
 
     /// The same set as a list, for the frontend. `library_extracted_resources`
     /// ships it over IPC so the TypeScript raw-demand trace terminates on
     /// exactly the ids the planner terminates on.
-    pub fn extracted_resources(&self) -> &'static [&'static str] {
-        EXTRACTED_RESOURCE_IDS
+    pub fn extracted_resources(&self) -> Vec<&'static str> {
+        EXTRACTED_RESOURCES.iter().map(|(id, _)| *id).collect()
+    }
+
+    /// How `item_id` reaches the player without being manufactured.
+    ///
+    /// "Extracted" and "available from the start" are two different
+    /// claims, and only the first is true of every raw resource: Crude
+    /// Oil needs an Oil Extractor and Nitrogen Gas a resource well, so
+    /// treating the whole raw list as Tier 0 invites a player to plan a
+    /// factory around something five tiers out of reach.
+    pub fn raw_supply(&self, item_id: &str) -> RawSupply {
+        let Some((_, extractor)) = EXTRACTED_RESOURCES.iter().find(|(id, _)| *id == item_id) else {
+            return RawSupply::Manufactured;
+        };
+        let Some(building_id) = extractor else {
+            return RawSupply::WorkedInPlace;
+        };
+        match self.building(building_id) {
+            Some(b) => RawSupply::Extracted { unlock_tier: b.unlock_tier },
+            // `validate_id_tables` fails the load before this can
+            // happen for the bundled data; a hand-built `GameData` in a
+            // test can still get here, and answering "tier 0" would be
+            // a confident wrong number.
+            None => RawSupply::ExtractorMissing,
+        }
+    }
+
+    /// The tier that first puts `item_id` on a belt or in a pipe, or
+    /// `None` when nothing does. Convenience over [`Self::raw_supply`]
+    /// for callers that only need the number; anything that has to tell
+    /// "no extractor" from "a broken table" should match on the enum.
+    pub fn extraction_tier(&self, item_id: &str) -> Option<u8> {
+        match self.raw_supply(item_id) {
+            RawSupply::Extracted { unlock_tier } => Some(unlock_tier),
+            _ => None,
+        }
+    }
+
+    /// True for the things the player walks up to and picks up — no
+    /// building extracts them and no recipe makes them, so they're
+    /// available from the first minute and can never be automated.
+    ///
+    /// Hand-fed power is the whole reason the Biomass Burner exists,
+    /// so these have to be *obtainable* at Tier 0 without also being
+    /// plannable factory inputs. See `planner::tier::Sourcing` for the
+    /// two answers that split on.
+    pub fn is_hand_gathered(&self, item_id: &str) -> bool {
+        HAND_GATHERED_ITEM_IDS.contains(&item_id)
     }
 }
 
-/// Backing list for `GameData::is_extracted_resource` — see that method
-/// for what earns an id a place here and why generator byproducts don't.
-const EXTRACTED_RESOURCE_IDS: &[&str] = &[
-    "Desc_OreIron_C",
-    "Desc_OreCopper_C",
-    "Desc_OreGold_C",
-    "Desc_Stone_C",
-    "Desc_Coal_C",
-    "Desc_Sulfur_C",
-    "Desc_OreBauxite_C",
-    "Desc_RawQuartz_C",
-    "Desc_OreUranium_C",
-    "Desc_SAM_C",
-    "Desc_LiquidOil_C",
-    "Desc_Water_C",
-    "Desc_NitrogenGas_C",
-    "Desc_Geyser_C",
+/// Why an item needs no recipe. Three situations that all used to come
+/// back as a bare `None`, which is how "a geyser is never on a belt"
+/// and "this table names a building the dataset doesn't have" ended up
+/// indistinguishable from "this is an ordinary manufactured part".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RawSupply {
+    /// Not a raw resource — a recipe is the only way to get it.
+    Manufactured,
+    /// An extractor puts it on a belt or in a pipe from `unlock_tier`.
+    Extracted { unlock_tier: u8 },
+    /// Claimable as a node but never carried anywhere: a geyser feeds
+    /// the Geothermal Generator standing on it. `is_extracted_resource`
+    /// is still true — the resource-node slice claims one — while the
+    /// tier model treats it as reaching no chain, and both are right.
+    WorkedInPlace,
+    /// The table names an extractor this dataset has no building for.
+    /// Broken data rather than an answer about the game.
+    ExtractorMissing,
+}
+
+/// Backing list for `GameData::is_extracted_resource` and
+/// `raw_supply`: resource id → the building that works it, or
+/// `None` when nothing extracts it onto a belt. See
+/// `is_extracted_resource` for what earns an id a place here and why
+/// generator byproducts don't.
+///
+/// The extractor's *tier* deliberately isn't written here — it's read
+/// off the building in the dataset, so a dataset that moves the Oil
+/// Extractor moves Crude Oil with it. `validate` fails the load if any
+/// of these ids stops resolving.
+pub(super) const EXTRACTED_RESOURCES: &[(&str, Option<&str>)] = &[
+    ("Desc_OreIron_C", Some("Build_MinerMk1_C")),
+    ("Desc_OreCopper_C", Some("Build_MinerMk1_C")),
+    ("Desc_OreGold_C", Some("Build_MinerMk1_C")),
+    ("Desc_Stone_C", Some("Build_MinerMk1_C")),
+    ("Desc_Coal_C", Some("Build_MinerMk1_C")),
+    ("Desc_Sulfur_C", Some("Build_MinerMk1_C")),
+    ("Desc_OreBauxite_C", Some("Build_MinerMk1_C")),
+    ("Desc_RawQuartz_C", Some("Build_MinerMk1_C")),
+    ("Desc_OreUranium_C", Some("Build_MinerMk1_C")),
+    ("Desc_SAM_C", Some("Build_MinerMk1_C")),
+    ("Desc_LiquidOil_C", Some("Build_OilPump_C")),
+    // Lakes take a free-placed Water Extractor; the Tier 8 resource
+    // well is the more expensive route to the same fluid, so the
+    // Extractor's tier is the one that matters.
+    ("Desc_Water_C", Some("Build_WaterPump_C")),
+    // The Pressuriser is the powered building, but the satellite
+    // Extractor is what stands on the well and puts gas in the pipe —
+    // and it's the id `allowed_extractors` offers and a claim stores.
+    // Both are Tier 8 today, so naming the wrong one is a number that
+    // happens to be right.
+    ("Desc_NitrogenGas_C", Some("Build_FrackingExtractor_C")),
+    // A geyser feeds a Geothermal Generator in place. There is no
+    // extractor, and no factory can be planned around one.
+    ("Desc_Geyser_C", None),
+];
+
+/// Backing list for `GameData::is_hand_gathered`.
+///
+/// FICSMAS presents are deliberately absent: they only drop during the
+/// seasonal event, so a playthrough can't count on them the way it can
+/// count on a tree.
+pub(super) const HAND_GATHERED_ITEM_IDS: &[&str] = &[
+    "Desc_Wood_C",
+    "Desc_Leaves_C",
+    "Desc_Mycelia_C",
+    "Desc_HogParts_C",
+    "Desc_SpitterParts_C",
+    "Desc_StingerParts_C",
+    "Desc_HatcherParts_C",
+    "Desc_Crystal_C",
+    "Desc_Crystal_mk2_C",
+    "Desc_Crystal_mk3_C",
 ];
 
 #[cfg(test)]
@@ -331,6 +434,114 @@ mod tests {
                 "{item_id} has no chain down to extracted resources"
             );
         }
+    }
+
+    #[test]
+    fn a_resources_tier_is_the_tier_of_the_extractor_that_reaches_it() {
+        let gd = fx();
+        // Miner Mk1 is a Tier 0 building, so every solid ore is
+        // available from the start — including the ones a player won't
+        // find until later.
+        assert_eq!(gd.extraction_tier("Desc_OreIron_C"), Some(0));
+        assert_eq!(gd.extraction_tier("Desc_OreBauxite_C"), Some(0));
+        // These three are the reason this method exists: all raw, none
+        // of them reachable at Tier 0.
+        assert_eq!(gd.extraction_tier("Desc_Water_C"), Some(3));
+        assert_eq!(gd.extraction_tier("Desc_LiquidOil_C"), Some(5));
+        assert_eq!(gd.extraction_tier("Desc_NitrogenGas_C"), Some(8));
+        // A geyser is burnt where it sits.
+        assert_eq!(gd.extraction_tier("Desc_Geyser_C"), None);
+        // Not a raw resource at all.
+        assert_eq!(gd.extraction_tier("Desc_IronPlate_C"), None);
+    }
+
+    #[test]
+    fn raw_supply_tells_the_three_no_recipe_cases_apart() {
+        let gd = fx();
+        assert_eq!(
+            gd.raw_supply("Desc_Water_C"),
+            RawSupply::Extracted { unlock_tier: 3 }
+        );
+        // Claimable as a node, never on a belt — and both halves of
+        // that hold at once, which a bare `None` couldn't say.
+        assert_eq!(gd.raw_supply("Desc_Geyser_C"), RawSupply::WorkedInPlace);
+        assert!(gd.is_extracted_resource("Desc_Geyser_C"));
+        assert_eq!(gd.extraction_tier("Desc_Geyser_C"), None);
+
+        assert_eq!(gd.raw_supply("Desc_IronPlate_C"), RawSupply::Manufactured);
+        assert_eq!(gd.raw_supply("Desc_Wood_C"), RawSupply::Manufactured, "gathered, not extracted");
+    }
+
+    #[test]
+    fn every_raw_category_item_is_extracted_or_hand_gathered() {
+        // The two views of "raw" have to agree: the JSON category says
+        // a factory doesn't make it, and the Rust tables say where it
+        // comes from instead. Biomass sat in the category with four
+        // Constructor recipes behind it and neither table claiming it.
+        //
+        // Deliberately not "no recipe produces it" — a Converter makes
+        // Bauxite out of other ores and Water drips out of Battery
+        // production, and both are still things you get from a node.
+        let gd = fx();
+        for item in gd.items() {
+            if item.category != ItemCategory::Raw {
+                continue;
+            }
+            assert!(
+                gd.is_extracted_resource(&item.id) || gd.is_hand_gathered(&item.id),
+                "{} is filed raw but neither table says where it comes from",
+                item.id
+            );
+        }
+    }
+
+    #[test]
+    fn hand_gathered_pickups_are_neither_extracted_nor_crafted() {
+        // Every id in the constant, not a sample of it. The tier model
+        // seeds these at tier 0 on the strength of "no machine makes
+        // this", so one that quietly gained a producing recipe would
+        // hand a whole chain a tier it hasn't earned — and a spot check
+        // of the first three would never see it.
+        let gd = fx();
+        for item_id in HAND_GATHERED_ITEM_IDS {
+            assert!(gd.is_hand_gathered(item_id), "{item_id} is a world pickup");
+            assert!(!gd.is_extracted_resource(item_id), "{item_id} has no extractor");
+            assert!(
+                gd.recipes_producing(item_id).is_empty(),
+                "{item_id} has a producing recipe, so it isn't only hand-gathered"
+            );
+            assert!(gd.item(item_id).is_some(), "{item_id} is in the dataset");
+        }
+        assert!(!gd.is_hand_gathered("Desc_OreIron_C"));
+        assert!(!gd.is_hand_gathered("Desc_GenericBiomass_C"), "Biomass is crafted");
+    }
+
+    #[test]
+    fn the_hand_gathered_list_is_exactly_these_ten() {
+        // Pinned as a set, because membership here does two unrelated
+        // jobs: it seeds the tier model at tier 0, and it decides
+        // whether a fuel's missing supply is reportable. An id added
+        // here by mistake would silently suppress a real shortfall
+        // warning somewhere else entirely, and no other test would
+        // notice.
+        assert_eq!(
+            HAND_GATHERED_ITEM_IDS,
+            [
+                // Chopped, cut and picked.
+                "Desc_Wood_C",
+                "Desc_Leaves_C",
+                "Desc_Mycelia_C",
+                // Dropped by creatures.
+                "Desc_HogParts_C",
+                "Desc_SpitterParts_C",
+                "Desc_StingerParts_C",
+                "Desc_HatcherParts_C",
+                // Found in caves and on cliffs.
+                "Desc_Crystal_C",
+                "Desc_Crystal_mk2_C",
+                "Desc_Crystal_mk3_C",
+            ]
+        );
     }
 
     #[test]

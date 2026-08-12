@@ -122,6 +122,83 @@ mod tests {
     }
 
     #[test]
+    fn every_milestone_unlock_agrees_with_the_thing_it_unlocks() {
+        // The milestone list is what a player reads to find out when
+        // they get a building, and it used to be typed out by hand
+        // beside the tables that already knew: it put the Miner Mk.2
+        // under Coal Power against a table saying Tier 4, the
+        // Manufacturer and the Converter a tier out each, every belt
+        // mark a group early, and never mentioned the Water Extractor
+        // — the building the whole Water chain hangs its tier on.
+        //
+        // The list is derived now, so this is the invariant that keeps
+        // it derived: an unlock naming something with a tier of its own
+        // has to agree with the milestone it sits under.
+        let gd = gd();
+        for m in gd.milestones() {
+            for unlock_id in &m.unlocks {
+                if let Some(b) = gd.building(unlock_id) {
+                    assert_eq!(
+                        b.unlock_tier, m.tier,
+                        "{} is a Tier {} building listed under Tier {}",
+                        unlock_id, b.unlock_tier, m.tier
+                    );
+                }
+                if let Some(g) = gd.generator(unlock_id) {
+                    assert_eq!(
+                        g.unlock_tier, m.tier,
+                        "{} is a Tier {} generator listed under Tier {}",
+                        unlock_id, g.unlock_tier, m.tier
+                    );
+                }
+            }
+        }
+        // ... and the other direction, so a building can't quietly go
+        // missing from the tier that unlocks it. Geothermal is the one
+        // exception: it comes off a MAM research node rather than a
+        // milestone.
+        for b in gd.buildings() {
+            let listed = gd
+                .milestones()
+                .iter()
+                .any(|m| m.unlocks.iter().any(|u| u == &b.id));
+            assert!(listed, "{} is unlocked by no milestone", b.id);
+        }
+        for g in gd.generators() {
+            if g.id.contains("GeoThermal") {
+                continue;
+            }
+            let listed = gd
+                .milestones()
+                .iter()
+                .any(|m| m.unlocks.iter().any(|u| u == &g.id));
+            assert!(listed, "{} is unlocked by no milestone", g.id);
+        }
+    }
+
+    #[test]
+    fn milestone_unlocks_name_the_buildings_that_moved() {
+        // Spot-checks on top of the invariant above, so a reader can
+        // see the four the playthrough actually cares about rather
+        // than trusting a loop.
+        let gd = gd();
+        let at = |tier: u8| {
+            gd.milestones()
+                .iter()
+                .find(|m| m.tier == tier)
+                .unwrap_or_else(|| panic!("no Tier {tier} milestone"))
+                .unlocks
+                .clone()
+        };
+        assert!(at(3).contains(&"Build_WaterPump_C".to_string()), "Coal Power gives the Water Extractor");
+        assert!(at(4).contains(&"Build_MinerMk2_C".to_string()));
+        assert!(at(6).contains(&"Build_ManufacturerMk1_C".to_string()));
+        assert!(at(9).contains(&"Build_Converter_C".to_string()));
+        assert!(at(0).contains(&"Build_GeneratorBiomass_C".to_string()), "the Tier 0 generator");
+        assert!(!at(3).contains(&"Build_MinerMk2_C".to_string()), "Mk2 is Tier 4, not Coal Power");
+    }
+
+    #[test]
     fn belt_tiers_returned_in_mark_order() {
         let gd = gd();
         let mut out = gd.belt_tiers().to_vec();

@@ -93,6 +93,41 @@ describe("<ValidationPanel />", () => {
     expect(screen.getByText(/100 MW gen \/ 60 MW draw/)).toBeInTheDocument();
   });
 
+  it("keeps a hand-fed burner out of the warning count and still says it needs feeding", async () => {
+    // A Tier 0 playthrough's only generator burns Wood, which has no
+    // node to claim — the player must be told the burner is hungry
+    // without being told they have a shortfall to close.
+    const report: ValidationReport = {
+      currentTier: 0,
+      findings: [
+        {
+          severity: "info",
+          category: "supplyPower",
+          kind: "generatorFuelHandFed",
+          factoryId: "f1",
+          factoryName: "Iron Works",
+          itemId: "Desc_Wood_C",
+          itemName: "Wood",
+          demandIpm: 18,
+        },
+      ],
+      altShoppingList: [],
+      grid: { generatedMw: 60, consumedMw: 49, netMw: 11 },
+      checkedAt: "2026-06-11T00:00:00Z",
+    };
+    vi.spyOn(validationApi, "validate").mockResolvedValue(report);
+    renderWithProviders(<ValidationPanel onClose={() => {}} />);
+
+    expect(await screen.findByText("0 errors")).toBeInTheDocument();
+    expect(screen.getByText("0 warnings")).toBeInTheDocument();
+    expect(screen.getByText("1 note")).toBeInTheDocument();
+    // The all-clear survives: nothing here is a problem.
+    expect(screen.getByText(/Nothing to fix at T0/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/generators burn 18\.0\/min of Wood — no belt can supply it/),
+    ).toBeInTheDocument();
+  });
+
   it("groups findings by category with severity counts and the alt shopping list", async () => {
     vi.spyOn(validationApi, "validate").mockResolvedValue(messyReport);
     renderWithProviders(<ValidationPanel onClose={() => {}} />);

@@ -1,7 +1,10 @@
 import type { PlanWarning } from "@/features/planner/types";
 import type { Purity } from "@/features/resources/types";
 
-export type Severity = "error" | "warning";
+/** `info` is a finding with nothing to fix — a hand-fed Biomass Burner
+ * works exactly as intended, and no claim will ever cover its Wood. It
+ * stays out of the error and warning counts and renders quietly. */
+export type Severity = "error" | "warning" | "info";
 
 export type Category = "tierGating" | "lockedAlts" | "flow" | "supplyPower" | "capacity";
 
@@ -115,6 +118,14 @@ export type FindingKind =
       itemName: string;
       demandIpm: number;
       claimedIpm: number;
+    }
+  | {
+      kind: "generatorFuelHandFed";
+      factoryId: string;
+      factoryName: string;
+      itemId: string;
+      itemName: string;
+      demandIpm: number;
     }
   | {
       kind: "segmentOverBeltCapacity";

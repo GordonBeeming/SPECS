@@ -10,6 +10,7 @@ use crate::features::logistics::repo as logistics_repo;
 use crate::features::factory::commands::compose_ledger_with_supply;
 use crate::features::planner::commands::saved_plan_graph;
 use crate::features::planner::repo as plan_repo;
+use crate::features::planner::tier;
 use crate::features::playthrough::state::ActivePlaythrough;
 use crate::features::power::commands::power_balance_with_supply;
 use crate::features::resource_nodes::repo as nodes_repo;
@@ -57,7 +58,9 @@ pub(crate) fn validate_impl(db: &PlaythroughDb, gd: &GameData) -> AppResult<Vali
     let water_groups = db.with(|c| nodes_repo::water_groups_all(c).map_err(AppError::from))?;
     let links = db.with(|c| logistics_repo::link_list(c).map_err(AppError::from))?;
     let targets = db.with(|c| plan_repo::plan_targets_all(c).map_err(AppError::from))?;
-
+    // Whole-graph relaxation, so it's solved once for the sweep rather
+    // than per factory.
+    let no_automated_supply = tier::items_with_no_automated_supply(gd);
     let mut findings: Vec<Finding> = Vec::new();
     // (factory, recipe_id, in_plan, in_machines) — merged per factory
     // before the shopping list is built.
@@ -235,6 +238,7 @@ pub(crate) fn validate_impl(db: &PlaythroughDb, gd: &GameData) -> AppResult<Vali
                     &demand_reported_elsewhere,
                     &balance.fuel_flows,
                     &supply,
+                    &no_automated_supply,
                     &mut findings,
                 );
             }
@@ -786,6 +790,54 @@ mod tests {
             "manufactured Fuel must satisfy the generator's own draw: {:?}",
             report.findings
         );
+    }
+
+
+
+
+
+    #[test]
+    fn playthrough_validate_reports_a_tier_0_burner_as_a_note_not_a_warning() {
+        // The first thing a Tier 0 playthrough can build for power is a
+        // Biomass Burner fed by hand. Measuring its draw against claims
+        // produced a warning with no move behind it, for Wood off a
+        // tree and equally for the Biomass a Constructor makes out of
+        // it — every recipe for Biomass starts at a pickup, so no
+        // arrangement of machines ever supplies it.
+        let gd = GameData::from_bundled().unwrap();
+        for (fuel_id, fuel_name, burn_ipm) in [
+            ("Desc_Wood_C", "Wood", 18.0_f32),
+            ("Desc_GenericBiomass_C", "Biomass", 10.0_f32),
+        ] {
+            let db = open_test_db(0);
+            insert_factory(&db, "f1", "Iron Works");
+            db.with(|c| {
+                crate::features::power::repo::power_gen_insert(
+                    c, "g1", "f1", "Build_GeneratorBiomass_C", fuel_id, 1, 100.0, None, NOW,
+                )
+            })
+            .unwrap();
+
+            let report = validate_impl(&db, &gd).unwrap();
+            assert!(
+                !report.findings.iter().any(|f| f.severity != Severity::Info),
+                "{fuel_name}: a hand-fed burner is not an error or a warning: {:?}",
+                report.findings
+            );
+            let note = report
+                .findings
+                .iter()
+                .find(|f| matches!(&f.kind, FindingKind::GeneratorFuelHandFed { .. }))
+                .unwrap_or_else(|| panic!("{fuel_name}: no note: {:?}", report.findings));
+            match &note.kind {
+                FindingKind::GeneratorFuelHandFed { item_name, demand_ipm, factory_name, .. } => {
+                    assert_eq!(factory_name, "Iron Works");
+                    assert_eq!(item_name, fuel_name);
+                    assert!((*demand_ipm - burn_ipm).abs() < 0.01, "{fuel_name} burn rate");
+                }
+                other => panic!("expected GeneratorFuelHandFed, got {other:?}"),
+            }
+        }
     }
 
     #[test]

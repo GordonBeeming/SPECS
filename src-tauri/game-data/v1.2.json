@@ -135,7 +135,7 @@
     {
       "id": "Desc_GenericBiomass_C",
       "name": "Biomass",
-      "category": "raw",
+      "category": "part",
       "stackSize": 200,
       "isFluid": false
     },
@@ -156,15 +156,8 @@
     {
       "id": "Desc_Crystal_C",
       "name": "Blue Power Slug",
-      "category": "part",
+      "category": "special",
       "stackSize": 50,
-      "isFluid": false
-    },
-    {
-      "id": "BP_ItemDescriptorPortableMiner_C",
-      "name": "BP ItemDescriptorPortableMiner",
-      "category": "part",
-      "stackSize": 100,
       "isFluid": false
     },
     {
@@ -292,7 +285,7 @@
     {
       "id": "Desc_LiquidOil_C",
       "name": "Crude Oil",
-      "category": "fluid",
+      "category": "raw",
       "stackSize": 1,
       "isFluid": true,
       "color": "#330033"
@@ -512,9 +505,9 @@
     },
     {
       "id": "Desc_HatcherParts_C",
-      "name": "HatcherParts",
-      "category": "part",
-      "stackSize": 100,
+      "name": "Hatcher Remains",
+      "category": "special",
+      "stackSize": 50,
       "isFluid": false
     },
     {
@@ -549,9 +542,9 @@
     },
     {
       "id": "Desc_HogParts_C",
-      "name": "HogParts",
-      "category": "part",
-      "stackSize": 100,
+      "name": "Hog Remains",
+      "category": "special",
+      "stackSize": 50,
       "isFluid": false
     },
     {
@@ -699,7 +692,7 @@
     {
       "id": "Desc_NitrogenGas_C",
       "name": "Nitrogen Gas",
-      "category": "fluid",
+      "category": "raw",
       "stackSize": 1,
       "isFluid": true,
       "color": "#ffffff"
@@ -872,6 +865,13 @@
       "isFluid": false
     },
     {
+      "id": "BP_ItemDescriptorPortableMiner_C",
+      "name": "Portable Miner",
+      "category": "equipment",
+      "stackSize": 50,
+      "isFluid": false
+    },
+    {
       "id": "Desc_CrystalShard_C",
       "name": "Power Shard",
       "category": "special",
@@ -895,7 +895,7 @@
     {
       "id": "Desc_Crystal_mk3_C",
       "name": "Purple Power Slug",
-      "category": "part",
+      "category": "special",
       "stackSize": 50,
       "isFluid": false
     },
@@ -931,7 +931,7 @@
     {
       "id": "Desc_SAMIngot_C",
       "name": "Reanimated SAM",
-      "category": "ingot",
+      "category": "part",
       "stackSize": 100,
       "isFluid": false,
       "color": "#9842c8"
@@ -990,7 +990,7 @@
     {
       "id": "Desc_SAMFluctuator_C",
       "name": "SAM Fluctuator",
-      "category": "raw",
+      "category": "part",
       "stackSize": 100,
       "isFluid": false,
       "color": "#6261d3"
@@ -1061,9 +1061,9 @@
     },
     {
       "id": "Desc_SpitterParts_C",
-      "name": "SpitterParts",
-      "category": "part",
-      "stackSize": 100,
+      "name": "Spitter Remains",
+      "category": "special",
+      "stackSize": 50,
       "isFluid": false
     },
     {
@@ -1096,9 +1096,9 @@
     },
     {
       "id": "Desc_StingerParts_C",
-      "name": "StingerParts",
-      "category": "part",
-      "stackSize": 100,
+      "name": "Stinger Remains",
+      "category": "special",
+      "stackSize": 50,
       "isFluid": false
     },
     {
@@ -1216,7 +1216,7 @@
     {
       "id": "Desc_Water_C",
       "name": "Water",
-      "category": "fluid",
+      "category": "raw",
       "stackSize": 1,
       "isFluid": true,
       "color": "#7ab0d4"
@@ -1239,7 +1239,7 @@
     {
       "id": "Desc_Crystal_mk2_C",
       "name": "Yellow Power Slug",
-      "category": "part",
+      "category": "special",
       "stackSize": 50,
       "isFluid": false
     }
@@ -8602,24 +8602,26 @@
       "tier": 0,
       "name": "HUB Upgrade 1",
       "unlocks": [
+        "Build_MinerMk1_C",
+        "Build_SmelterMk1_C",
         "Build_ConstructorMk1_C",
-        "Build_SmelterMk1_C"
+        "Build_GeneratorBiomass_C",
+        "Build_ConveyorBeltMk1_C"
       ]
     },
     {
       "id": "tier-1",
       "tier": 1,
       "name": "Field Research",
-      "unlocks": [
-        "Build_AssemblerMk1_C",
-        "Build_ConveyorBeltMk2_C"
-      ]
+      "unlocks": []
     },
     {
       "id": "tier-2",
       "tier": 2,
       "name": "Logistics Mk.2",
       "unlocks": [
+        "Build_AssemblerMk1_C",
+        "Build_ConveyorBeltMk2_C",
         "Build_StorageContainerMk1_C"
       ]
     },
@@ -8628,10 +8630,10 @@
       "tier": 3,
       "name": "Coal Power",
       "unlocks": [
-        "Build_GeneratorCoal_C",
         "Build_FoundryMk1_C",
-        "Build_MinerMk2_C",
-        "Build_ConveyorBeltMk3_C"
+        "Build_WaterPump_C",
+        "Build_GeneratorCoal_C",
+        "Build_Pipeline_C"
       ]
     },
     {
@@ -8639,7 +8641,8 @@
       "tier": 4,
       "name": "Advanced Steel Production",
       "unlocks": [
-        "Build_ConveyorBeltMk4_C"
+        "Build_MinerMk2_C",
+        "Build_ConveyorBeltMk3_C"
       ]
     },
     {
@@ -8648,10 +8651,10 @@
       "name": "Oil Processing",
       "unlocks": [
         "Build_OilRefinery_C",
-        "Build_OilPump_C",
         "Build_Packager_C",
-        "Build_ConveyorBeltMk5_C",
-        "Build_GeneratorFuel_C"
+        "Build_OilPump_C",
+        "Build_GeneratorFuel_C",
+        "Build_ConveyorBeltMk4_C"
       ]
     },
     {
@@ -8659,6 +8662,7 @@
       "tier": 6,
       "name": "Expanded Power Infrastructure",
       "unlocks": [
+        "Build_ManufacturerMk1_C",
         "Build_PipelineMK2_C"
       ]
     },
@@ -8667,10 +8671,8 @@
       "tier": 7,
       "name": "Bauxite Refinement",
       "unlocks": [
-        "Build_ManufacturerMk1_C",
         "Build_Blender_C",
-        "Build_MinerMk3_C",
-        "Build_FrackingExtractor_C"
+        "Build_ConveyorBeltMk5_C"
       ]
     },
     {
@@ -8678,10 +8680,11 @@
       "tier": 8,
       "name": "Particle Enrichment",
       "unlocks": [
+        "Build_MinerMk3_C",
         "Build_HadronCollider_C",
-        "Build_GeneratorNuclear_C",
-        "Build_Converter_C",
-        "Build_ConveyorBeltMk6_C"
+        "Build_FrackingExtractor_C",
+        "Build_FrackingSmasher_C",
+        "Build_GeneratorNuclear_C"
       ]
     },
     {
@@ -8689,7 +8692,9 @@
       "tier": 9,
       "name": "Project Assembly Phase 5",
       "unlocks": [
-        "Build_QuantumEncoder_C"
+        "Build_QuantumEncoder_C",
+        "Build_Converter_C",
+        "Build_ConveyorBeltMk6_C"
       ]
     }
   ],

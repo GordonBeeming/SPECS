@@ -4,8 +4,8 @@ import type { Item } from "@/features/library/types";
 import type { ItemTier } from "./types";
 import { buildTargetOptions } from "./options";
 
-function item(id: string, name: string): Item {
-  return { id, name, category: "part", stackSize: 100, isFluid: false };
+function item(id: string, name: string, category: Item["category"] = "part"): Item {
+  return { id, name, category, stackSize: 100, isFluid: false };
 }
 
 const items: Item[] = [
@@ -55,5 +55,49 @@ describe("buildTargetOptions — the needs-an-alt-recipe hint", () => {
 
   it("says nothing when there's no tier to compare a standard route against", () => {
     expect(hintFor("Desc_CircuitBoardHighSpeed_C", undefined)).toBeUndefined();
+  });
+});
+
+describe("buildTargetOptions — what a factory can actually be pointed at", () => {
+  const catalogue: Item[] = [
+    item("Desc_IronPlate_C", "Iron Plate"),
+    item("Desc_LiquidOil_C", "Crude Oil", "raw"),
+    item("Desc_Water_C", "Water", "raw"),
+    item("BP_ItemDescriptorPortableMiner_C", "Portable Miner", "equipment"),
+    item("Desc_Biofuel_C", "Solid Biofuel"),
+  ];
+  const catalogueTiers: ItemTier[] = [
+    { itemId: "Desc_IronPlate_C", tier: 0, standardTier: 0 },
+    { itemId: "Desc_LiquidOil_C", tier: 5, standardTier: 5 },
+    { itemId: "Desc_Water_C", tier: 3, standardTier: 3 },
+    { itemId: "BP_ItemDescriptorPortableMiner_C", tier: 3, standardTier: null },
+    // Hand-gathered all the way down: Biomass from Wood, and nothing
+    // puts Wood on a belt.
+    { itemId: "Desc_Biofuel_C", tier: null, standardTier: null, handGatheredTier: 2 },
+  ];
+  const values = buildTargetOptions(catalogue, catalogueTiers, 9).map((o) => o.value);
+
+  it("offers a product a factory can be built around", () => {
+    expect(values).toContain("Desc_IronPlate_C");
+  });
+
+  it("leaves out raw resources, which come off a node and not a machine", () => {
+    expect(values).not.toContain("Desc_LiquidOil_C");
+    expect(values).not.toContain("Desc_Water_C");
+  });
+
+  it("offers equipment a machine can actually build", () => {
+    // The Portable Miner has an Assembler alt (Steel Pipe + Iron Plate,
+    // T3), so a factory making them is ordinary play. What #115 asked
+    // for was the raw blueprint id off the list, and the dataset now
+    // carries a real name — dropping the whole category as well took a
+    // legitimate product away with it.
+    expect(values).toContain("BP_ItemDescriptorPortableMiner_C");
+  });
+
+  it("leaves out items only hand gathering reaches", () => {
+    // Solid Biofuel is real and burnable, but a Constructor fed by a
+    // player carrying Wood in isn't a factory anyone can plan.
+    expect(values).not.toContain("Desc_Biofuel_C");
   });
 });

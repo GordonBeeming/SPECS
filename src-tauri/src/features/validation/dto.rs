@@ -7,11 +7,19 @@ use crate::shared::gamedata::types::NodePurity;
 /// your tier / the numbers don't add up"; warnings mean "buildable, but
 /// you're missing something" (an uncollected alt, a factory leaning on
 /// the shared grid). Validation never blocks anything — it reports.
+///
+/// `Info` is for something the player should know that isn't wrong and
+/// has nothing to fix: a hand-fed Biomass Burner is working exactly as
+/// the game intends, and no amount of claiming nodes will ever change
+/// what the supply check reads for Wood. A finding a player can't act
+/// on doesn't belong in the warning count, but staying silent about it
+/// isn't right either — the burner still has to be fed.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum Severity {
     Error,
     Warning,
+    Info,
 }
 
 /// Report grouping the slide-over renders by.
@@ -166,6 +174,26 @@ pub enum FindingKind {
         item_name: String,
         demand_ipm: f32,
         claimed_ipm: f32,
+    },
+    /// A factory's generators burn something this factory has no
+    /// supply for and could never have any: a pickup like Wood, or
+    /// anything whose every recipe starts at one, which covers Biomass
+    /// and Solid Biofuel out of a Constructor and Liquid Biofuel out of
+    /// a Refinery.
+    ///
+    /// The same fuels become a `GeneratorFuelShort` the moment the
+    /// factory does report supply for them — a Refinery line making
+    /// 60/min against a 270/min burn is a gap the player built and can
+    /// close. This one carries no claimed figure on purpose: the number
+    /// is zero forever and says nothing about whether they have a
+    /// problem. What they do have is a standing chore, and that's what
+    /// this reports.
+    GeneratorFuelHandFed {
+        factory_id: String,
+        factory_name: String,
+        item_id: String,
+        item_name: String,
+        demand_ipm: f32,
     },
     /// A plan-graph segment (belt run) carries more than the best belt
     /// tier unlocked at the current playthrough tier moves on its own.
