@@ -107,7 +107,7 @@ describe("<AddPowerGenForm />", () => {
     await user.click(screen.getByRole("button", { name: "Add" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      /Count must be a whole number between 1 and 10,000/,
+      /Count must be a whole number between 1 and 1,000/,
     );
     expect(powerApi.add).not.toHaveBeenCalled();
   });
@@ -127,7 +127,7 @@ describe("<AddPowerGenForm />", () => {
     await user.click(screen.getByRole("button", { name: "Add" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      /Count must be a whole number between 1 and 10,000/,
+      /Count must be a whole number between 1 and 1,000/,
     );
     expect(powerApi.add).not.toHaveBeenCalled();
   });

@@ -9,7 +9,9 @@ import { useAddPowerGen } from "../hooks/usePower";
 import type { CreatePowerGenInput } from "../types";
 
 const MIN_COUNT = 1;
-const MAX_COUNT = 10_000;
+// Mirrors `validate_count`'s upper bound in src-tauri/src/features/power/commands.rs —
+// keep the two in sync so a count the form accepts never bounces off the backend.
+const MAX_COUNT = 1_000;
 const MIN_CLOCK_PCT = 1;
 const MAX_CLOCK_PCT = 250;
 

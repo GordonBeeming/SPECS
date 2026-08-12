@@ -19,8 +19,16 @@ const columns: Column<Item & { _tier: number | null }>[] = [
 ];
 
 export function ItemsTable() {
-  const { data, isPending, isError, error } = useItems();
+  const { data, isPending: itemsPending, isError: itemsError, error: itemsErrorValue } = useItems();
   const itemTiers = useItemTiers();
+  // Both queries feed `_tier` below, so either one still loading (or
+  // erroring) has to hold the table back — rendering on `useItems()`
+  // alone while tiers are in flight puts every row's `_tier` at `null`,
+  // which sorts and groups exactly like "nothing reaches this item",
+  // not "still finding out".
+  const isPending = itemsPending || itemTiers.isPending;
+  const isError = itemsError || itemTiers.isError;
+  const error = itemsErrorValue ?? itemTiers.error;
   // The planner's whole-chain tiers, not a second answer derived from
   // recipe stamps here. That local derivation read a byproduct recipe
   // as an item's origin, so it filed Water under the Battery that

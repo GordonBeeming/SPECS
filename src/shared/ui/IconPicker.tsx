@@ -152,11 +152,13 @@ function Grid({
        wrong one. 84px fits "Reinforced Iron Plate" on two lines, and
        auto-fill keeps the grid dense in both the narrow new-factory
        dialog and the full-width strip in the plan designer. */
-    /* `radiogroup`, because this is one choice out of many rather than
-       a row of independent toggles. `aria-checked` is what carries the
-       selection — the primary border and tint are a second signal, not
-       the only one, per DESIGN.md's no-colour-only rule. */
-    <div role="radiogroup" className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-1">
+    /* Plain buttons, not `radiogroup`/`radio`: that ARIA pattern commits
+       to roving-tabindex arrow-key navigation, which this grid doesn't
+       implement — every tile stays its own tab stop, operated by Tab and
+       Enter/Space like the rest of the app. `aria-pressed` is what
+       carries the selection — the primary border and tint are a second
+       signal, not the only one, per DESIGN.md's no-colour-only rule. */
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-1">
       {ids.map((id) => {
         const picked = id === value;
         const name = nameById.get(id) ?? id;
@@ -164,8 +166,7 @@ function Grid({
           <button
             key={id}
             type="button"
-            role="radio"
-            aria-checked={picked}
+            aria-pressed={picked}
             onClick={() => onChange(id)}
             className={`flex flex-col items-center gap-1 rounded-md border px-1 py-1.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
               picked

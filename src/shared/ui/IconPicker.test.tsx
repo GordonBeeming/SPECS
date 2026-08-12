@@ -92,7 +92,7 @@ describe("<IconPicker />", () => {
     expect(screen.getByText("Reinforced Iron Plate")).toBeVisible();
   });
 
-  it("conveys the picked tile with aria-checked, not just a coloured border", async () => {
+  it("conveys the picked tile with aria-pressed, not just a coloured border", async () => {
     render(
       <IconPicker
         value="Desc_IronPlate_C"
@@ -103,8 +103,14 @@ describe("<IconPicker />", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("radio", { name: "Iron Plate" })).toBeChecked();
+      expect(screen.getByRole("button", { name: "Iron Plate" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
     });
-    expect(screen.getByRole("radio", { name: "Iron Ingot" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Iron Ingot" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
 });
