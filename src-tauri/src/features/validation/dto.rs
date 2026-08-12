@@ -8,12 +8,16 @@ use crate::shared::gamedata::types::NodePurity;
 /// you're missing something" (an uncollected alt, a factory leaning on
 /// the shared grid). Validation never blocks anything — it reports.
 ///
-/// `Info` is for something the player should know that isn't wrong and
-/// has nothing to fix: a hand-fed Biomass Burner is working exactly as
-/// the game intends, and no amount of claiming nodes will ever change
-/// what the supply check reads for Wood. A finding a player can't act
-/// on doesn't belong in the warning count, but staying silent about it
-/// isn't right either — the burner still has to be fed.
+/// `Info` is for something the player should know that no future state
+/// of the playthrough will retire. Two shapes qualify: nothing to fix
+/// (a hand-fed Biomass Burner works exactly as the game intends, and no
+/// amount of claiming nodes changes what the supply check reads for
+/// Wood), and nothing the app can see fixed (a segment running 280/min
+/// still runs 280/min after the three belts that carry it go down).
+/// Either way the finding outlives every action available, so it
+/// doesn't belong in the warning count — but staying silent isn't right
+/// either: the burner still has to be fed, and the belts still have to
+/// be laid.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum Severity {
@@ -188,18 +192,70 @@ pub enum FindingKind {
     /// is zero forever and says nothing about whether they have a
     /// problem. What they do have is a standing chore, and that's what
     /// this reports.
-    GeneratorFuelHandFed {
+    ///
+    /// Named for where the chore sits — the *root* of the chain — not
+    /// for how the fuel reaches the generator. Liquid Biofuel is a
+    /// fluid: it arrives by pipe out of a Refinery and no player pours
+    /// it in by hand, so a message about hand-feeding the generator
+    /// describes something physically impossible. What every fuel in
+    /// here shares is that somebody has to walk around picking up Wood,
+    /// Leaves, Mycelia or Alien Protein to start the chain, however
+    /// many machines sit between that and the burn.
+    GeneratorFuelHandGathered {
         factory_id: String,
         factory_name: String,
         item_id: String,
         item_name: String,
         demand_ipm: f32,
     },
+    /// One machine in a plan-graph bank pushes more of an output item
+    /// than a single belt/pipe can carry off its one output port.
+    /// Physically the same wall as `ClaimOverPortCapacity` — a machine
+    /// has one port per output item, and a splitter after it can only
+    /// divide what already came through — so no number of parallel
+    /// belts helps and the only fixes are a lower clock or spreading
+    /// the same output over more machines. That makes it a warning the
+    /// player can clear, unlike the aggregate segment notes below.
+    MachineOverPortCapacity {
+        factory_id: String,
+        factory_name: String,
+        /// The plan node's key, so the finding names one bank rather
+        /// than "somewhere in this factory".
+        node_key: String,
+        recipe_name: String,
+        building_name: String,
+        item_id: String,
+        item_name: String,
+        machine_count: i64,
+        /// What one machine of the bank pushes through its port for
+        /// this item — the bank's total output divided by
+        /// `machine_count`, which is the rate the port actually sees.
+        per_machine_ipm: f32,
+        capacity_ipm: f32,
+        capacity_mark: u8,
+        is_fluid: bool,
+        /// Clock that would land `per_machine_ipm` exactly on the cap.
+        /// Exact, unrounded, for the same reason
+        /// `ClaimOverPortCapacity::max_fitting_clock_pct` is: rounding
+        /// up hands back a clock that still overshoots the port.
+        max_fitting_clock_pct: f32,
+        /// Machines the bank's current total output would need before
+        /// every port fits — the answer for a player who wants to keep
+        /// the rate rather than drop it.
+        machines_needed: i64,
+    },
     /// A plan-graph segment (belt run) carries more than the best belt
     /// tier unlocked at the current playthrough tier moves on its own.
-    /// Not unbuildable — `belts_needed` parallel belts of that tier
-    /// cover it — but the count is exactly what a player has to work
-    /// out by hand today.
+    /// A note rather than a warning: `belts_needed` parallel belts of
+    /// that tier carry it, which is ordinary play, and the segment's
+    /// rate reads the same once they're laid — so as a warning it could
+    /// never be cleared. The count is still what a player has to work
+    /// out by hand today, which is why the row exists at all.
+    ///
+    /// Only ever aggregate flow. A segment whose producer is a single
+    /// machine bank over its own port is `MachineOverPortCapacity`
+    /// instead, and this note is suppressed there — "lay two belts" is
+    /// not an available move when there's one port to attach them to.
     SegmentOverBeltCapacity {
         factory_id: String,
         factory_name: String,
@@ -240,7 +296,9 @@ pub enum FindingKind {
     /// `SegmentOverPipeCapacity`, there's no "add more belts" fix here —
     /// a splitter after the port can only divide what already made it
     /// through — so the advice is to underclock or claim a different
-    /// node instead.
+    /// node instead. That's why this one keeps warning severity while
+    /// the segment pair are notes: it names a single extractor, the
+    /// underclock is recorded on the claim, and the finding goes away.
     ClaimOverPortCapacity {
         node_id: String,
         resource_item_name: String,

@@ -103,7 +103,7 @@ describe("<ValidationPanel />", () => {
         {
           severity: "info",
           category: "supplyPower",
-          kind: "generatorFuelHandFed",
+          kind: "generatorFuelHandGathered",
           factoryId: "f1",
           factoryName: "Iron Works",
           itemId: "Desc_Wood_C",
@@ -124,8 +124,40 @@ describe("<ValidationPanel />", () => {
     // The all-clear survives: nothing here is a problem.
     expect(screen.getByText(/Nothing to fix at T0/)).toBeInTheDocument();
     expect(
-      screen.getByText(/generators burn 18\.0\/min of Wood — no belt can supply it/),
+      screen.getByText(
+        /generators burn 18\.0\/min of Wood — every route to it starts with hand-gathered pickups, so no build removes the gathering$/,
+      ),
     ).toBeInTheDocument();
+  });
+
+  it("never tells the player to hand-feed a fluid", async () => {
+    // Liquid Biofuel earns the same note as Wood — its chain grounds
+    // out in pickups too — but it reaches the generator through a pipe,
+    // so a row about feeding it by hand asks for something impossible.
+    const report: ValidationReport = {
+      ...cleanReport,
+      findings: [
+        {
+          severity: "info",
+          category: "supplyPower",
+          kind: "generatorFuelHandGathered",
+          factoryId: "f1",
+          factoryName: "Biofuel Plant",
+          itemId: "Desc_LiquidBiofuel_C",
+          itemName: "Liquid Biofuel",
+          demandIpm: 270,
+        },
+      ],
+    };
+    vi.spyOn(validationApi, "validate").mockResolvedValue(report);
+    renderWithProviders(<ValidationPanel onClose={() => {}} />);
+
+    const row = await screen.findByText(
+      /Biofuel Plant: generators burn 270\.0\/min of Liquid Biofuel — every route to it starts with hand-gathered pickups, so no build removes the gathering$/,
+    );
+    expect(row.textContent).not.toMatch(/fed by hand|hand-feed|no belt/);
+    expect(screen.getByText("0 warnings")).toBeInTheDocument();
+    expect(screen.getByText("1 note")).toBeInTheDocument();
   });
 
   it("groups findings by category with severity counts and the alt shopping list", async () => {
@@ -228,15 +260,17 @@ describe("<ValidationPanel />", () => {
     });
   });
 
-  it("shows a belt-capacity and a no-pipe-yet segment under a dedicated category", async () => {
+  it("shows a belt-capacity note and a no-pipe-yet warning under a dedicated category", async () => {
     // Regression for #48/#76: a plan-graph segment over the best
     // unlocked belt/pipe tier used to render identically to a
-    // compliant one.
+    // compliant one. The two land at different severities on purpose —
+    // parallel belts carry the aggregate rate and the segment still
+    // reads it afterwards, while "no pipe yet" clears at Tier 3.
     const report: ValidationReport = {
       ...cleanReport,
       findings: [
         {
-          severity: "warning",
+          severity: "info",
           category: "capacity",
           kind: "segmentOverBeltCapacity",
           factoryId: "f1",
@@ -265,12 +299,94 @@ describe("<ValidationPanel />", () => {
     expect(await screen.findByText("Belt & pipe capacity")).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Ingot Works: Iron Ore segment runs 90\.0\/min — needs 2× Mk\.1 belts \(60\/min each\) or an underclock/,
+        /Ingot Works: Iron Ore segment runs 90\.0\/min — needs 2 belts at Mk\.1 \(60\/min each\)$/,
       ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/Ingot Works: Water segment runs 30\.0 m³\/min — no pipe is unlocked yet/),
     ).toBeInTheDocument();
+    // The counts are the contract: the belt row must not land in the
+    // warning tally it can never be cleared from.
+    expect(screen.getByText("0 errors")).toBeInTheDocument();
+    expect(screen.getByText("1 warning")).toBeInTheDocument();
+    expect(screen.getByText("1 note")).toBeInTheDocument();
+  });
+
+  it("counts a machine over its own output port as a warning and offers the clock, not belts", async () => {
+    // The reported repro: one Constructor on Steel Screws at 225/min
+    // against a 120/min Mk.2 belt. There is one output port, so the
+    // "needs 2 belts" phrasing describes a build nobody can lay, and a
+    // note would let a plan that cannot be built pass a clean sweep.
+    const report: ValidationReport = {
+      ...cleanReport,
+      findings: [
+        {
+          severity: "warning",
+          category: "capacity",
+          kind: "machineOverPortCapacity",
+          factoryId: "f1",
+          factoryName: "Iron Works",
+          nodeKey: "recipe:Desc_IronScrew_C",
+          recipeName: "Alternate: Steel Screws",
+          buildingName: "Constructor",
+          itemId: "Desc_IronScrew_C",
+          itemName: "Screws",
+          machineCount: 1,
+          perMachineIpm: 225,
+          capacityIpm: 120,
+          capacityMark: 2,
+          isFluid: false,
+          maxFittingClockPct: 46.153846,
+          machinesNeeded: 2,
+        },
+      ],
+    };
+    vi.spyOn(validationApi, "validate").mockResolvedValue(report);
+    const onClose = vi.fn();
+    renderWithProviders(<ValidationPanel onClose={onClose} />);
+    const row = await screen.findByText(
+      /Iron Works: each Constructor on Alternate: Steel Screws pushes 225\.0\/min of Screws through one output port, over the Mk\.2 belt's 120\.0\/min — clock to 46% or spread the bank over 2 machines$/,
+    );
+    // Floored, never rounded: 47% still overshoots the port.
+    expect(row.textContent).not.toMatch(/clock to 47%/);
+    expect(screen.getByText("1 warning")).toBeInTheDocument();
+    expect(screen.queryByText(/\d+ notes?$/)).not.toBeInTheDocument();
+
+    fireEvent.click(row.closest("button")!);
+    await waitFor(() => {
+      expect(useNavStore.getState().pendingRoute).toBe("plan");
+      expect(onClose).toHaveBeenCalled();
+    });
+  });
+
+  it("counts an over-capacity pipe segment as a note too", async () => {
+    const report: ValidationReport = {
+      ...cleanReport,
+      findings: [
+        {
+          severity: "info",
+          category: "capacity",
+          kind: "segmentOverPipeCapacity",
+          factoryId: "f1",
+          factoryName: "Refinery",
+          itemId: "Desc_Water_C",
+          itemName: "Water",
+          ipm: 630,
+          pipeMark: 1,
+          pipeCapacityIpm: 300,
+          pipesNeeded: 3,
+        },
+      ],
+    };
+    vi.spyOn(validationApi, "validate").mockResolvedValue(report);
+    renderWithProviders(<ValidationPanel onClose={() => {}} />);
+    expect(
+      await screen.findByText(
+        /Refinery: Water segment runs 630\.0 m³\/min — needs 3 pipe headers at Mk\.1 \(300 m³\/min each\)$/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("0 warnings")).toBeInTheDocument();
+    expect(screen.getByText("1 note")).toBeInTheDocument();
   });
 
   it("shows a port-over-capacity claim with the fitting clock, the node label, and deep-links to Resources", async () => {

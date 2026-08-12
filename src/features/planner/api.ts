@@ -6,6 +6,7 @@ import type {
   FactoryPlan,
   ItemTier,
   RaiseExportTargetResult,
+  ReplanOffer,
   SavePlanInput,
   SavePlanResult,
   UnsourcedInput,
@@ -25,6 +26,9 @@ export const plannerApi = {
   listExportOffers: () =>
     invoke<ExportOffer[]>("list_export_offers"),
   listItemTiers: () => invoke<ItemTier[]>("list_item_tiers"),
+  listReplanOffers: () => invoke<ReplanOffer[]>("list_replan_offers"),
+  reoptimize: (factoryId: string) =>
+    invoke<SavePlanResult>("factory_plan_reoptimize", { factoryId }),
   assignImportSource: (importId: string, sourceFactoryId: string) =>
     invoke<SavePlanResult>("factory_plan_assign_import_source", {
       importId,

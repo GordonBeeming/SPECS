@@ -9,9 +9,17 @@ Drive SPECS the way a pioneer would: create a playthrough, claim nodes off the r
 
 The scenario lives in `docs/test-scenarios/full-playthrough/`. Read [`constraints.md`](../../../docs/test-scenarios/full-playthrough/constraints.md) before touching anything — it's the rulebook the run is judged against, and this skill doesn't restate it.
 
+## Run the whole thing without coming back
+
+**A full sweep means Tier 0 through Tier 9 in one session, and the run does not pause between groups for anything.** Finish a group, ship it, start the next one. Don't report and wait. Don't offer to continue. Don't ask whether to hold while someone reviews the PR — the PR is review's problem, not the run's, and a group that's pushed is finished as far as the next group is concerned.
+
+The report at the end of a group is a status line on the way past, not a question. Write it, then open the next tier page and keep going. "Ready to start Tiers 1–2 whenever you want it" is the failure this paragraph exists to stop: the answer is always yes, it was yes when the sweep was asked for, and every hour spent waiting for someone to say so again is an hour of the run not happening.
+
+The only thing that ends a sweep early is a showstopper you genuinely cannot get past, and even then it gets filed and written into the ledger before you hand back. Running out of things to fix isn't a reason to stop; it's the reason to open the next tier.
+
 ## Scope
 
-One tier group per invocation. A full Tier 0→9 sweep is far more UI driving than one session can hold, so each run ends at a checkpoint and the next invocation picks up from the ledger.
+One tier group per invocation *when a single group was named*. A full sweep runs every group back to back — see above. A full Tier 0→9 sweep is far more UI driving than one session can hold, so each run ends at a checkpoint and the next invocation picks up from the ledger.
 
 Take the tier group from the user's argument (`tier-0`, `tiers-1-2`, `tiers-3-4`, `tiers-5-6`, `tiers-7-8`, `tier-9`). With no argument, resume the open run at its next unfinished group, or start a fresh run if none is open.
 
@@ -51,6 +59,8 @@ Each run owns `docs/test-scenarios/full-playthrough/runs/<YYYY-MM-DD>-<label>/RU
 6. **Rank, then file.** Now sort the captured hesitations by severity and file them, then clear the filed entries from `hesitations.md` — a checkpoint always ends with that file empty, so the next tier group starts from a blank log. [`do-some-testing/references/filing.md`](../do-some-testing/references/filing.md) has the mechanics.
 7. **Fix the batch before moving on.** Everything filed this group gets fixed now, so the next group tests an app that no longer has these problems. Plan the batch through `global:plan-delegated` and hand the work to right-sized teammates, review what comes back, and land it. Re-run the group's checkpoint against the fixed build: a finding that survives its own fix is worth more than the original report.
 
+   **The group ends merged, not pushed.** Take the batch all the way through `git-workflow:pull-request` — draft, bot review rounds, publish, merge — and only then start the next tier. A draft PR left open is the same stall as stopping to ask: the next group builds on this one, so it wants the fixes on `main`, not sitting in review. Leaving it draft "for someone to look at" is a decision nobody asked for.
+
    Nothing leaves the machine until `git-workflow:review-branch` has run over the batch as a whole — the fixes, the scenario doc edits and the run artifacts together, not one commit at a time. A batch of a dozen small fixes lands as one change and deserves one review of that change.
 
    **The bar is 95% and the loop runs until it's met.** Review, fix what came back, review again, and keep going round; one pass that finds twelve things and fixes ten is not a finished batch. At least 95% of the panel's findings resolved, no unresolved blocker at any severity, and the tier's own checkpoint still green on the fixed build. Only then push and start the next group. If a round keeps surfacing the same class of problem, that's the signal to fix the cause rather than the instances.
@@ -60,6 +70,8 @@ Each run owns `docs/test-scenarios/full-playthrough/runs/<YYYY-MM-DD>-<label>/RU
 ## Rules that shape the run
 
 **Capture everything, rank afterwards.** Step 4 has no severity filter — if it made you stop and think, it goes in the log. Judging what's worth filing happens in step 6, once you've seen the whole tier group and know which annoyances were one-offs and which are patterns. Filtering at capture time loses the finding before anyone can weigh it.
+
+**One tier group's fixes at a time, and never alongside a live PR loop.** The previous group's PR keeps running its bot rounds while you play the next tier, and that autopilot commits to the same working tree your fix teammates are editing. Two owners of one tree means a `--changes` commit can sweep up someone else's half-finished work, and a review bot's finding can land in a file a teammate is mid-rewrite on. Before starting a group's fix batch, check what the PR loop is holding; if a bot finding falls in a file your teammates own, route it to whoever already owns that file rather than letting the autopilot in. Tell the autopilot explicitly which files are off limits — it can't see your teammates.
 
 **Call a freeze before you verify.** Teammates fixing a batch in parallel share one working tree, so a suite run while two of them are mid-edit reports a different answer every few minutes and none of those answers are about the thing you're checking. Worse, it wastes everyone's time chasing failures that belong to someone else's half-finished rename. So the endgame is serialised: every teammate reports done and then stops touching files, and only then does the lead run the gates and the second review. A teammate whose own slice is green should say so with an isolated run and wait, rather than re-running the whole suite against moving ground.
 

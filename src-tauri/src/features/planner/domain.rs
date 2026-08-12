@@ -511,8 +511,18 @@ fn flow_for(item_id: String, per_minute: f32, game_data: &GameData) -> RecipeFlo
 
 // ---- Production-plan graph (graph-first designer) ----
 
+const RECIPE_NODE_PREFIX: &str = "recipe:";
+
 pub fn recipe_node_key(item_id: &str) -> String {
-    format!("recipe:{item_id}")
+    format!("{RECIPE_NODE_PREFIX}{item_id}")
+}
+
+/// The item a `recipe:` node key names, or `None` for any other node
+/// kind. The inverse of [`recipe_node_key`]: a materialized machine
+/// carries its node key and nothing else that says which item its step
+/// was producing.
+pub fn recipe_node_item(node_key: &str) -> Option<&str> {
+    node_key.strip_prefix(RECIPE_NODE_PREFIX)
 }
 
 pub fn raw_node_key(item_id: &str) -> String {

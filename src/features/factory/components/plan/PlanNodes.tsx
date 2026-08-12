@@ -3,17 +3,24 @@ import {
   CircleAlert,
   Download,
   FlaskConical,
+  Loader2,
   Recycle,
   Share2,
   SlidersHorizontal,
   TriangleAlert,
+  Upload,
 } from "lucide-react";
 
 import { Icon } from "@/shared/ui/Icon";
 import { FilterSelect, type FilterOption } from "@/shared/ui/FilterSelect";
-import type { ExistingProducer, PlanNode } from "@/features/planner/types";
+import type {
+  ExistingProducer,
+  ExistingProducerSource,
+  PlanNode,
+} from "@/features/planner/types";
+import { planImportFromProducer } from "../../importOffer";
 import { RateInput } from "./RateInput";
-import { rate } from "@/shared/format/rates";
+import { FLOW_EPS, rate } from "@/shared/format/rates";
 
 export const PLAN_NODE_WIDTH = 250;
 
@@ -76,6 +83,11 @@ export interface RecipeStepNodeProps {
    * exists — absent means nothing to suggest, not "nobody else makes
    * this" (the check isn't run everywhere a graph is read). */
   existingProducer?: ExistingProducer;
+  /** True while this item's import is being set up — the producer's
+   * export slice is a server round-trip, and a button that sits there
+   * looking unclicked is the whole complaint the offer was meant to
+   * answer. */
+  importPending?: boolean;
   onSwapRecipe: (itemId: string, recipeId: string) => void;
   onOpenSources: (itemId: string) => void;
   /** Make this item a product exporting `ipm`/min (adds the target). */
@@ -83,8 +95,14 @@ export interface RecipeStepNodeProps {
   onSetExport: (itemId: string, exportIpm: number | null) => void;
   /** Import from an existing producer instead of building it here —
    * local production stays as the elastic remainder, same as any other
-   * external source added from the Sources panel. */
-  onImportFromProducer: (itemId: string, sourceFactoryId: string) => void;
+   * external source added from the Sources panel. The whole source is
+   * passed, not just its id: what the click has to do first depends on
+   * whether that producer exports any of it yet. */
+  onImportFromProducer: (
+    itemId: string,
+    source: ExistingProducerSource,
+    localIpm: number,
+  ) => void;
 }
 
 export function RecipeStepNodeCard({
@@ -93,6 +111,7 @@ export function RecipeStepNodeCard({
   exportIpm,
   uncollected,
   existingProducer,
+  importPending,
   onSwapRecipe,
   onOpenSources,
   onStartExport,
@@ -104,6 +123,9 @@ export function RecipeStepNodeCard({
   // the same number, and repeating it twice is noise, not information.
   const hasFreeGap = node.freeOutputIpm < node.outputIpm - 1e-3;
   const topSource = existingProducer?.sources[0];
+  // What taking the offer actually costs, decided in one place so the
+  // label and the click can't tell different stories.
+  const offerPlan = topSource ? planImportFromProducer(topSource, node.outputIpm) : null;
   return (
     <div
       className={`rounded-md border bg-bg-raised p-3 text-xs shadow-sm ${
@@ -164,20 +186,49 @@ export function RecipeStepNodeCard({
       {/* Surfaced at the point the solver is about to build a local
           copy, rather than waiting for Sources to be asked — the
           default outcome without this is rebuilding, every time. */}
-      {!node.isTarget && topSource && (
-        <div className="mt-2 flex items-start gap-1.5 rounded border border-accent/40 bg-accent/10 px-2 py-1.5 text-fg-muted">
-          <Download className="mt-0.5 h-3 w-3 shrink-0 text-accent" />
-          <span className="min-w-0">
-            <span className="text-fg">{topSource.factoryName}</span> already makes this,{" "}
-            {rate(topSource.spareIpm)} spare —{" "}
-            <button
-              type="button"
-              onClick={() => onImportFromProducer(node.itemId, topSource.factoryId)}
-              className="font-medium text-accent hover:underline"
-            >
-              import instead
-            </button>
-          </span>
+      {!node.isTarget && topSource && offerPlan && (
+        <div className="mt-2 rounded border border-accent/40 bg-accent/10">
+          <div className="flex items-start gap-1.5 px-2 py-1.5 text-fg-muted">
+            {importPending ? (
+              <Loader2 className="mt-0.5 h-3 w-3 shrink-0 animate-spin text-accent" />
+            ) : (
+              <Download className="mt-0.5 h-3 w-3 shrink-0 text-accent" />
+            )}
+            <span className="min-w-0">
+              <span className="text-fg">{topSource.factoryName}</span> already makes this,{" "}
+              {rate(topSource.spareIpm)} spare —{" "}
+              <button
+                type="button"
+                disabled={importPending}
+                onClick={() => onImportFromProducer(node.itemId, topSource, node.outputIpm)}
+                className="font-medium text-accent hover:underline disabled:opacity-50"
+              >
+                import instead
+              </button>
+            </span>
+          </div>
+          {/* The click reaches into another factory's plan, so it says
+              so before it's clicked, not after. Same sentence the
+              Sources panel puts on its "makes it, exports none" rows. */}
+          {offerPlan.raiseIpm != null && (
+            <div className="flex items-start gap-1.5 border-t border-accent/30 px-2 py-1 text-[10px] text-fg-muted">
+              <Upload className="mt-0.5 h-3 w-3 shrink-0 text-accent" />
+              <span className="min-w-0">
+                {topSource.remainingIpm <= FLOW_EPS ? (
+                  <>
+                    Exports none of it yet — picking this opens a {rate(offerPlan.raiseIpm)} export
+                    slice there.
+                  </>
+                ) : (
+                  <>
+                    Only {rate(topSource.remainingIpm)} of it is on offer — picking this widens that
+                    to cover your {rate(offerPlan.raiseIpm)}.
+                  </>
+                )}{" "}
+                No extra machines.
+              </span>
+            </div>
+          )}
         </div>
       )}
 

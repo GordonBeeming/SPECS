@@ -36,6 +36,7 @@ export const queryKeys = {
   },
   planner: {
     itemTiers: ["planner", "item-tiers"] as const,
+    replanOffers: ["planner", "replan-offers"] as const,
   },
   logistics: {
     list: ["logistics", "list"] as const,

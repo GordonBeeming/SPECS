@@ -686,16 +686,80 @@ mod tests {
         .unwrap();
 
         let report = validate_impl(&db, &gd).unwrap();
-        let ks = kinds(&report);
+        // The whole capacity set, not just membership: this claim is the
+        // only thing in the playthrough, so one warning is the entire
+        // answer — and a softened severity has to fail here rather than
+        // hide behind an `any`.
+        let capacity: Vec<&Finding> =
+            report.findings.iter().filter(|f| f.category == Category::Capacity).collect();
+        assert_eq!(capacity.len(), 1, "got {capacity:?}");
+        assert_eq!(capacity[0].severity, Severity::Warning);
         assert!(
-            ks.iter().any(|k| matches!(k,
+            matches!(&capacity[0].kind,
                 FindingKind::ClaimOverPortCapacity {
                     node_id, output_ipm, capacity_ipm, capacity_mark, ..
                 } if *node_id == iron.id
                     && (*output_ipm - 300.0).abs() < 0.01
                     && (*capacity_ipm - 60.0).abs() < 0.01
-                    && *capacity_mark == 1)),
+                    && *capacity_mark == 1),
             "missing port-capacity finding: {:?}",
+            report.findings
+        );
+    }
+
+    #[test]
+    fn four_miners_feeding_one_segment_is_a_note_with_no_port_warning() {
+        // The other half of the severity split. Four Normal iron nodes on
+        // Miner Mk.1 at 100% deliver 60/min each — exactly what the Mk1
+        // port carries, so no extractor is over its own port — and the
+        // 240/min they add up to inside the factory is four parallel
+        // belts, which is ordinary play. Laying those belts leaves the
+        // segment reading 240/min, so this can only ever be a note.
+        let db = open_test_db(0);
+        let gd = GameData::from_bundled().unwrap();
+        insert_factory(&db, "f1", "Iron Works");
+        let iron_nodes: Vec<_> = gd
+            .nodes()
+            .iter()
+            .filter(|n| {
+                n.resource_item_id == "Desc_OreIron_C"
+                    && n.purity == crate::shared::gamedata::types::NodePurity::Normal
+            })
+            .take(4)
+            .collect();
+        assert_eq!(iron_nodes.len(), 4, "the catalog must have four normal iron nodes");
+        db.with(|c| {
+            for n in &iron_nodes {
+                nodes_repo::claim_upsert(
+                    c, &n.id, Some("Build_MinerMk1_C"), 100.0, Some("f1"), None, NOW,
+                )?;
+            }
+            plan_repo::plan_targets_replace(
+                c,
+                "f1",
+                &[plan_repo::PlanTargetRow {
+                    item_id: "Desc_IronIngot_C".into(),
+                    ipm: 240.0,
+                    export_ipm: None,
+                    sort_order: 0,
+                }],
+                NOW,
+            )
+        })
+        .unwrap();
+
+        let report = validate_impl(&db, &gd).unwrap();
+        let capacity: Vec<&Finding> =
+            report.findings.iter().filter(|f| f.category == Category::Capacity).collect();
+        assert_eq!(capacity.len(), 1, "got {capacity:?}");
+        assert_eq!(capacity[0].severity, Severity::Info);
+        assert!(
+            matches!(&capacity[0].kind,
+                FindingKind::SegmentOverBeltCapacity { item_id, belts_needed, ipm, .. }
+                    if item_id == "Desc_OreIron_C"
+                        && *belts_needed == 4
+                        && (*ipm - 240.0).abs() < 0.01),
+            "expected an aggregate belt note, got {:?}",
             report.findings
         );
     }
@@ -827,15 +891,15 @@ mod tests {
             let note = report
                 .findings
                 .iter()
-                .find(|f| matches!(&f.kind, FindingKind::GeneratorFuelHandFed { .. }))
+                .find(|f| matches!(&f.kind, FindingKind::GeneratorFuelHandGathered { .. }))
                 .unwrap_or_else(|| panic!("{fuel_name}: no note: {:?}", report.findings));
             match &note.kind {
-                FindingKind::GeneratorFuelHandFed { item_name, demand_ipm, factory_name, .. } => {
+                FindingKind::GeneratorFuelHandGathered { item_name, demand_ipm, factory_name, .. } => {
                     assert_eq!(factory_name, "Iron Works");
                     assert_eq!(item_name, fuel_name);
                     assert!((*demand_ipm - burn_ipm).abs() < 0.01, "{fuel_name} burn rate");
                 }
-                other => panic!("expected GeneratorFuelHandFed, got {other:?}"),
+                other => panic!("expected GeneratorFuelHandGathered, got {other:?}"),
             }
         }
     }
@@ -1083,11 +1147,82 @@ mod tests {
         .unwrap();
 
         let report = validate_impl(&db, &gd).unwrap();
+        let capacity: Vec<&Finding> =
+            report.findings.iter().filter(|f| f.category == Category::Capacity).collect();
+        assert_eq!(capacity.len(), 1, "got {capacity:?}");
+        assert_eq!(capacity[0].severity, Severity::Info);
         assert!(
-            kinds(&report).iter().any(|k| matches!(k,
+            matches!(&capacity[0].kind,
                 FindingKind::SegmentOverBeltCapacity { item_id, belts_needed, .. }
-                    if item_id == "Desc_OreIron_C" && *belts_needed == 2)),
+                    if item_id == "Desc_OreIron_C" && *belts_needed == 2),
             "missing belt-capacity finding: {:?}",
+            report.findings
+        );
+    }
+
+    #[test]
+    fn playthrough_validate_warns_when_one_machine_outruns_its_own_output_port() {
+        // The reported repro, end-to-end through the real planner and
+        // the recipe pin a player sets from the plan designer's picker:
+        // Tier 3, 225/min of Screws on Steel Screws, which sizes to one
+        // Constructor at 86.5% because a single machine covers 260. The
+        // 225/min leaving it used to read as a note offering a second
+        // belt — and you cannot attach two belts to one output port, so
+        // an unbuildable plan passed a clean sweep. It has to be a
+        // warning, and the only fixes are the clock or more machines.
+        let db = open_test_db(3);
+        let gd = GameData::from_bundled().unwrap();
+        insert_factory(&db, "f1", "Iron Works");
+        db.with(|c| alts_repo::alt_unlock(c, "Recipe_Alternate_Screw_2_C", NOW)).unwrap();
+        db.with(|c| {
+            plan_repo::plan_recipes_replace(
+                c,
+                "f1",
+                &[("Desc_IronScrew_C".into(), "Recipe_Alternate_Screw_2_C".into())],
+                NOW,
+            )
+        })
+        .unwrap();
+        db.with(|c| {
+            plan_repo::plan_targets_replace(
+                c,
+                "f1",
+                &[plan_repo::PlanTargetRow {
+                    item_id: "Desc_IronScrew_C".into(),
+                    ipm: 225.0,
+                    export_ipm: None,
+                    sort_order: 0,
+                }],
+                NOW,
+            )
+        })
+        .unwrap();
+
+        let report = validate_impl(&db, &gd).unwrap();
+        let capacity: Vec<&Finding> =
+            report.findings.iter().filter(|f| f.category == Category::Capacity).collect();
+        assert_eq!(capacity.len(), 1, "got {capacity:?}");
+        assert_eq!(capacity[0].severity, Severity::Warning);
+        assert!(
+            matches!(&capacity[0].kind,
+                FindingKind::MachineOverPortCapacity {
+                    item_id,
+                    recipe_name,
+                    machine_count,
+                    per_machine_ipm,
+                    capacity_ipm,
+                    max_fitting_clock_pct,
+                    machines_needed,
+                    ..
+                }
+                    if item_id == "Desc_IronScrew_C"
+                        && recipe_name == "Alternate: Steel Screws"
+                        && *machine_count == 1
+                        && (*per_machine_ipm - 225.0).abs() < 0.01
+                        && (*capacity_ipm - 120.0).abs() < 0.01
+                        && (*max_fitting_clock_pct - 46.153_846).abs() < 0.01
+                        && *machines_needed == 2),
+            "missing port-capacity warning: {:?}",
             report.findings
         );
     }

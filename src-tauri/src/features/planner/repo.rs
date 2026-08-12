@@ -418,6 +418,31 @@ pub fn plan_machines_delete(conn: &Connection, factory_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// The recipe each plan-materialized machine is running, keyed by the
+/// plan node it came from. Manual machines (`plan_node_key IS NULL`)
+/// are excluded: they're a player's own hand-placed buildings, not a
+/// step the plan owns, and their recipe must never be read back as a
+/// solver choice.
+pub fn plan_machine_recipes_for_factory(
+    conn: &Connection,
+    factory_id: &str,
+) -> Result<Vec<(String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT plan_node_key, recipe_id
+         FROM factory_machine
+         WHERE factory_id = ? AND plan_node_key IS NOT NULL
+         ORDER BY plan_node_key",
+    )?;
+    let rows = stmt.query_map([factory_id], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

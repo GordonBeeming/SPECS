@@ -26,7 +26,12 @@ import { rate } from "@/shared/format/rates";
 
 import { plannerApi } from "@/features/planner/api";
 import { useThemeMode } from "@/shared/theme/useThemeMode";
-import type { PlanGraph, PlanLayoutEntry, PlanNode } from "@/features/planner/types";
+import type {
+  ExistingProducerSource,
+  PlanGraph,
+  PlanLayoutEntry,
+  PlanNode,
+} from "@/features/planner/types";
 import type { FilterOption } from "@/shared/ui/FilterSelect";
 import type { Recipe } from "@/features/library/types";
 
@@ -57,7 +62,13 @@ export interface PlanGraphCanvasProps {
   onStartExport: (itemId: string, ipm: number) => void;
   onSetExport: (itemId: string, exportIpm: number | null) => void;
   onAddLocal: (itemId: string) => void;
-  onImportFromProducer: (itemId: string, sourceFactoryId: string) => void;
+  onImportFromProducer: (
+    itemId: string,
+    source: ExistingProducerSource,
+    localIpm: number,
+  ) => void;
+  /** The item whose "import instead" is mid-flight, if any. */
+  importPendingItemId?: string | null;
 }
 
 /** How a node relates to the current selection: the clicked node, a
@@ -127,6 +138,7 @@ function renderPlanCard(data: PlanFlowData) {
           exportIpm={canvas.exportByItem.get(planNode.itemId) ?? null}
           uncollected={activeUncollected}
           existingProducer={existingProducer}
+          importPending={canvas.importPendingItemId === planNode.itemId}
           onSwapRecipe={canvas.onSwapRecipe}
           onOpenSources={canvas.onOpenSources}
           onStartExport={canvas.onStartExport}

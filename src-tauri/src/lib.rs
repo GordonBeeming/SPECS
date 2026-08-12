@@ -254,6 +254,8 @@ pub fn run() {
             features::planner::commands::factory_plan_assign_import_source,
             features::planner::commands::factory_plan_raise_export_target,
             features::planner::commands::list_item_tiers,
+            features::planner::commands::list_replan_offers,
+            features::planner::commands::factory_plan_reoptimize,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

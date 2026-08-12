@@ -328,6 +328,18 @@ pub struct ExistingProducerSource {
     /// `ExportOfferProduct.spare_ipm` — what widening the export slice
     /// alone would free up, no extra machines at the source.
     pub spare_ipm: f32,
+    /// `ExportOfferProduct.remaining_ipm` — the export slice already
+    /// open, minus what others draw. This, not `spare_ipm`, is what an
+    /// uncapped import from this source resolves to, so a taker has to
+    /// see both: the gap between them is machines running whose output
+    /// nobody has offered anyone.
+    pub remaining_ipm: f32,
+    /// Whether the source has a plan *target* for this item. Only a
+    /// target has an export slice to open, and only a target can be
+    /// raised; an intermediate's surplus is capacity as it stands. The
+    /// rates can't stand in for this — a zero `remaining_ipm` reads the
+    /// same either way.
+    pub has_target: bool,
 }
 
 /// Per-compute knobs the designer sends along with the plan inputs.
@@ -556,4 +568,41 @@ pub struct UnsourcedInput {
     pub item_id: String,
     pub item_name: String,
     pub ipm_cap: Option<f32>,
+}
+
+/// One recipe a re-optimize would swap out, named for both sides so the
+/// player can judge the trade without opening the factory.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipeSwap {
+    pub item_id: String,
+    pub item_name: String,
+    pub from_recipe_id: String,
+    pub from_recipe_name: String,
+    pub to_recipe_id: String,
+    pub to_recipe_name: String,
+    /// The incoming recipe is an alt. Worth calling out because it's
+    /// the one a hard drive paid for.
+    pub to_is_alt: bool,
+}
+
+/// A standing factory whose plan would come out cheaper if it were
+/// re-optimized against the recipes reachable at the current tier.
+///
+/// The offer half of the build-sheet stability rule: a saved plan holds
+/// its recipes when the tier widens the pool the solver may choose
+/// from, so something has to say the better plan exists. Both sides of
+/// every figure travel together, because a prompt that only names the
+/// improvement asks the player to take a redesign of machines they've
+/// already placed on faith.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplanOffer {
+    pub factory_id: String,
+    pub factory_name: String,
+    pub current_machines: i64,
+    pub current_power_mw: f32,
+    pub reoptimized_machines: i64,
+    pub reoptimized_power_mw: f32,
+    pub swaps: Vec<RecipeSwap>,
 }

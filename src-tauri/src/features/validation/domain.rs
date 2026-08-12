@@ -155,17 +155,42 @@ pub fn check_plan_graph(
     locked_alts
 }
 
-/// Plan-graph edges (within-factory segments) whose rate exceeds the
-/// best belt/pipe tier unlocked at the current playthrough tier.
+/// Plan-graph capacity, in two passes with two different severities,
+/// because "this line carries more than one belt" and "this line
+/// *cannot be built*" are different findings that happen to share
+/// arithmetic.
 ///
-/// Deliberately *not* an error and deliberately not silent about the
-/// fix: `N` parallel belts/headers of the best unlocked tier cover the
-/// rate just fine — running two Mk3 belts side by side for a 439.5/min
-/// line is correct play, not a problem — but the app has the belt/pipe
-/// table already and a beginner doesn't, so the count is worth stating
-/// instead of leaving the segment rendered identically to a compliant
-/// one. Fluids below Tier 3 get a distinct finding: there's no pipe to
-/// count multiples of yet.
+/// **Pass one — machine output ports, warnings.** A machine has one
+/// output port per item it makes, exactly as a miner does, and a
+/// splitter after the port can only divide what already came through.
+/// So a bank's per-machine rate (`output ÷ machine_count`) above the
+/// best carrier unlocked is unbuildable at any belt count: the fixes
+/// are a lower clock or the same output spread over more machines,
+/// both of which the app then reads as fixed. Several recipes reach
+/// this from one machine at stock clock — Biomass (Wood) is 300/min
+/// against Tier 0's 60/min belt, Steel Screws 260/min against Tier 3's
+/// 120 — a live case, not a theoretical one.
+///
+/// The bank is the right unit, not the edge. One machine feeding two
+/// consumers splits into two under-cap edges while its single port
+/// still carries the sum, so an edge-level test would wave it through.
+///
+/// **Pass two — segments, notes.** What's left is aggregate flow: `N`
+/// parallel belts/headers of the best unlocked tier carry it, which is
+/// ordinary play, and the segment reads the same rate before and after
+/// they go down, so a warning here could never be cleared. The count
+/// still earns a row — the app has the belt/pipe table and a beginner
+/// doesn't. Segments a pass-one warning already covers are skipped:
+/// "lay two belts" isn't an available move when there's one port to
+/// attach them to, and the warning carries the fix that is.
+///
+/// Extractor ports are the same physical rule one layer out, and stay
+/// with `check_claim_port_capacity` — it works from the claims, so it
+/// knows the extractor's clock and can name the node.
+///
+/// Fluids below Tier 3 get a distinct finding and keep warning
+/// severity: with no pipe unlocked there's no multiple to lay, and the
+/// fix (reach Tier 3) is real and observable here.
 pub fn check_plan_graph_capacity(
     factory: &FactoryRef,
     graph: &PlanGraph,
@@ -175,14 +200,93 @@ pub fn check_plan_graph_capacity(
 ) {
     let best_belt = best_belt_tier(tier, gd);
     let best_pipe = best_pipe_tier(tier, gd);
+    // `None` means no carrier is unlocked for that state of matter yet,
+    // never a capacity of zero — below Tier 3 there is no pipe to
+    // measure a fluid against, and `FluidSegmentNoPipeAtTier` is the
+    // finding that covers it.
+    let carrier_for = |item_id: &str| -> Option<Carrier> {
+        let is_fluid = gd.item(item_id).map(|i| i.is_fluid).unwrap_or(false);
+        if is_fluid {
+            best_pipe.map(|p| Carrier {
+                cap: p.cubic_meters_per_minute as f32,
+                mark: p.mark,
+                is_fluid,
+            })
+        } else {
+            best_belt.map(|b| Carrier { cap: b.items_per_minute as f32, mark: b.mark, is_fluid })
+        }
+    };
+
+    // (node_key, item_id) pairs whose port is already reported as
+    // unbuildable, so pass two doesn't offer parallel belts for them.
+    let mut over_port: HashSet<(&str, &str)> = HashSet::new();
+    for node in &graph.nodes {
+        let PlanNode::Recipe {
+            node_key,
+            recipe_name,
+            building_name,
+            machine_count,
+            clock_pct,
+            outputs,
+            ..
+        } = node
+        else {
+            continue;
+        };
+        // A bank is never zero machines in a computed plan, but the
+        // division below has to hold for a hand-edited saved graph too.
+        if *machine_count < 1 {
+            continue;
+        }
+        for flow in outputs {
+            if flow.per_minute <= EPS {
+                continue;
+            }
+            let Some(carrier) = carrier_for(&flow.item_id) else { continue };
+            let per_machine_ipm = flow.per_minute / *machine_count as f32;
+            if per_machine_ipm <= carrier.cap + EPS {
+                continue;
+            }
+            over_port.insert((node_key.as_str(), flow.item_id.as_str()));
+            out.push(warn(
+                Category::Capacity,
+                FindingKind::MachineOverPortCapacity {
+                    factory_id: factory.factory_id.clone(),
+                    factory_name: factory.factory_name.clone(),
+                    node_key: node_key.clone(),
+                    recipe_name: recipe_name.clone(),
+                    building_name: building_name.clone(),
+                    item_id: flow.item_id.clone(),
+                    item_name: flow.item_name.clone(),
+                    machine_count: *machine_count,
+                    per_machine_ipm,
+                    capacity_ipm: carrier.cap,
+                    capacity_mark: carrier.mark,
+                    is_fluid: carrier.is_fluid,
+                    // Output scales linearly with clock, so the ratio to
+                    // the cap carries straight onto the clock axis.
+                    max_fitting_clock_pct: (carrier.cap / per_machine_ipm) * clock_pct,
+                    // Splitting the same total output over this many
+                    // machines puts every port at or under the cap.
+                    machines_needed: (flow.per_minute / carrier.cap).ceil() as i64,
+                },
+            ));
+        }
+    }
+
     for edge in &graph.edges {
         if edge.ipm <= EPS {
             continue;
         }
-        let is_fluid = gd.item(&edge.item_id).map(|i| i.is_fluid).unwrap_or(false);
-        if is_fluid {
-            match best_pipe {
-                None => out.push(warn(
+        if over_port.contains(&(edge.from_node.as_str(), edge.item_id.as_str())) {
+            continue;
+        }
+        let Some(carrier) = carrier_for(&edge.item_id) else {
+            // Reachable only for a fluid: `best_belt` is `None` just
+            // when the dataset ships no belt tier at all, which is a
+            // data-integrity problem rather than a playthrough state.
+            if gd.item(&edge.item_id).map(|i| i.is_fluid).unwrap_or(false) {
+                out.push(warn(
                     Category::Capacity,
                     FindingKind::FluidSegmentNoPipeAtTier {
                         factory_id: factory.factory_id.clone(),
@@ -191,48 +295,50 @@ pub fn check_plan_graph_capacity(
                         item_name: edge.item_name.clone(),
                         ipm: edge.ipm,
                     },
-                )),
-                Some(p) => {
-                    let cap = p.cubic_meters_per_minute as f32;
-                    if edge.ipm > cap + EPS {
-                        out.push(warn(
-                            Category::Capacity,
-                            FindingKind::SegmentOverPipeCapacity {
-                                factory_id: factory.factory_id.clone(),
-                                factory_name: factory.factory_name.clone(),
-                                item_id: edge.item_id.clone(),
-                                item_name: edge.item_name.clone(),
-                                ipm: edge.ipm,
-                                pipe_mark: p.mark,
-                                pipe_capacity_ipm: cap,
-                                pipes_needed: (edge.ipm / cap).ceil() as u32,
-                            },
-                        ));
-                    }
-                }
-            }
-        } else if let Some(b) = best_belt {
-            let cap = b.items_per_minute as f32;
-            if edge.ipm > cap + EPS {
-                out.push(warn(
-                    Category::Capacity,
-                    FindingKind::SegmentOverBeltCapacity {
-                        factory_id: factory.factory_id.clone(),
-                        factory_name: factory.factory_name.clone(),
-                        item_id: edge.item_id.clone(),
-                        item_name: edge.item_name.clone(),
-                        ipm: edge.ipm,
-                        belt_mark: b.mark,
-                        belt_capacity_ipm: cap,
-                        belts_needed: (edge.ipm / cap).ceil() as u32,
-                    },
                 ));
             }
+            continue;
+        };
+        if edge.ipm <= carrier.cap + EPS {
+            continue;
         }
-        // `best_belt` is `None` only if the dataset ships no belt tier
-        // at all — a data-integrity problem out of scope for a
-        // per-segment finding, not a real playthrough state.
+        let needed = (edge.ipm / carrier.cap).ceil() as u32;
+        out.push(note(
+            Category::Capacity,
+            if carrier.is_fluid {
+                FindingKind::SegmentOverPipeCapacity {
+                    factory_id: factory.factory_id.clone(),
+                    factory_name: factory.factory_name.clone(),
+                    item_id: edge.item_id.clone(),
+                    item_name: edge.item_name.clone(),
+                    ipm: edge.ipm,
+                    pipe_mark: carrier.mark,
+                    pipe_capacity_ipm: carrier.cap,
+                    pipes_needed: needed,
+                }
+            } else {
+                FindingKind::SegmentOverBeltCapacity {
+                    factory_id: factory.factory_id.clone(),
+                    factory_name: factory.factory_name.clone(),
+                    item_id: edge.item_id.clone(),
+                    item_name: edge.item_name.clone(),
+                    ipm: edge.ipm,
+                    belt_mark: carrier.mark,
+                    belt_capacity_ipm: carrier.cap,
+                    belts_needed: needed,
+                }
+            },
+        ));
     }
+}
+
+/// What one belt or pipe of the best tier unlocked carries, resolved
+/// per item so a solid and a fluid on the same graph each measure
+/// against their own carrier.
+struct Carrier {
+    cap: f32,
+    mark: u8,
+    is_fluid: bool,
 }
 
 /// Claims using an invalid extractor for the node, or one above tier.
@@ -492,7 +598,7 @@ pub fn check_generator_supply(
         if available <= EPS && no_automated_supply.contains(&flow.item_id) {
             out.push(note(
                 Category::SupplyPower,
-                FindingKind::GeneratorFuelHandFed {
+                FindingKind::GeneratorFuelHandGathered {
                     factory_id: factory.factory_id.clone(),
                     factory_name: factory.factory_name.clone(),
                     item_id: flow.item_id.clone(),
@@ -673,7 +779,7 @@ pub fn build_alt_shopping_list(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::features::planner::dto::PlanEdge;
+    use crate::features::planner::dto::{PlanEdge, RecipeFlow};
 
     fn fref() -> FactoryRef {
         FactoryRef { factory_id: "f1".into(), factory_name: "Coal Power".into() }
@@ -681,6 +787,10 @@ mod tests {
 
     fn fuel_flow(item_id: &str, item_name: &str, per_minute: f32) -> PowerFuelFlow {
         PowerFuelFlow { item_id: item_id.into(), item_name: item_name.into(), is_fluid: false, per_minute }
+    }
+
+    fn fluid_fuel_flow(item_id: &str, item_name: &str, per_minute: f32) -> PowerFuelFlow {
+        PowerFuelFlow { item_id: item_id.into(), item_name: item_name.into(), is_fluid: true, per_minute }
     }
 
     /// The real set, so these tests exercise the same membership the
@@ -737,12 +847,12 @@ mod tests {
         assert_eq!(findings[0].severity, Severity::Info, "not a warning — nothing is wrong");
         assert_eq!(findings[0].category, Category::SupplyPower);
         match &findings[0].kind {
-            FindingKind::GeneratorFuelHandFed { item_name, demand_ipm, .. } => {
+            FindingKind::GeneratorFuelHandGathered { item_name, demand_ipm, .. } => {
                 assert_eq!(item_name, "Wood");
                 // The burn rate survives: it's the part a player acts on.
                 assert_eq!(*demand_ipm, 18.0);
             }
-            other => panic!("expected GeneratorFuelHandFed, got {other:?}"),
+            other => panic!("expected GeneratorFuelHandGathered, got {other:?}"),
         }
     }
 
@@ -763,7 +873,7 @@ mod tests {
         assert_eq!(findings.len(), 1, "got {findings:?}");
         assert_eq!(findings[0].severity, Severity::Info);
         assert!(
-            matches!(&findings[0].kind, FindingKind::GeneratorFuelHandFed { demand_ipm, .. } if *demand_ipm == 18.0),
+            matches!(&findings[0].kind, FindingKind::GeneratorFuelHandGathered { demand_ipm, .. } if *demand_ipm == 18.0),
             "the generator's own burn rate: {findings:?}"
         );
     }
@@ -840,6 +950,36 @@ mod tests {
             );
             assert_eq!(findings.len(), 1, "{item_name}: got {findings:?}");
             assert_eq!(findings[0].severity, Severity::Info, "{item_name} can never be supplied");
+        }
+    }
+
+    #[test]
+    fn a_zero_supply_fluid_fuel_is_the_same_note_as_a_solid_one() {
+        // Liquid Biofuel is the case the note's old wording got wrong.
+        // A Refinery does make it, so it reads automatable — but the
+        // Refinery eats Solid Biofuel, which eats Biomass, which eats
+        // Wood, Leaves, Mycelia or Alien Protein, and no recipe or node
+        // in the dataset produces any of those. Building the whole
+        // chain moves the gathering, it doesn't remove it, so zero
+        // supply here is a standing chore rather than a shortfall.
+        // Pinned separately from the solids because the fluid is the
+        // one nobody can pour into a generator by hand.
+        let fuel_flows = vec![fluid_fuel_flow("Desc_LiquidBiofuel_C", "Liquid Biofuel", 270.0)];
+        let mut findings = Vec::new();
+        check_generator_supply(
+            &fref(), &HashMap::new(), &HashMap::new(), &fuel_flows, &HashMap::new(), &stranded(),
+            &mut findings,
+        );
+
+        assert_eq!(findings.len(), 1, "got {findings:?}");
+        assert_eq!(findings[0].severity, Severity::Info);
+        assert_eq!(findings[0].category, Category::SupplyPower);
+        match &findings[0].kind {
+            FindingKind::GeneratorFuelHandGathered { item_name, demand_ipm, .. } => {
+                assert_eq!(item_name, "Liquid Biofuel");
+                assert_eq!(*demand_ipm, 270.0);
+            }
+            other => panic!("expected GeneratorFuelHandGathered, got {other:?}"),
         }
     }
 
@@ -1040,6 +1180,376 @@ mod tests {
         PlanGraph { edges, ..PlanGraph::default() }
     }
 
+    fn graph(nodes: Vec<PlanNode>, edges: Vec<PlanEdge>) -> PlanGraph {
+        PlanGraph { nodes, edges, ..PlanGraph::default() }
+    }
+
+    fn edge_from(from_node: &str, item_id: &str, item_name: &str, ipm: f32) -> PlanEdge {
+        PlanEdge { from_node: from_node.into(), ..plan_edge(item_id, item_name, ipm) }
+    }
+
+    /// A machine bank sized the way `planner::domain::build_stage`
+    /// sizes one — enough machines to cover the demand, clocked down to
+    /// land exactly on it — reading every rate out of the bundled
+    /// dataset. Hand-picked numbers would pin the arithmetic without
+    /// proving any recipe in the game actually reaches it, and the
+    /// whole question here is whether real single-machine rates clear
+    /// the belt.
+    fn recipe_bank(gd: &GameData, recipe_id: &str, item_id: &str, demand_ipm: f32) -> PlanNode {
+        let per_machine = gd
+            .recipe(recipe_id)
+            .expect("recipe is in the bundled dataset")
+            .outputs
+            .iter()
+            .find(|io| io.item_id == item_id)
+            .expect("recipe produces the item")
+            .per_minute;
+        let machine_count = (demand_ipm / per_machine).ceil().max(1.0) as i64;
+        let clock_pct = demand_ipm / (machine_count as f32 * per_machine) * 100.0;
+        recipe_bank_at_clock(gd, recipe_id, item_id, machine_count, clock_pct)
+    }
+
+    /// The bank builder for the cases the planner's own sizing can't
+    /// produce — it never clocks a bank above 100%, so an overclocked
+    /// graph only ever arrives from a saved plan.
+    fn recipe_bank_at_clock(
+        gd: &GameData,
+        recipe_id: &str,
+        item_id: &str,
+        machine_count: i64,
+        clock_pct: f32,
+    ) -> PlanNode {
+        let r = gd.recipe(recipe_id).expect("recipe is in the bundled dataset");
+        let name_of = |id: &str| gd.item(id).map(|i| i.name.clone()).unwrap_or_else(|| id.into());
+        let scaler = machine_count as f32 * clock_pct / 100.0;
+        let flows = |ios: &[crate::shared::gamedata::types::RecipeIo]| {
+            ios.iter()
+                .map(|io| RecipeFlow {
+                    item_id: io.item_id.clone(),
+                    item_name: name_of(&io.item_id),
+                    per_minute: io.per_minute * scaler,
+                })
+                .collect::<Vec<_>>()
+        };
+        let outputs = flows(&r.outputs);
+        let output_ipm =
+            outputs.iter().find(|f| f.item_id == item_id).map(|f| f.per_minute).unwrap_or(0.0);
+        PlanNode::Recipe {
+            node_key: format!("recipe:{item_id}"),
+            item_id: item_id.into(),
+            item_name: name_of(item_id),
+            recipe_id: r.id.clone(),
+            recipe_name: r.name.clone(),
+            building_id: r.building_id.clone(),
+            building_name: gd
+                .building(&r.building_id)
+                .map(|b| b.name.clone())
+                .unwrap_or_else(|| r.building_id.clone()),
+            machine_count,
+            clock_pct,
+            power_mw: 0.0,
+            output_ipm,
+            free_output_ipm: 0.0,
+            is_alt: r.is_alt,
+            is_target: true,
+            target_ipm: None,
+            inputs: flows(&r.inputs),
+            outputs,
+        }
+    }
+
+    /// Every `Capacity` finding, so each assertion below is bounded by
+    /// the full set the check produced rather than by whichever one
+    /// happened to land first.
+    fn capacity(findings: &[Finding]) -> Vec<&Finding> {
+        findings.iter().filter(|f| f.category == Category::Capacity).collect()
+    }
+
+    #[test]
+    fn one_constructor_over_the_tier0_belt_is_a_warning_not_a_belt_count() {
+        // Biomass (Wood) is 300/min out of one Constructor at stock
+        // clock, against the 60/min Mk1 belt that is all Tier 0 has.
+        // One machine has one output port and a splitter after it only
+        // divides what already came through, so "needs 5 belts" is not
+        // a build anyone can lay — the player has to clock down or add
+        // machines, both of which this then reads as fixed.
+        let gd = GameData::from_bundled().unwrap();
+        let bank = recipe_bank(&gd, "Recipe_Biomass_Wood_C", "Desc_GenericBiomass_C", 300.0);
+        let g = graph(vec![bank], vec![]);
+        let mut findings = Vec::new();
+        check_plan_graph_capacity(&fref(), &g, 0, &gd, &mut findings);
+
+        let cap = capacity(&findings);
+        assert_eq!(cap.len(), 1, "got {findings:?}");
+        assert_eq!(cap[0].severity, Severity::Warning, "unbuildable, not a layout note");
+        match &cap[0].kind {
+            FindingKind::MachineOverPortCapacity {
+                machine_count,
+                per_machine_ipm,
+                capacity_ipm,
+                capacity_mark,
+                is_fluid,
+                max_fitting_clock_pct,
+                machines_needed,
+                item_id,
+                ..
+            } => {
+                assert_eq!(item_id, "Desc_GenericBiomass_C");
+                assert_eq!(*machine_count, 1);
+                assert!((*per_machine_ipm - 300.0).abs() < 0.01);
+                assert!((*capacity_ipm - 60.0).abs() < 0.01);
+                assert_eq!(*capacity_mark, 1);
+                assert!(!*is_fluid);
+                // 60/300 × 100% = 20%.
+                assert!((*max_fitting_clock_pct - 20.0).abs() < 0.01, "got {max_fitting_clock_pct}");
+                assert_eq!(*machines_needed, 5, "300/min over 60/min ports");
+            }
+            other => panic!("expected MachineOverPortCapacity, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_steel_screws_bank_warns_and_never_offers_a_second_belt_on_one_port() {
+        // The reported repro: Tier 3, 225/min of Screws on Steel Screws
+        // sizes to one Constructor at 86.5% (260/min at stock), and the
+        // 225/min segment leaving it used to read "needs 2 belts at
+        // Mk.2" as a note — two belts on one output port, and a plan
+        // that cannot be built passing a clean sweep. The segment note
+        // has to be suppressed here, not stacked on top: laying belts
+        // is not the move.
+        let gd = GameData::from_bundled().unwrap();
+        let bank = recipe_bank(&gd, "Recipe_Alternate_Screw_2_C", "Desc_IronScrew_C", 225.0);
+        let g = graph(
+            vec![bank],
+            vec![edge_from("recipe:Desc_IronScrew_C", "Desc_IronScrew_C", "Screws", 225.0)],
+        );
+        let mut findings = Vec::new();
+        check_plan_graph_capacity(&fref(), &g, 3, &gd, &mut findings);
+
+        let cap = capacity(&findings);
+        assert_eq!(cap.len(), 1, "the warning replaces the belt note: {findings:?}");
+        assert_eq!(cap[0].severity, Severity::Warning);
+        match &cap[0].kind {
+            FindingKind::MachineOverPortCapacity {
+                recipe_name,
+                building_name,
+                machine_count,
+                per_machine_ipm,
+                capacity_ipm,
+                capacity_mark,
+                max_fitting_clock_pct,
+                machines_needed,
+                ..
+            } => {
+                assert_eq!(recipe_name, "Alternate: Steel Screws");
+                assert_eq!(building_name, "Constructor");
+                assert_eq!(*machine_count, 1);
+                assert!((*per_machine_ipm - 225.0).abs() < 0.01);
+                assert!((*capacity_ipm - 120.0).abs() < 0.01);
+                assert_eq!(*capacity_mark, 2);
+                // 120/225 × 86.538% = 46.15…%, which the panel floors
+                // to 46 — rounding it up hands back a clock that still
+                // overshoots the port.
+                assert!(
+                    (*max_fitting_clock_pct - 46.153_846).abs() < 0.01,
+                    "got {max_fitting_clock_pct}"
+                );
+                assert_eq!(*machines_needed, 2);
+            }
+            other => panic!("expected MachineOverPortCapacity, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn one_machine_feeding_two_consumers_is_still_over_its_single_port() {
+        // The case an edge-level check waves through. One Constructor
+        // on Steel Screws at 200/min splits to two consumers at 100/min
+        // each — both segments sit under the Mk.2 belt's 120, so
+        // nothing measured per edge sees a problem, while the single
+        // port they both leave through carries the full 200.
+        let gd = GameData::from_bundled().unwrap();
+        let bank = recipe_bank(&gd, "Recipe_Alternate_Screw_2_C", "Desc_IronScrew_C", 200.0);
+        let g = graph(
+            vec![bank],
+            vec![
+                edge_from("recipe:Desc_IronScrew_C", "Desc_IronScrew_C", "Screws", 100.0),
+                edge_from("recipe:Desc_IronScrew_C", "Desc_IronScrew_C", "Screws", 100.0),
+            ],
+        );
+        let mut findings = Vec::new();
+        check_plan_graph_capacity(&fref(), &g, 3, &gd, &mut findings);
+
+        let cap = capacity(&findings);
+        assert_eq!(cap.len(), 1, "got {findings:?}");
+        assert_eq!(cap[0].severity, Severity::Warning);
+        match &cap[0].kind {
+            FindingKind::MachineOverPortCapacity { per_machine_ipm, machines_needed, .. } => {
+                assert!(
+                    (*per_machine_ipm - 200.0).abs() < 0.01,
+                    "the port carries the sum, not one branch: got {per_machine_ipm}"
+                );
+                assert_eq!(*machines_needed, 2);
+            }
+            other => panic!("expected MachineOverPortCapacity, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_bank_whose_own_ports_fit_still_gets_the_aggregate_belt_note() {
+        // The other half of the split, and the case #130 was right
+        // about. Base Screws is 40/min a machine, so 500/min is 13
+        // Constructors each well inside the Mk.2 belt — no port is
+        // over. The 500/min line out of the bank is ordinary parallel
+        // belts, so it stays a note with the count on it.
+        let gd = GameData::from_bundled().unwrap();
+        let bank = recipe_bank(&gd, "Recipe_Screw_C", "Desc_IronScrew_C", 500.0);
+        let g = graph(
+            vec![bank],
+            vec![edge_from("recipe:Desc_IronScrew_C", "Desc_IronScrew_C", "Screws", 500.0)],
+        );
+        let mut findings = Vec::new();
+        check_plan_graph_capacity(&fref(), &g, 3, &gd, &mut findings);
+
+        let cap = capacity(&findings);
+        assert_eq!(cap.len(), 1, "got {findings:?}");
+        assert_eq!(cap[0].severity, Severity::Info, "parallel belts are normal play");
+        match &cap[0].kind {
+            FindingKind::SegmentOverBeltCapacity { belts_needed, belt_mark, ipm, .. } => {
+                assert_eq!(*belts_needed, 5);
+                assert_eq!(*belt_mark, 2);
+                assert!((*ipm - 500.0).abs() < 0.01);
+            }
+            other => panic!("expected SegmentOverBeltCapacity, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn suppressing_the_note_is_scoped_to_the_producer_that_warned() {
+        // A factory with one over-port bank must not go quiet about
+        // every other line in it. The raw ore feed is four miners'
+        // worth of aggregate flow — still parallel belts, still a note
+        // — alongside the Steel Screws bank's warning.
+        let gd = GameData::from_bundled().unwrap();
+        let bank = recipe_bank(&gd, "Recipe_Alternate_Screw_2_C", "Desc_IronScrew_C", 225.0);
+        let g = graph(
+            vec![bank],
+            vec![
+                edge_from("recipe:Desc_IronScrew_C", "Desc_IronScrew_C", "Screws", 225.0),
+                edge_from("raw:Desc_OreIron_C", "Desc_OreIron_C", "Iron Ore", 280.9),
+            ],
+        );
+        let mut findings = Vec::new();
+        check_plan_graph_capacity(&fref(), &g, 3, &gd, &mut findings);
+
+        let cap = capacity(&findings);
+        assert_eq!(cap.len(), 2, "got {findings:?}");
+        assert_eq!(cap.iter().filter(|f| f.severity == Severity::Warning).count(), 1);
+        assert!(
+            cap.iter().any(|f| matches!(
+                &f.kind,
+                FindingKind::SegmentOverBeltCapacity { item_id, belts_needed, .. }
+                    if item_id == "Desc_OreIron_C" && *belts_needed == 3
+            )),
+            "the ore note survives: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_bank_exactly_on_its_port_capacity_is_silent() {
+        // 120/min out of one Constructor is the Mk.2 belt's capacity,
+        // not over it — the boundary the `> cap + EPS` test has to hold
+        // at, or every full belt in the game reads as unbuildable.
+        let gd = GameData::from_bundled().unwrap();
+        let bank = recipe_bank(&gd, "Recipe_Alternate_Screw_2_C", "Desc_IronScrew_C", 120.0);
+        let g = graph(
+            vec![bank],
+            vec![edge_from("recipe:Desc_IronScrew_C", "Desc_IronScrew_C", "Screws", 120.0)],
+        );
+        let mut findings = Vec::new();
+        check_plan_graph_capacity(&fref(), &g, 3, &gd, &mut findings);
+        assert!(capacity(&findings).is_empty(), "got {findings:?}");
+    }
+
+    #[test]
+    fn a_fluid_bank_over_its_port_reads_against_the_pipe_not_the_belt() {
+        // Symmetry with the solid case, from the state that reaches it:
+        // a saved graph built at a higher tier than the playthrough now
+        // sits at. No fluid recipe clears its pipe at a legal clock on
+        // its own tier's pipe — Sloppy Alumina is the closest at 240
+        // m³/min, and 250% of that is exactly the Mk2 pipe — so the
+        // over-port case only appears once the pipe underneath it drops
+        // back to Mk1's 300. `check_plan_graph` reports the tier
+        // violation itself; this check still has to measure the graph
+        // in front of it rather than go quiet.
+        let gd = GameData::from_bundled().unwrap();
+        let bank = recipe_bank_at_clock(
+            &gd,
+            "Recipe_Alternate_SloppyAlumina_C",
+            "Desc_AluminaSolution_C",
+            1,
+            250.0,
+        );
+        let g = graph(vec![bank], vec![]);
+        let mut findings = Vec::new();
+        check_plan_graph_capacity(&fref(), &g, 3, &gd, &mut findings);
+
+        let cap = capacity(&findings);
+        assert_eq!(cap.len(), 1, "got {findings:?}");
+        assert_eq!(cap[0].severity, Severity::Warning);
+        match &cap[0].kind {
+            FindingKind::MachineOverPortCapacity {
+                is_fluid,
+                capacity_ipm,
+                capacity_mark,
+                per_machine_ipm,
+                max_fitting_clock_pct,
+                ..
+            } => {
+                assert!(*is_fluid);
+                assert!((*per_machine_ipm - 600.0).abs() < 0.01);
+                assert!((*capacity_ipm - 300.0).abs() < 0.01);
+                assert_eq!(*capacity_mark, 1);
+                assert!((*max_fitting_clock_pct - 125.0).abs() < 0.01);
+            }
+            other => panic!("expected MachineOverPortCapacity, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_fluid_bank_before_any_pipe_tier_is_left_to_the_segment_warning() {
+        // With no pipe unlocked there's no capacity to measure a port
+        // against, and `FluidSegmentNoPipeAtTier` already says the only
+        // useful thing (reach Tier 3). Same reason
+        // `check_claim_port_capacity` stays silent on a `None` cap.
+        let gd = GameData::from_bundled().unwrap();
+        let bank = recipe_bank_at_clock(
+            &gd,
+            "Recipe_Alternate_SloppyAlumina_C",
+            "Desc_AluminaSolution_C",
+            1,
+            250.0,
+        );
+        let g = graph(
+            vec![bank],
+            vec![edge_from(
+                "recipe:Desc_AluminaSolution_C",
+                "Desc_AluminaSolution_C",
+                "Alumina Solution",
+                600.0,
+            )],
+        );
+        let mut findings = Vec::new();
+        check_plan_graph_capacity(&fref(), &g, 0, &gd, &mut findings);
+
+        let cap = capacity(&findings);
+        assert_eq!(cap.len(), 1, "got {findings:?}");
+        assert_eq!(cap[0].severity, Severity::Warning);
+        assert!(
+            matches!(&cap[0].kind, FindingKind::FluidSegmentNoPipeAtTier { ipm, .. } if (*ipm - 600.0).abs() < 0.01),
+            "got {findings:?}"
+        );
+    }
+
     #[test]
     fn belt_segment_over_tier0_cap_flags_belts_needed() {
         // The reported Tier 0 case: a Pure iron node on Mk1 at 100%
@@ -1063,6 +1573,9 @@ mod tests {
             other => panic!("expected SegmentOverBeltCapacity, got {other:?}"),
         }
         assert_eq!(findings[0].category, Category::Capacity);
+        // Aggregate flow: two Mk1 belts carry it, and laying them leaves
+        // the segment reading 90/min — a warning here could never clear.
+        assert_eq!(findings[0].severity, Severity::Info);
     }
 
     #[test]
@@ -1085,6 +1598,9 @@ mod tests {
 
         assert_eq!(findings.len(), 1, "got {findings:?}");
         assert!(matches!(&findings[0].kind, FindingKind::FluidSegmentNoPipeAtTier { ipm, .. } if *ipm == 30.0));
+        // Stays a warning while the over-capacity pair are notes:
+        // reaching Tier 3 really does retire this one.
+        assert_eq!(findings[0].severity, Severity::Warning);
     }
 
     #[test]
@@ -1109,6 +1625,9 @@ mod tests {
             }
             other => panic!("expected SegmentOverPipeCapacity, got {other:?}"),
         }
+        // Same reasoning as the belt pair: three headers carry it, and
+        // building them leaves this segment reading 630 m³/min.
+        assert_eq!(findings[0].severity, Severity::Info);
     }
 
     #[test]
