@@ -6,6 +6,7 @@ import type {
   FactoryPlan,
   ItemTier,
   RaiseExportTargetResult,
+  ReoptimizeResult,
   ReplanOffer,
   SavePlanInput,
   SavePlanResult,
@@ -28,7 +29,14 @@ export const plannerApi = {
   listItemTiers: () => invoke<ItemTier[]>("list_item_tiers"),
   listReplanOffers: () => invoke<ReplanOffer[]>("list_replan_offers"),
   reoptimize: (factoryId: string) =>
-    invoke<SavePlanResult>("factory_plan_reoptimize", { factoryId }),
+    invoke<ReoptimizeResult>("factory_plan_reoptimize", { factoryId }),
+  /** Undo half of `reoptimize` — hand back the `droppedRecipes` it
+   * returned to rebuild the plan that stood before it. */
+  restorePlanRecipes: (factoryId: string, recipeOverrides: Record<string, string>) =>
+    invoke<SavePlanResult>("factory_plan_restore_recipes", {
+      factoryId,
+      recipeOverrides,
+    }),
   assignImportSource: (importId: string, sourceFactoryId: string) =>
     invoke<SavePlanResult>("factory_plan_assign_import_source", {
       importId,

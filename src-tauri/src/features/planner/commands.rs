@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::features::alts::repo as alts_repo;
 use crate::features::factory::dto::Factory;
 use crate::features::factory::repo as factory_repo;
+use crate::features::logistics::dto as logistics_dto;
 use crate::features::logistics::repo as logistics_repo;
 use crate::features::playthrough::state::ActivePlaythrough;
 use crate::features::resource_nodes::domain as nodes_domain;
@@ -423,6 +424,24 @@ pub(crate) fn saved_plan_graph(
     }).map_err(|e| format!("{e:?}"))))
 }
 
+/// Claim the link a previous save left behind for this route, so a
+/// re-save can carry it forward instead of building a replacement.
+///
+/// Matching is on `(source factory, item)` because that pair is the
+/// route the player was looking at when they chose its transport; two
+/// import rows for the same pair are interchangeable, so the first
+/// unclaimed one wins and each is claimed at most once.
+fn claim_reusable_link(
+    pool: &mut Vec<logistics_dto::LogisticsLink>,
+    source_factory_id: &str,
+    item_id: &str,
+) -> Option<logistics_dto::LogisticsLink> {
+    let idx = pool
+        .iter()
+        .position(|l| l.from_factory_id == source_factory_id && l.item_id == item_id)?;
+    Some(pool.remove(idx))
+}
+
 // `pub(crate)` rather than private: the validation sweep's tests need a
 // real saved plan on the books to exercise its "plan graph + manual
 // machines both present" branch, and this is the one path that
@@ -472,10 +491,30 @@ pub(crate) fn plan_save_impl(
     db.with(|c| {
         let tx = c.unchecked_transaction()?;
 
-        // Reconcile logistics links from previous saves: delete and
-        // recreate, so removed/re-routed imports never leave orphans.
+        // Logistics links from previous saves, held aside so the
+        // materialization step below can carry each one forward onto
+        // the route it still serves. Whatever is left unclaimed is a
+        // route this plan no longer has, and gets deleted at the end —
+        // removed and re-routed imports never leave orphans.
+        //
+        // Carrying the row forward rather than replacing it is what
+        // makes a re-save non-destructive: the link holds a transport
+        // kind and plan the player picked and notes they wrote, and its
+        // id is what a train route is attached by (`train_route_link`
+        // cascades on delete). Rebuilding it would quietly reset every
+        // one of those on an ordinary target edit, and leave the
+        // re-optimize Undo with nothing to put back.
+        //
+        // Read before `plan_imports_replace` — the link ids live on the
+        // import rows it is about to wipe.
+        let mut reusable_links: Vec<logistics_dto::LogisticsLink> = Vec::new();
         for old_link in plan_repo::plan_link_ids_for_factory(&tx, &input.factory_id)? {
-            logistics_repo::link_delete(&tx, &old_link)?;
+            // An id with no row behind it would mean the FK's
+            // `ON DELETE SET NULL` failed to fire; skip rather than
+            // fail the save over a link that is already gone.
+            if let Some(link) = logistics_repo::link_get(&tx, &old_link)? {
+                reusable_links.push(link);
+            }
         }
 
         // Persist the plan inputs.
@@ -595,33 +634,69 @@ pub(crate) fn plan_save_impl(
                 if alloc.resolved_ipm <= FLOW_EPS_IPM {
                     continue;
                 }
-                let link_id = Uuid::new_v4().to_string();
                 // Computed fresh from both factories' current map
-                // positions rather than a fabricated default — a
-                // wrong number that looks authoritative (the old
-                // hard-coded 1000m) is worse than a blank one, and an
-                // unplaced source correctly comes back `None`.
+                // positions rather than a fabricated default — a wrong
+                // number that looks authoritative (the old hard-coded
+                // 1000m) is worse than a blank one, and an unplaced
+                // source correctly comes back `None`.
                 let source_factory =
                     factory_repo::factory_get(&tx, &alloc.source_factory_id)?;
-                let distance_m = source_factory
+                let measured_m = source_factory
                     .as_ref()
                     .and_then(|src| factory_distance_meters(&dest_factory, src));
-                logistics_repo::link_insert(
-                    &tx,
-                    &link_id,
+                let link_id = match claim_reusable_link(
+                    &mut reusable_links,
                     &alloc.source_factory_id,
-                    &input.factory_id,
                     item_id,
-                    alloc.resolved_ipm,
-                    "belt",
-                    "null", // transport_plan_json — picker refines later
-                    distance_m,
-                    None,
-                    now,
-                )?;
+                ) {
+                    // The route is still here, so the transport kind,
+                    // the plan under it and the notes beside it still
+                    // stand — a save restates only what it can derive.
+                    // Distance it can, the rest it can't, so a fresh
+                    // measurement wins while an unmeasurable one (an
+                    // endpoint off the map) leaves the stored figure
+                    // alone rather than blanking it.
+                    Some(prev) => {
+                        logistics_repo::link_update(
+                            &tx,
+                            &prev.id,
+                            alloc.resolved_ipm,
+                            &prev.transport_kind,
+                            &prev.transport_plan_json,
+                            measured_m.or(prev.distance_m),
+                            prev.notes.as_deref(),
+                            now,
+                        )?;
+                        prev.id
+                    }
+                    None => {
+                        let link_id = Uuid::new_v4().to_string();
+                        logistics_repo::link_insert(
+                            &tx,
+                            &link_id,
+                            &alloc.source_factory_id,
+                            &input.factory_id,
+                            item_id,
+                            alloc.resolved_ipm,
+                            "belt",
+                            "null", // transport_plan_json — picker refines later
+                            measured_m,
+                            None,
+                            now,
+                        )?;
+                        link_id
+                    }
+                };
                 plan_repo::plan_import_set_link(&tx, &row.id, Some(&link_id), now)?;
                 link_ids.push(link_id);
             }
+        }
+
+        // Anything still unclaimed served a route this plan no longer
+        // has — an import that was removed, re-pointed at another
+        // factory, or left unused by the recipes the solve landed on.
+        for stale in reusable_links {
+            logistics_repo::link_delete(&tx, &stale.id)?;
         }
 
         // Saved node positions for steps that no longer exist are
@@ -1447,21 +1522,25 @@ pub fn list_replan_offers(
     Ok(offers)
 }
 
-/// Take the offer for one factory: re-solve its saved targets and
-/// imports with the recipe choices dropped, and materialize the result.
-/// The same thing the designer's Re-optimize does, reachable from the
-/// screen that told the player it was worth doing.
-#[tauri::command]
-pub fn factory_plan_reoptimize(
-    active: State<ActivePlaythrough>,
-    game_data: State<GameData>,
+/// Re-save a factory's plan against a given set of recipe choices,
+/// keeping its targets, imports and SAM toggle exactly as they are.
+///
+/// Both directions of a re-optimize run through here: an empty map is
+/// the re-solve itself, and the map a re-solve dropped is its undo.
+/// Sharing the path is what makes the undo faithful — anything that
+/// rebuilt the plan another way could land the player somewhere they
+/// have never been.
+fn plan_resave_with_recipes_impl(
+    db: &PlaythroughDb,
+    game_data: &GameData,
     factory_id: String,
-) -> AppResult<SavePlanResult> {
-    let db = require_active(&active)?;
-    let plan = plan_get_impl(&db, &factory_id)?;
-    plan_save_impl(
-        &db,
-        &game_data,
+    recipe_overrides: std::collections::HashMap<String, String>,
+) -> AppResult<(SavePlanResult, std::collections::HashMap<String, String>)> {
+    let plan = plan_get_impl(db, &factory_id)?;
+    let previous_recipes = plan.recipe_overrides;
+    let saved = plan_save_impl(
+        db,
+        game_data,
         SavePlanInput {
             factory_id,
             targets: plan.targets,
@@ -1474,14 +1553,49 @@ pub fn factory_plan_reoptimize(
                     ipm_cap: i.ipm_cap,
                 })
                 .collect(),
-            recipe_overrides: Default::default(),
+            recipe_overrides,
             options: super::dto::PlanComputeOptions {
                 include_sam: plan.include_sam,
                 ..Default::default()
             },
         },
         &now_iso(),
-    )
+    )?;
+    Ok((saved, previous_recipes))
+}
+
+/// Take the offer for one factory: re-solve its saved targets and
+/// imports with the recipe choices dropped, and materialize the result.
+/// The same thing the designer's Re-optimize does, reachable from the
+/// screen that told the player it was worth doing — and, like the
+/// designer's, undoable, which is what `dropped_recipes` carries.
+#[tauri::command]
+pub fn factory_plan_reoptimize(
+    active: State<ActivePlaythrough>,
+    game_data: State<GameData>,
+    factory_id: String,
+) -> AppResult<super::dto::ReoptimizeResult> {
+    let db = require_active(&active)?;
+    let (saved, dropped_recipes) =
+        plan_resave_with_recipes_impl(&db, &game_data, factory_id, Default::default())?;
+    Ok(super::dto::ReoptimizeResult {
+        saved,
+        dropped_recipes,
+    })
+}
+
+/// Put back the recipe choices a re-optimize dropped — the undo half of
+/// `factory_plan_reoptimize`.
+#[tauri::command]
+pub fn factory_plan_restore_recipes(
+    active: State<ActivePlaythrough>,
+    game_data: State<GameData>,
+    factory_id: String,
+    recipe_overrides: std::collections::HashMap<String, String>,
+) -> AppResult<SavePlanResult> {
+    let db = require_active(&active)?;
+    let (saved, _) = plan_resave_with_recipes_impl(&db, &game_data, factory_id, recipe_overrides)?;
+    Ok(saved)
 }
 
 /// Persist a designer node position (mirrors `set_machine_layout`).
@@ -2022,6 +2136,46 @@ mod tests {
     }
 
     #[test]
+    fn a_taken_offer_can_be_put_back_exactly_as_it_stood() {
+        // The offer rebuilds machines and links for a factory that may
+        // already be standing in the game, so the recipes it drops are
+        // the only way back. Restoring them has to land the original
+        // build sheet, not merely something that solves.
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "iron-works", "Iron Works");
+        plan_save_impl(&db, &gd, save_input("iron-works", screw_target(), vec![]), NOW)
+            .expect("save at tier 0");
+        db.with(|c| crate::features::playthrough::repo::progress_set_tier(c, 1))
+            .expect("advance tier");
+        let before = machine_recipes(&db, "iron-works");
+
+        let (_, dropped) =
+            plan_resave_with_recipes_impl(&db, &gd, "iron-works".into(), Default::default())
+                .expect("take the offer");
+        assert_ne!(
+            machine_recipes(&db, "iron-works"),
+            before,
+            "positive control: the re-solve has to have actually changed the plan"
+        );
+        assert_eq!(
+            dropped.get("Desc_IronScrew_C").map(String::as_str),
+            Some("Recipe_Screw_C"),
+            "the undo payload has to name the recipe the plan was built on"
+        );
+
+        plan_resave_with_recipes_impl(&db, &gd, "iron-works".into(), dropped)
+            .expect("undo the offer");
+
+        assert_eq!(machine_recipes(&db, "iron-works"), before);
+        assert_eq!(
+            offers(&db, &gd).len(),
+            1,
+            "and the offer comes back, because the plan it was made against is back"
+        );
+    }
+
+    #[test]
     fn plan_graph_only_counts_raw_supply_claimed_for_this_factory() {
         // Regression for #68: an ore node claimed for one factory must
         // never read as supply for another, even though both draw from
@@ -2326,6 +2480,84 @@ mod tests {
         let plan = plan_get_impl(&db, "fac-cables").unwrap();
         assert_eq!(plan.imports.len(), 1);
         assert_eq!(plan.imports[0].source_factory_id, None);
+    }
+
+    /// A re-optimize and its Undo are both plan saves, so the promise
+    /// the Undo makes is only as good as what a save leaves alone. What
+    /// the player decided about a route that is still in the plan —
+    /// how it's carried, the plan under it, the note beside it, the
+    /// train it rides — is not the solver's to restate.
+    #[test]
+    fn reoptimize_and_its_undo_leave_a_configured_link_as_the_player_set_it() {
+        use crate::features::trains::repo as trains_repo;
+
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "fac-cables", "Cables v1");
+        insert_test_factory(&db, "fac-wire", "Wire farm");
+        plan_wire_exports(&db, &gd, "fac-wire");
+
+        let sourced = vec![PlanImportSpec {
+            item_id: "Desc_Wire_C".into(),
+            source_factory_id: Some("fac-wire".into()),
+            ipm_cap: None,
+        }];
+        let saved =
+            plan_save_impl(&db, &gd, save_input("fac-cables", cable_target(), sourced), NOW)
+                .unwrap();
+        let link_id = saved.link_ids[0].clone();
+
+        db.with(|c| {
+            logistics_repo::link_update(
+                c,
+                &link_id,
+                120.0,
+                "train",
+                r#"{"freightCars":2}"#,
+                Some(750),
+                Some("north line, shares the ore run"),
+                NOW,
+            )?;
+            trains_repo::route_insert(c, "route-1", "North line", 2, 0, None, None, None, NOW)?;
+            trains_repo::stops_replace(c, "route-1", &["fac-wire".into(), "fac-cables".into()])?;
+            trains_repo::link_attach(c, &link_id, "route-1")
+        })
+        .unwrap();
+
+        let assert_as_the_player_set_it = |stage: &str| {
+            let link = db
+                .with(|c| logistics_repo::link_get(c, &link_id))
+                .unwrap()
+                .unwrap_or_else(|| panic!("{stage}: the configured link is gone"));
+            assert_eq!(link.transport_kind, "train", "{stage}: transport kind");
+            assert_eq!(
+                link.transport_plan_json, r#"{"freightCars":2}"#,
+                "{stage}: transport plan"
+            );
+            assert_eq!(
+                link.notes.as_deref(),
+                Some("north line, shares the ore run"),
+                "{stage}: notes"
+            );
+            // Neither factory is on the map, so there's no measurement
+            // to replace the player's figure with.
+            assert_eq!(link.distance_m, Some(750), "{stage}: distance");
+            assert_eq!(
+                db.with(|c| trains_repo::link_ids_for_route(c, "route-1")).unwrap(),
+                vec![link_id.clone()],
+                "{stage}: the train attachment hangs off the link id"
+            );
+        };
+
+        // Re-optimize: drop every recorded recipe and re-solve.
+        let (_, dropped) =
+            plan_resave_with_recipes_impl(&db, &gd, "fac-cables".into(), Default::default())
+                .unwrap();
+        assert_as_the_player_set_it("after re-optimize");
+
+        // ...and the Undo beside it.
+        plan_resave_with_recipes_impl(&db, &gd, "fac-cables".into(), dropped).unwrap();
+        assert_as_the_player_set_it("after undo");
     }
 
     #[test]

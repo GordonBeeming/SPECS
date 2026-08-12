@@ -247,7 +247,10 @@ export function nodeMarkerText(
  * falls back to sorting those alphabetically — pre-binding to whichever
  * name sorts first would present a coin toss in the same shape as a
  * real nearest-neighbour answer, and the player has no way to tell the
- * two apart. An empty picker at least reads as "you pick".
+ * two apart. An empty picker at least reads as "you pick". Rules 1 and 2
+ * still hold while the ledgers are loading — neither consults a
+ * shortfall — but rules 3 to 5 all wait, because distance applied to an
+ * unanswered question is the same coin toss wearing a better suit.
  *
  * A node that already carries a claim is not this function's business:
  * its saved factory (including a deliberate "none") is what the card
@@ -259,15 +262,21 @@ export function defaultClaimFactoryId(
   factories: FactoryPickerCandidate[],
   selectedFactoryId: string | null,
   /** Ids of the factories still short of this node's resource. Empty
-   * when nobody is (or when the ledgers haven't loaded), which drops
-   * the pick back to distance alone. */
+   * means nobody is, which drops the pick back to distance alone. */
   shortOfItem: ReadonlySet<string> = new Set(),
+  /** True while the ledgers `shortOfItem` is derived from are still
+   * loading. "Nobody wants this ore" and "we haven't looked yet" are
+   * different answers and only the first one justifies distance: a pick
+   * made before the ledgers land is the wrong-but-plausible one that
+   * gets committed without being read. */
+  shortfallsPending = false,
 ): string | null {
   if (factories.length === 0) return null;
   if (selectedFactoryId && factories.some((f) => f.id === selectedFactoryId)) {
     return selectedFactoryId;
   }
   if (factories.length === 1) return factories[0].id;
+  if (shortfallsPending) return null;
   const wanting = factories.filter((f) => shortOfItem.has(f.id));
   if (wanting.length === 1) return wanting[0].id;
   const nearestOf = (candidates: FactoryPickerCandidate[]): string | null => {
@@ -2458,6 +2467,7 @@ export function MapView() {
                 factories={factories.data ?? []}
                 selectedFactoryId={selectedFactoryId}
                 shortOfResource={shortfalls.byItem.get(selectedNode.resourceItemId)}
+                shortfallsPending={shortfalls.pending}
                 bindTo={
                   claimIntent?.nodeId === selectedNode.id ? claimIntent.factoryId : undefined
                 }
@@ -3321,6 +3331,12 @@ interface NodePopoverProps {
   /** Factories still short of this node's resource, which is what a
    * fresh claim is ranked on before distance. */
   shortOfResource?: ReadonlySet<string>;
+  /** True while the ledgers behind `shortOfResource` are loading. The
+   * card is reachable before they land — a marker click is one gesture
+   * and the queries are one per factory — so the picker holds off
+   * rather than answering from distance and then leaving that answer
+   * standing. */
+  shortfallsPending?: boolean;
   /** The factory the player explicitly sent this card here to bind to.
    * Outranks an existing claim's saved factory, and only this does:
    * the request was "point a node at this factory", so arriving with
@@ -3351,6 +3367,7 @@ function NodePopover({
   factories,
   selectedFactoryId,
   shortOfResource,
+  shortfallsPending = false,
   bindTo,
   onClaim,
   onRelease,
@@ -3369,8 +3386,34 @@ function NodePopover({
     bindTo ??
       (node.claim
         ? node.claim.factoryId ?? null
-        : defaultClaimFactoryId(node, factories, selectedFactoryId, shortOfResource)),
+        : defaultClaimFactoryId(
+            node,
+            factories,
+            selectedFactoryId,
+            shortOfResource,
+            shortfallsPending,
+          )),
   );
+  // A default computed before the ledgers landed is a default computed
+  // without the shortfalls, so it has to be recomputed when they do —
+  // the card is keyed on the node id and would otherwise carry the
+  // ledger-less answer for as long as it stays open. Only ever a fresh
+  // claim's default: a saved binding, an explicit `bindTo`, and anything
+  // the player has picked here are all instructions, not guesses.
+  const claimedOrDirected = !!node.claim || !!bindTo;
+  const pickedByPlayer = useRef(false);
+  // Once, on the ledgers landing. Later movement in the factory list is
+  // not a reason to rewrite a picker the player is already looking at.
+  const settled = useRef(false);
+  useEffect(() => {
+    if (settled.current || shortfallsPending || claimedOrDirected || pickedByPlayer.current) {
+      return;
+    }
+    settled.current = true;
+    setFactoryId(
+      defaultClaimFactoryId(node, factories, selectedFactoryId, shortOfResource, false),
+    );
+  }, [shortfallsPending, claimedOrDirected, node, factories, selectedFactoryId, shortOfResource]);
   const kindLabel = nodeKindLabel(node);
   // What this claim would actually extract at the clock currently in
   // the box, matching the Resources row's own live preview — a bare
@@ -3484,7 +3527,10 @@ function NodePopover({
             placeholder="— none —"
             options={factoryPickerOptions(node, factories)}
             value={factoryId}
-            onChange={setFactoryId}
+            onChange={(next) => {
+              pickedByPlayer.current = true;
+              setFactoryId(next);
+            }}
           />
         </div>
         {/* A claim bound to nothing is still worth making — it reserves

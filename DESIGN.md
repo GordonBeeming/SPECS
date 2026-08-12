@@ -510,12 +510,37 @@ and they pinned nothing. The confirmation says what can move — the
 recipes, plus the imports and links a recipe change drags with them —
 and an Undo rides the save.
 
+**A plan save carries a link forward; it never rebuilds one.** The
+transport kind, the plan under it, the notes beside it and the train it
+rides are answers only the player can give, and a save that regenerated
+the link row would quietly reset all four, on a re-optimize and on any
+ordinary edit that re-saves the plan. A route still in the plan keeps its
+link row and its id (a train route attaches by that id), and only the
+throughput and the map-measured distance are restated. That's what lets
+the Undo mean what it says: put the recipes back and the factory is as
+it was. The one thing it can't return is a route the new recipes stopped
+needing — that link is gone, and undoing brings the route back as a
+plain belt. Both confirmations say so, because a partial undo the player
+doesn't know is partial is worse than no undo: it removes the reason to
+be careful.
+
 The offer that sends people there lives on **Home**, under the tier
 picker, since reaching a tier is what makes a better plan possible.
 Every factory it names carries both sides of its machine and power
 figures and the recipes that would swap. Applying is per factory,
 because the whole point is being able to redesign the new plant and
 leave the one already standing in the game alone.
+
+**Both re-optimizes carry the same guard rails, because they are the
+same act.** Neither is a redesign one click can reach, and both leave an
+Undo on screen afterwards. Home's needs them more if anything: the
+designer's edits a draft that still has to be saved, where Home's writes
+the plan the moment it's confirmed, and its confirmation says as much.
+Its Undo puts back the recipes the re-solve dropped rather than solving
+again, since solving again is what produced the plan being undone.
+Guard rails belong to the action, not to the screen it was pressed
+from. Give one surface a cheaper version and that surface becomes the
+way to redesign a factory by accident.
 
 The header edits the factory in place: click the name to rename,
 the icon to open the icon picker, the trash to delete (the

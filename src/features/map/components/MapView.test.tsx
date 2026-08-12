@@ -1345,6 +1345,100 @@ describe("<MapView /> — separating markers that sit on top of each other", () 
   });
 });
 
+describe("<MapView /> — clicking a node before the ledgers land", () => {
+  // Copper Works is nearer the node; Iron Works is the one short of
+  // iron. Distance alone gets this backwards, which is the whole reason
+  // the shortfalls are consulted at all.
+  const copperWorks: Factory = {
+    ...factory,
+    id: "f-copper",
+    name: "Copper Works",
+    worldX: 10500,
+    worldY: 10500,
+  };
+  const ironWorks: Factory = {
+    ...factory,
+    id: "f-iron",
+    name: "Iron Works",
+    worldX: 300000,
+    worldY: 300000,
+  };
+  const emptyLedger = { factoryId: "f-copper", powerMw: 0, flows: [] };
+  const ironShortfallLedger = { ...shortfallLedger, factoryId: "f-iron" };
+
+  /** Holds every `factory_ledger` open until the test lets go — a real
+   * cold map opens with one of these queries per factory in flight and
+   * a marker one click away. `release` resolves only once every gated
+   * query has actually settled, so an assertion after it is reading the
+   * loaded map rather than racing it. */
+  function gateLedgers(): () => Promise<void> {
+    let open: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const inFlight: Promise<unknown>[] = [];
+    vi.spyOn(factoryApi, "ledger").mockImplementation((id: string) => {
+      const answer = gate.then(() =>
+        id === "f-iron" ? ironShortfallLedger : emptyLedger,
+      );
+      inFlight.push(answer);
+      return answer;
+    });
+    return async () => {
+      open();
+      await Promise.all(inFlight);
+    };
+  }
+
+  beforeEach(() => {
+    mockClaimFlowApis([nearIronNode]);
+    vi.spyOn(factoryApi, "list").mockResolvedValue([copperWorks, ironWorks]);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it("holds the picker empty, then fills it in once the shortfalls answer", async () => {
+    const release = gateLedgers();
+    const user = userEvent.setup();
+    renderWithProviders(<MapView />);
+    await user.click(await screen.findByTitle(/Iron Ore · Normal/));
+
+    const picker = await screen.findByRole("combobox", { name: /factory/i });
+    // Not Copper Works: nobody has said it wants iron, and nobody has
+    // said it doesn't either.
+    expect(picker).toHaveValue("");
+
+    await act(async () => {
+      await release();
+    });
+
+    await waitFor(() => expect(picker).toHaveValue("Iron Works"));
+  });
+
+  it("leaves a pick the player made alone when the shortfalls arrive", async () => {
+    // The correction exists because the card had no answer yet. Once
+    // the player has given one, a late ledger overwriting it is the
+    // same silent rewrite in the other direction.
+    const release = gateLedgers();
+    const user = userEvent.setup();
+    renderWithProviders(<MapView />);
+    await user.click(await screen.findByTitle(/Iron Ore · Normal/));
+
+    const picker = await screen.findByRole("combobox", { name: /factory/i });
+    await user.click(picker);
+    await user.click(await screen.findByRole("option", { name: /Copper Works/ }));
+    expect(picker).toHaveValue("Copper Works");
+
+    await act(async () => {
+      await release();
+    });
+
+    expect(picker).toHaveValue("Copper Works");
+  });
+});
+
 describe("<MapView /> — acting on a factory's shortfall from its own card", () => {
   beforeEach(() => mockClaimFlowApis([nearIronNode, farIronNode]));
   afterEach(() => {
@@ -1578,10 +1672,28 @@ describe("defaultClaimFactoryId — wanting the resource beats being near it", (
   });
 
   it("falls back to nearest when nobody is short of it", () => {
-    // Covers the ledgers not having loaded as well as a genuinely
-    // covered playthrough — an empty set is "no reason to prefer
-    // anyone", which is where distance earns its place.
+    // A genuinely covered playthrough: an empty set is "no reason to
+    // prefer anyone", which is where distance earns its place. Ledgers
+    // that haven't answered yet are a different case — see below.
     expect(defaultClaimFactoryId(node, both, null, new Set())).toBe("copper-works");
+  });
+
+  it("offers nothing at all while the ledgers are still loading", () => {
+    // The empty set here means "we haven't looked", and distance
+    // applied to an unanswered question produces Copper Works for an
+    // iron node — considered-looking enough to be committed unread.
+    expect(defaultClaimFactoryId(node, both, null, new Set(), true)).toBeNull();
+  });
+
+  it("still answers the questions loading can't change", () => {
+    // Positive control on the pending gate: it must stop at the two
+    // rules that never consult a shortfall, not swallow them too.
+    expect(defaultClaimFactoryId(node, both, "copper-works", new Set(), true)).toBe(
+      "copper-works",
+    );
+    expect(defaultClaimFactoryId(node, [ironWorks], null, new Set(), true)).toBe(
+      "iron-works",
+    );
   });
 
   it("pre-binds the only factory that wants it even without a position", () => {

@@ -446,6 +446,22 @@ pub struct SavePlanResult {
     pub link_ids: Vec<String>,
 }
 
+/// A re-optimize, plus everything needed to put the factory back the way
+/// it was.
+///
+/// The re-solve is destructive — every plan-managed machine row and
+/// every logistics link for the factory is rebuilt — and the recipe
+/// choices it drops are the only record of the plan that stood before
+/// it. Handing them back with the result is what lets an undo restore
+/// that exact plan instead of re-solving and landing on the new one
+/// again.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReoptimizeResult {
+    pub saved: SavePlanResult,
+    pub dropped_recipes: HashMap<String, String>,
+}
+
 /// One product a factory makes for others to take, with how much of it
 /// is promised (`export_ipm`) and how much is already spoken for
 /// (`drawn_ipm`).

@@ -256,6 +256,7 @@ pub fn run() {
             features::planner::commands::list_item_tiers,
             features::planner::commands::list_replan_offers,
             features::planner::commands::factory_plan_reoptimize,
+            features::planner::commands::factory_plan_restore_recipes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

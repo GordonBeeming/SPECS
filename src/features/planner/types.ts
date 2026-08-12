@@ -231,6 +231,17 @@ export interface SavePlanResult {
 }
 
 /**
+ * A re-optimize, plus everything needed to put the factory back the way
+ * it was. `droppedRecipes` is the recipe set the plan was built on, and
+ * the only record of it once the re-solve has rebuilt the machines —
+ * re-solving again would just land on the new plan a second time.
+ */
+export interface ReoptimizeResult {
+  saved: SavePlanResult;
+  droppedRecipes: Record<string, string>;
+}
+
+/**
  * The earliest tier an item is really reachable at — its whole input
  * chain, not the stamp on one recipe. A recipe's own unlock tier says
  * nothing about whether its ingredients exist yet, which is how a Tier 7
