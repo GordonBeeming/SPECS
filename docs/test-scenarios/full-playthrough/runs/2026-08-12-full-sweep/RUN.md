@@ -9,8 +9,8 @@ to a list screen is recorded as a finding rather than treated as the way through
 | Tier group | State | Issues |
 | ---------- | ----- | ------ |
 | tier-0     | done — shipped as PR #126, merged `fbf6b410` | #113–#121, #124, #125 fixed |
-| tiers-1-2  | built and green; fix batch in review | #127–#132 |
-| tiers-3-4  | not started | — |
+| tiers-1-2  | done — shipped as PR #133, merged `d33c37c0` | #127–#131 fixed, #132 open |
+| tiers-3-4  | started — Steel Mill part-built, checkpoint not attempted | — |
 | tiers-5-6  | not started | — |
 | tiers-7-8  | not started | — |
 | tier-9     | not started | — |
@@ -263,20 +263,69 @@ segment now reads "needs 2 belts at Mk.3 (270/min each)", down from 3 at Mk.2.
 
 ## Where this run stands
 
-| | |
+| Tier group | State |
 | --- | --- |
 | Tier 0 | shipped — PR #126, merged `fbf6b410` |
-| Tiers 1–2 | built and green in the app; fixes on PR #133, **held draft on two blockers** |
+| Tiers 1–2 | shipped — PR #133, merged `d33c37c0` |
 | Tiers 3–4 | Steel Mill part-built, checkpoint not attempted |
 
-**PR #133 must not merge as it stands.** #134 and #135 are both regressions
-introduced by its own fixes, and the suite is green for both — the third and
-fourth time in this run that a batch has shipped a new defect while repairing
-an old one, and the third time a green suite failed to notice.
+#133 sat draft on two blockers, both of them regressions its own fixes had
+introduced, and both invisible to a green suite. #134 was a plan save dropping
+the backfill; #135 demoted a single machine clocked past its output port to a
+note, when that's the one belt case a player genuinely can't build around. Both
+were fixed on the same branch before it merged (`MachineOverPortCapacity` first
+appears in `d33c37c0`), so #133 carries its own repairs rather than handing them
+to a follow-up.
 
-Nine further review findings are recorded on the PR and want triage before it
-lands: a `has_target` propagation that no test drives to `false` (hard-coding
-`true` keeps the whole suite green while breaking "import instead" for every
-intermediate), a Home Re-optimize with neither the confirmation nor the undo
-its identical twin in the designer has, and a claim default computed in a
-`useState` initializer that never recomputes when the factory ledgers arrive.
+Four PRs shipped after it. #138 (`7226f122`) queued export raises instead of
+racing them, for #137. #140 (`46bc83d3`) narrowed that queue's comment to what
+it actually covers, leaving #139 open. #141 (`022080a1`) stopped a re-save
+wiping the transport on every import route and stopped Home guessing which
+factory a claim belongs to, and #144 (`c3ca7a74`) closed an ordering hole in
+#141's own fix, where two import rows drawing the same item from the same
+producer could swap each other's belts.
+
+Six PRs merged. 26 issues filed, 20 closed, and the 6 still open are the ones
+listed at the end of this file. Vitest went from 470 tests to 523, cargo from
+379 to 406.
+
+### The pattern this run keeps producing
+
+Six times a fix introduced a new defect, and the suite was green every time.
+
+Three of those were tests asserting the bug as correct behaviour — the belt
+note, the Portable Miner exclusion, and a picker test pinning the very enabled
+state the fix was meant to change. Writing a test from the current behaviour
+rather than the intended behaviour is how a suite ends up defending a bug.
+
+The other three came from something overclaiming what it did: a code comment, an
+undo, and a queue whose reach stops at the webview boundary. Module scope does
+serialize the graph and the Sources panel together, which is what it was added
+for, but a popped-out factory reloads the app in its own realm with its own copy
+of the map. That's #139, and no JS queue can close it — it needs the backend
+holding the read-modify-write under a lock.
+
+What caught these was reverting each fix and watching a named test go red, then
+driving the built app. Neither happens on its own, and playing is where most of
+the run's findings came from, though not all: #120 and #121 surfaced while
+fixing something else.
+
+Review caught what neither of those could. Four claims in this section were
+wrong and the bots found all four: the PR attribution, an inflated issue count,
+a status table that disagreed with the one above it, and the queue boundary
+described a paragraph ago. Docs-only, so there was nothing to run and no test to
+go red. Writing up how the run overclaimed turned out to be another instance of
+it, which is the least surprising thing in this file. No single method covers
+it.
+
+### Still open
+
+Tiers 5–9 are untouched, and the Tiers 3–4 checkpoint was never attempted: the
+coal power station and its water extractors, Motor Assembly, Versatile Framework
+for Phase 2, and the Miner Mk.2 upgrades all remain.
+
+Carrying forward: #143 (stale shortfalls during a background refetch), #139 (the
+export-raise race across popped-out windows, which wants a Rust-side lock rather
+than the per-root queue), #136 (eleven remaining review findings), #132 (the
+factory slice README no longer describes the slice), #123 (a hand-fed chain
+validates clean) and #122 (Geothermal listed at T8 against the game's T6).
