@@ -560,7 +560,7 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
             }}
             onSetExport={designer.setTargetExport}
             onAddLocal={designer.addLocalSource}
-            importPendingItemId={importFromProducer.pendingItemId}
+            importPendingItemIds={importFromProducer.pendingItemIds}
             onImportFromProducer={importFromProducer.importFromProducer}
           />
         ) : (
