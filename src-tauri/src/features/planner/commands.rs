@@ -2560,6 +2560,140 @@ mod tests {
         assert_as_the_player_set_it("after undo");
     }
 
+    /// Carrying links forward must not turn into hoarding them. A route
+    /// the plan no longer has is gone, however much the player had
+    /// configured it — the alternative is a link on the map claiming a
+    /// delivery nobody asked for.
+    #[test]
+    fn a_configured_link_is_still_deleted_when_the_plan_re_points_the_route() {
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "fac-cables", "Cables v1");
+        insert_test_factory(&db, "fac-wire", "Wire farm");
+        insert_test_factory(&db, "fac-wire-2", "Wire farm south");
+        plan_wire_exports(&db, &gd, "fac-wire");
+        plan_wire_exports(&db, &gd, "fac-wire-2");
+
+        let from_north = vec![PlanImportSpec {
+            item_id: "Desc_Wire_C".into(),
+            source_factory_id: Some("fac-wire".into()),
+            ipm_cap: None,
+        }];
+        let first =
+            plan_save_impl(&db, &gd, save_input("fac-cables", cable_target(), from_north), NOW)
+                .unwrap();
+        let north_link = first.link_ids[0].clone();
+        db.with(|c| {
+            logistics_repo::link_update(
+                c,
+                &north_link,
+                120.0,
+                "drone",
+                r#"{"ports":1}"#,
+                Some(400),
+                Some("drone hop"),
+                NOW,
+            )
+        })
+        .unwrap();
+
+        // Same item, different supplier: a different route, so the
+        // configured link has nothing left to serve.
+        let from_south = vec![PlanImportSpec {
+            item_id: "Desc_Wire_C".into(),
+            source_factory_id: Some("fac-wire-2".into()),
+            ipm_cap: None,
+        }];
+        let second =
+            plan_save_impl(&db, &gd, save_input("fac-cables", cable_target(), from_south), NOW)
+                .unwrap();
+
+        assert!(
+            db.with(|c| logistics_repo::link_get(c, &north_link)).unwrap().is_none(),
+            "the link to the old supplier must be deleted, not left orphaned on the map"
+        );
+        assert_eq!(second.link_ids.len(), 1, "the new route gets its own link");
+        let fresh = db
+            .with(|c| logistics_repo::link_get(c, &second.link_ids[0]))
+            .unwrap()
+            .expect("new link exists");
+        assert_eq!(fresh.from_factory_id, "fac-wire-2");
+        assert_eq!(
+            fresh.transport_kind, "belt",
+            "a route the player has never configured starts as a belt, not as the old route's drone"
+        );
+        assert_eq!(fresh.transport_plan_json, "null");
+        assert_eq!(fresh.notes, None);
+    }
+
+    /// Two rows can name the same supplier and item, so the pool holds
+    /// one entry per link rather than one per route, and pairs them off
+    /// in the order the rows are stored. Claiming by route alone would
+    /// leave the second row building a fresh belt every save; claiming
+    /// in an undefined order would swap the two players' choices around
+    /// between saves.
+    #[test]
+    fn two_rows_on_one_route_each_keep_their_own_transport() {
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "fac-cables", "Cables v1");
+        insert_test_factory(&db, "fac-wire", "Wire farm");
+        plan_wire_exports(&db, &gd, "fac-wire");
+
+        // Cable @60 needs ~120 wire; two capped rows split it in half.
+        let split = vec![
+            PlanImportSpec {
+                item_id: "Desc_Wire_C".into(),
+                source_factory_id: Some("fac-wire".into()),
+                ipm_cap: Some(60.0),
+            },
+            PlanImportSpec {
+                item_id: "Desc_Wire_C".into(),
+                source_factory_id: Some("fac-wire".into()),
+                ipm_cap: Some(60.0),
+            },
+        ];
+        let first =
+            plan_save_impl(&db, &gd, save_input("fac-cables", cable_target(), split.clone()), NOW)
+                .unwrap();
+        assert_eq!(first.link_ids.len(), 2, "two sourced rows → two links");
+
+        db.with(|c| {
+            logistics_repo::link_update(
+                c,
+                &first.link_ids[0],
+                60.0,
+                "train",
+                r#"{"freightCars":1}"#,
+                None,
+                Some("first run"),
+                NOW,
+            )?;
+            logistics_repo::link_update(
+                c,
+                &first.link_ids[1],
+                60.0,
+                "drone",
+                r#"{"ports":1}"#,
+                None,
+                Some("second run"),
+                NOW,
+            )
+        })
+        .unwrap();
+
+        let second =
+            plan_save_impl(&db, &gd, save_input("fac-cables", cable_target(), split), NOW).unwrap();
+        assert_eq!(second.link_ids, first.link_ids, "both rows keep their own link row");
+
+        let carried = |id: &str| {
+            let link = db.with(|c| logistics_repo::link_get(c, id)).unwrap().expect("link exists");
+            (link.transport_kind, link.notes.unwrap_or_default())
+        };
+        assert_eq!(carried(&first.link_ids[0]), ("train".into(), "first run".into()));
+        assert_eq!(carried(&first.link_ids[1]), ("drone".into(), "second run".into()));
+    }
+
     #[test]
     fn plan_save_derives_link_distance_from_factory_positions_and_leaves_it_blank_when_unplaced() {
         let db = Arc::new(open_test_db());

@@ -215,11 +215,18 @@ pub fn plan_import_set_link(
 }
 
 /// Logistics links materialized by previous saves of this factory's
-/// plan — collected so a re-save can delete and recreate them.
+/// plan — collected so a re-save can carry each one onto the route it
+/// still serves.
+///
+/// Ordered exactly as `plan_imports_for_factory` orders the rows these
+/// ids came off, because the save walks the new rows in that order and
+/// pairs them off against this list. Two rows on the same route are
+/// otherwise free to swap the transport the player gave each of them.
 pub fn plan_link_ids_for_factory(conn: &Connection, factory_id: &str) -> Result<Vec<String>> {
     let mut stmt = conn.prepare(
         "SELECT logistics_link_id FROM factory_plan_import
-         WHERE factory_id = ? AND logistics_link_id IS NOT NULL",
+         WHERE factory_id = ? AND logistics_link_id IS NOT NULL
+         ORDER BY sort_order, item_id",
     )?;
     let rows = stmt.query_map([factory_id], |r| r.get::<_, String>(0))?;
     let mut out = Vec::new();
