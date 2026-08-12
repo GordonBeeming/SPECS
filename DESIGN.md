@@ -510,6 +510,20 @@ and they pinned nothing. The confirmation says what can move — the
 recipes, plus the imports and links a recipe change drags with them —
 and an Undo rides the save.
 
+**A plan save carries a link forward; it never rebuilds one.** The
+transport kind, the plan under it, the notes beside it and the train it
+rides are answers only the player can give, and a save that regenerated
+the link row would quietly reset all four, on a re-optimize and on any
+ordinary edit that re-saves the plan. A route still in the plan keeps its
+link row and its id (a train route attaches by that id), and only the
+throughput and the map-measured distance are restated. That's what lets
+the Undo mean what it says: put the recipes back and the factory is as
+it was. The one thing it can't return is a route the new recipes stopped
+needing — that link is gone, and undoing brings the route back as a
+plain belt. Both confirmations say so, because a partial undo the player
+doesn't know is partial is worse than no undo: it removes the reason to
+be careful.
+
 The offer that sends people there lives on **Home**, under the tier
 picker, since reaching a tier is what makes a better plan possible.
 Every factory it names carries both sides of its machine and power
