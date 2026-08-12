@@ -95,13 +95,13 @@ describe("useImportFromProducer", () => {
       result.current.importFromProducer("Desc_IronPlateReinforced_C", ironWorks, 5),
     );
     await waitFor(() =>
-      expect(result.current.pendingItemId).toBe("Desc_IronPlateReinforced_C"),
+      expect(result.current.pendingItemIds.has("Desc_IronPlateReinforced_C")).toBe(true),
     );
 
     await act(async () => {
       settle?.(raiseResult);
     });
-    await waitFor(() => expect(result.current.pendingItemId).toBeNull());
+    await waitFor(() => expect(result.current.pendingItemIds.size).toBe(0));
   });
 
   it("adds the source without a raise when the producer already exports enough", async () => {
@@ -122,6 +122,75 @@ describe("useImportFromProducer", () => {
       null,
     );
     expect(raise).not.toHaveBeenCalled();
+  });
+
+  it("holds a second offer's raise until the first settles, and applies both", async () => {
+    // Clicking a second offer before the first comes back. A raise
+    // rewrites the exporter's whole target list from what it read at the
+    // start, so overlapping raises against one producer lose whichever
+    // finishes first — and the plan here ends up with only one of the
+    // two source rows the player asked for.
+    const started: string[] = [];
+    const settle: Array<() => void> = [];
+    vi.spyOn(plannerApi, "raiseExportTarget").mockImplementation((_factoryId, itemId) => {
+      started.push(itemId);
+      return new Promise<RaiseExportTargetResult>((resolve) => {
+        settle.push(() => resolve({ ...raiseResult, itemId }));
+      });
+    });
+    const { result, addExternalSource, onRaised } = setup();
+
+    act(() =>
+      result.current.importFromProducer("Desc_IronPlateReinforced_C", ironWorks, 5),
+    );
+    act(() => result.current.importFromProducer("Desc_Rotor_C", ironWorks, 5));
+
+    await waitFor(() =>
+      expect(result.current.pendingItemIds.has("Desc_Rotor_C")).toBe(true),
+    );
+    // The queued one shows as working, but hasn't been sent.
+    expect(started).toEqual(["Desc_IronPlateReinforced_C"]);
+
+    await act(async () => settle[0]?.());
+    await waitFor(() =>
+      expect(started).toEqual(["Desc_IronPlateReinforced_C", "Desc_Rotor_C"]),
+    );
+    expect(addExternalSource).toHaveBeenCalledTimes(1);
+    expect(addExternalSource).toHaveBeenCalledWith(
+      "Desc_IronPlateReinforced_C",
+      "fac-iron-works",
+      null,
+    );
+
+    await act(async () => settle[1]?.());
+    await waitFor(() => expect(addExternalSource).toHaveBeenCalledTimes(2));
+    expect(addExternalSource).toHaveBeenNthCalledWith(2, "Desc_Rotor_C", "fac-iron-works", null);
+    expect(onRaised).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(result.current.pendingItemIds.size).toBe(0));
+  });
+
+  it("runs a queued raise even after the one in front of it fails", async () => {
+    const started: string[] = [];
+    vi.spyOn(plannerApi, "raiseExportTarget").mockImplementation((_factoryId, itemId) => {
+      started.push(itemId);
+      return itemId === "Desc_IronPlateReinforced_C"
+        ? Promise.reject(new Error("Iron Works doesn't have a Reinforced Iron Plate target"))
+        : Promise.resolve({ ...raiseResult, itemId });
+    });
+    const { result, addExternalSource } = setup();
+
+    act(() =>
+      result.current.importFromProducer("Desc_IronPlateReinforced_C", ironWorks, 5),
+    );
+    act(() => result.current.importFromProducer("Desc_Rotor_C", ironWorks, 5));
+
+    await waitFor(() => expect(addExternalSource).toHaveBeenCalledTimes(1));
+    expect(started).toEqual(["Desc_IronPlateReinforced_C", "Desc_Rotor_C"]);
+    expect(addExternalSource).toHaveBeenCalledWith("Desc_Rotor_C", "fac-iron-works", null);
+    // The failure is still the one on screen after the later raise
+    // succeeded — the click that broke is the one the player has to fix.
+    expect(result.current.error?.message).toMatch(/doesn't have a Reinforced Iron Plate target/);
+    await waitFor(() => expect(result.current.pendingItemIds.size).toBe(0));
   });
 
   it("leaves no source row behind when the raise fails", async () => {

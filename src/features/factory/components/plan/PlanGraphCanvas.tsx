@@ -67,8 +67,8 @@ export interface PlanGraphCanvasProps {
     source: ExistingProducerSource,
     localIpm: number,
   ) => void;
-  /** The item whose "import instead" is mid-flight, if any. */
-  importPendingItemId?: string | null;
+  /** Items whose "import instead" is mid-flight or queued behind one. */
+  importPendingItemIds?: ReadonlySet<string>;
 }
 
 /** How a node relates to the current selection: the clicked node, a
@@ -138,7 +138,7 @@ function renderPlanCard(data: PlanFlowData) {
           exportIpm={canvas.exportByItem.get(planNode.itemId) ?? null}
           uncollected={activeUncollected}
           existingProducer={existingProducer}
-          importPending={canvas.importPendingItemId === planNode.itemId}
+          importPending={canvas.importPendingItemIds?.has(planNode.itemId) ?? false}
           onSwapRecipe={canvas.onSwapRecipe}
           onOpenSources={canvas.onOpenSources}
           onStartExport={canvas.onStartExport}

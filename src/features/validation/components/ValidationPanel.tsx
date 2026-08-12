@@ -300,15 +300,18 @@ function findingText(f: Finding): string {
     case "machineOverPortCapacity": {
       const unit = f.isFluid ? " m³/min" : "/min";
       const carrier = f.isFluid ? "pipe" : "belt";
-      return `${f.factoryName}: each ${f.buildingName} on ${f.recipeName} pushes ${f.perMachineIpm.toFixed(1)}${unit} of ${f.itemName} through one output port, over the Mk.${f.capacityMark} ${carrier}'s ${f.capacityIpm.toFixed(1)}${unit} — clock to ${floorClockPct(f.maxFittingClockPct)}% or spread the bank over ${f.machinesNeeded} machines`;
+      return `${f.factoryName}: each ${f.buildingName} on ${f.recipeName} pushes ${f.perMachineIpm.toFixed(1)}${unit} of ${f.itemName} through one output port, over the Mk.${f.capacityMark} ${carrier}'s ${f.capacityIpm.toFixed(1)}${unit} — clock to ${floorClockPct(f.maxFittingClockPct)}% or spread the bank over ${f.machinesNeeded} machine${f.machinesNeeded === 1 ? "" : "s"}`;
     }
     // A layout fact, not a problem to fix: the player lays the belts and
     // the segment still reads the same rate, so wording it as a demand
     // ("or an underclock") asked for something that never lands.
+    // The counts arrive as plain numbers off the wire, and the sentence
+    // only exists here — so the singular is spelled out here too rather
+    // than leaning on the backend only raising these above one carrier.
     case "segmentOverBeltCapacity":
-      return `${f.factoryName}: ${f.itemName} segment runs ${f.ipm.toFixed(1)}/min — needs ${f.beltsNeeded} belts at Mk.${f.beltMark} (${f.beltCapacityIpm}/min each)`;
+      return `${f.factoryName}: ${f.itemName} segment runs ${f.ipm.toFixed(1)}/min — needs ${f.beltsNeeded} belt${f.beltsNeeded === 1 ? "" : "s"} at Mk.${f.beltMark} (${f.beltCapacityIpm}/min each)`;
     case "segmentOverPipeCapacity":
-      return `${f.factoryName}: ${f.itemName} segment runs ${f.ipm.toFixed(1)} m³/min — needs ${f.pipesNeeded} pipe headers at Mk.${f.pipeMark} (${f.pipeCapacityIpm} m³/min each)`;
+      return `${f.factoryName}: ${f.itemName} segment runs ${f.ipm.toFixed(1)} m³/min — needs ${f.pipesNeeded} pipe header${f.pipesNeeded === 1 ? "" : "s"} at Mk.${f.pipeMark} (${f.pipeCapacityIpm} m³/min each)`;
     case "fluidSegmentNoPipeAtTier":
       return `${f.factoryName}: ${f.itemName} segment runs ${f.ipm.toFixed(1)} m³/min — no pipe is unlocked yet to move it`;
     case "checkFailed":

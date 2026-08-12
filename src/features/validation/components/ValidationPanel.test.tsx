@@ -389,6 +389,70 @@ describe("<ValidationPanel />", () => {
     expect(screen.getByText("1 note")).toBeInTheDocument();
   });
 
+  it("says one belt and one pipe header, not one belts", async () => {
+    // The counts are whatever the sweep sends, and this file is the only
+    // place the sentence is written, so a count of one has to read as
+    // English here rather than anywhere upstream.
+    const report: ValidationReport = {
+      ...cleanReport,
+      findings: [
+        {
+          severity: "info",
+          category: "capacity",
+          kind: "segmentOverBeltCapacity",
+          factoryId: "f1",
+          factoryName: "Ingot Works",
+          itemId: "Desc_OreIron_C",
+          itemName: "Iron Ore",
+          ipm: 70,
+          beltMark: 1,
+          beltCapacityIpm: 60,
+          beltsNeeded: 1,
+        },
+        {
+          severity: "info",
+          category: "capacity",
+          kind: "segmentOverPipeCapacity",
+          factoryId: "f1",
+          factoryName: "Refinery",
+          itemId: "Desc_Water_C",
+          itemName: "Water",
+          ipm: 310,
+          pipeMark: 1,
+          pipeCapacityIpm: 300,
+          pipesNeeded: 1,
+        },
+        {
+          severity: "warning",
+          category: "capacity",
+          kind: "machineOverPortCapacity",
+          factoryId: "f1",
+          factoryName: "Iron Works",
+          nodeKey: "recipe:Desc_IronScrew_C",
+          recipeName: "Alternate: Steel Screws",
+          buildingName: "Constructor",
+          itemId: "Desc_IronScrew_C",
+          itemName: "Screws",
+          machineCount: 1,
+          perMachineIpm: 130,
+          capacityIpm: 120,
+          isFluid: false,
+          capacityMark: 2,
+          maxFittingClockPct: 92.3,
+          machinesNeeded: 1,
+        },
+      ],
+    };
+    vi.spyOn(validationApi, "validate").mockResolvedValue(report);
+    renderWithProviders(<ValidationPanel onClose={() => {}} />);
+    expect(await screen.findByText(/needs 1 belt at Mk\.1/)).toBeInTheDocument();
+    expect(screen.getByText(/needs 1 pipe header at Mk\.1/)).toBeInTheDocument();
+    expect(screen.getByText(/spread the bank over 1 machine$/)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/1 belts|1 pipe headers|1 machines/),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows a port-over-capacity claim with the fitting clock, the node label, and deep-links to Resources", async () => {
     // Regression for #93: this finding used to render as a blank row —
     // no TS union member, no findingText case.
