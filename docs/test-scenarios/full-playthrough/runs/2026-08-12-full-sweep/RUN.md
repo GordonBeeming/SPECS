@@ -308,8 +308,15 @@ holding the read-modify-write under a lock.
 What caught these was reverting each fix and watching a named test go red, then
 driving the built app. Neither happens on its own, and playing is where most of
 the run's findings came from, though not all: #120 and #121 surfaced while
-fixing something else, and a review bot caught the wrong PR attribution in this
-very section. No single method covers it.
+fixing something else.
+
+Review caught what neither of those could. Four claims in this section were
+wrong and the bots found all four: the PR attribution, an inflated issue count,
+a status table that disagreed with the one above it, and the queue boundary
+described a paragraph ago. Docs-only, so there was nothing to run and no test to
+go red. Writing up how the run overclaimed turned out to be another instance of
+it, which is the least surprising thing in this file. No single method covers
+it.
 
 ### Still open
 
