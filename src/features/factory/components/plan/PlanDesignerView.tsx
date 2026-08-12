@@ -24,6 +24,7 @@ import {
   useRenameFactory,
   useSetFactoryIcon,
 } from "../../hooks/useFactories";
+import { useImportFromProducer } from "../../hooks/useImportFromProducer";
 import { usePlanDesigner } from "../../hooks/usePlanDesigner";
 import { FirstProductModal } from "./FirstProductModal";
 import { PlanGraphCanvas } from "./PlanGraphCanvas";
@@ -96,6 +97,16 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
   // Holds the recipe pins dropped by the last re-optimize so the Undo
   // snackbar can put them back. Null = no snackbar showing.
   const [reoptimizeUndo, setReoptimizeUndo] = useState<Record<string, string> | null>(null);
+
+  // The graph's "import instead": opens the producer's export slice,
+  // then adds the source here. Its raises join the same tally the
+  // Sources panel's do — one factory's re-scale reads the same however
+  // it was asked for.
+  const importFromProducer = useImportFromProducer({
+    factoryId,
+    addExternalSource: designer.addExternalSource,
+    onRaised: (result) => setRaiseLog((prev) => [...prev, result]),
+  });
 
   const itemNames = useMemo(
     () => new Map(items.data?.map((i) => [i.id, i.name]) ?? []),
@@ -243,7 +254,12 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
   }, [popped]);
 
   const factoryName = detail.data?.factory.name ?? "…";
-  const pinCount = Object.keys(working?.recipeOverrides ?? {}).length;
+  // A saved plan carries a recipe for every step it built, whether the
+  // player picked it or the solver did, so this is never a count of
+  // deliberate choices and nothing user-facing can describe it as one.
+  // It gates the button on "is there a plan here at all".
+  const hasPlan = Object.keys(working?.recipeOverrides ?? {}).length > 0;
+  const currentTier = playthrough.data?.currentTier ?? 0;
 
   // Auto-dismiss the re-optimize Undo snackbar after a short window.
   useEffect(() => {
@@ -395,11 +411,11 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
           <Button
             variant="ghost"
             onClick={() => setConfirmReoptimize(true)}
-            disabled={pinCount === 0}
+            disabled={!hasPlan}
             title={
-              pinCount === 0
-                ? "No pinned recipes — the plan is already optimizer-chosen"
-                : "Drop the pinned recipes and re-optimize with the latest unlocked alts"
+              hasPlan
+                ? `Re-solve this factory against every recipe reachable at Tier ${currentTier}`
+                : "Nothing planned here yet"
             }
             className="px-2 py-1 text-xs"
           >
@@ -435,10 +451,10 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
         <div role="alertdialog" className="border-b border-warning/40 bg-warning/10 px-4 py-3 text-sm">
           <div className="font-semibold text-warning">Re-optimize {factoryName}?</div>
           <p className="mt-1 text-fg-muted">
-            This drops your {pinCount} pinned {pinCount === 1 ? "recipe" : "recipes"} and lets the
-            optimizer pick fresh ones using the latest unlocked alts. The new choices can change what
-            this factory needs, so existing imports or links may end up unsourced or unused. You can
-            undo it right after.
+            This drops the recipes {factoryName} is built on and picks fresh ones from everything
+            reachable at Tier {currentTier}, alts included. The new choices can change what this
+            factory needs, so existing imports or links may end up unsourced or unused, and the
+            machine list is rebuilt. You can undo it right after.
           </p>
           <div className="mt-2 flex items-center gap-2">
             <Button variant="ghost" onClick={() => setConfirmReoptimize(false)} className="px-3 py-1 text-xs">
@@ -503,6 +519,14 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
             {errorLine(computeError)}
           </div>
         )}
+        {/* The raise happens in another factory's plan, so a failure has
+            no node to attach itself to — without a banner the click is
+            silent, which is the state the offer existed to end. */}
+        {importFromProducer.error && (
+          <div role="alert" className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">
+            Couldn't set up that import: {importFromProducer.error.message}
+          </div>
+        )}
         {graph && <PlanSinkSummary graph={graph} />}
         {graph && <PlanWarningsBanner warnings={graph.warnings} />}
         {graph && <UncollectedAltsBanner names={graph.uncollectedAlts} />}
@@ -535,14 +559,8 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
             }}
             onSetExport={designer.setTargetExport}
             onAddLocal={designer.addLocalSource}
-            onImportFromProducer={(itemId, sourceFactoryId) =>
-              // Same shape as picking a "covers" offer from the Sources
-              // panel: add the source, leave local production as the
-              // elastic remainder. Nothing here forces the local line
-              // out — the solver shrinks it on its own once the import
-              // covers part (or all) of the demand.
-              designer.addExternalSource(itemId, sourceFactoryId, null)
-            }
+            importPendingItemId={importFromProducer.pendingItemId}
+            onImportFromProducer={importFromProducer.importFromProducer}
           />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-fg-muted">

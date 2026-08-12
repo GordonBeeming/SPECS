@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   ExternalLink,
   Factory as FactoryGlyph,
@@ -26,6 +26,7 @@ import { queryKeys } from "@/shared/query/keys";
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { invoke } from "@/shared/tauri/invoke";
 import { Icon } from "@/shared/ui/Icon";
+import { useRaiseExportTarget } from "../../hooks/useRaiseExportTarget";
 import { warningLine } from "./PlanWarningsBanner";
 import { RaiseTally } from "./RaiseTally";
 import { FLOW_EPS, isReportable, rate } from "@/shared/format/rates";
@@ -112,7 +113,6 @@ export function SourcesPanel({
   onClose,
 }: SourcesPanelProps) {
   const playthrough = useCurrentPlaythrough();
-  const queryClient = useQueryClient();
   const offers = useQuery({
     queryKey: [...queryKeys.factory.exportOffers, playthrough.data?.id ?? null] as const,
     queryFn: plannerApi.listExportOffers,
@@ -126,34 +126,32 @@ export function SourcesPanel({
   // consequence nobody has acted on yet.
   const [raised, setRaised] = useState<RaiseExportTargetResult | null>(null);
 
-  const raiseTarget = useMutation({
-    mutationFn: (input: {
-      exporterFactoryId: string;
-      neededIpm: number;
-      /** Add the exporter as a source once it can actually supply. */
-      thenAdd?: boolean;
-    }) =>
-      plannerApi.raiseExportTarget(input.exporterFactoryId, itemId, input.neededIpm, factoryId),
-    onSuccess: (result, input) => {
-      setRaised(result);
-      onRaised(result);
-      if (input.thenAdd) {
-        // Only now: adding first would re-solve this plan against an
-        // export slice that didn't exist yet and resolve to 0/min.
-        onAddExternal(itemId, input.exporterFactoryId, null);
-        setAdding(false);
-      }
-      // The exporter's plan, machines and links all moved, and the
-      // offer list this panel reads is derived from them.
-      queryClient.invalidateQueries({ queryKey: queryKeys.factory.exportOffers });
-      queryClient.invalidateQueries({ queryKey: queryKeys.factory.plan(result.factoryId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.factory.detail(result.factoryId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.factory.ledger(result.factoryId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.factory.list });
-      queryClient.invalidateQueries({ queryKey: queryKeys.factory.unsourcedInputs });
-      queryClient.invalidateQueries({ queryKey: queryKeys.logistics.list });
-    },
-  });
+  // The exporter's plan, machines and links all move, and the offer
+  // list this panel reads is derived from them — the hook owns that
+  // invalidation so this panel and the graph's "import instead" can't
+  // drift apart on it.
+  const raiseTarget = useRaiseExportTarget(factoryId);
+  const raiseFor = (input: {
+    exporterFactoryId: string;
+    neededIpm: number;
+    /** Add the exporter as a source once it can actually supply. */
+    thenAdd?: boolean;
+  }) =>
+    raiseTarget.mutate(
+      { exporterFactoryId: input.exporterFactoryId, itemId, neededIpm: input.neededIpm },
+      {
+        onSuccess: (result) => {
+          setRaised(result);
+          onRaised(result);
+          if (input.thenAdd) {
+            // Only now: adding first would re-solve this plan against an
+            // export slice that didn't exist yet and resolve to 0/min.
+            onAddExternal(itemId, input.exporterFactoryId, null);
+            setAdding(false);
+          }
+        },
+      },
+    );
   const raiseError = raiseTarget.error;
 
   // The report is about one raise of one item. Switching the panel to
@@ -313,7 +311,7 @@ export function SourcesPanel({
             onClick={() => {
               if (canOpenViaExport) {
                 // One gesture: open the slice, then take the source.
-                raiseTarget.mutate({
+                raiseFor({
                   exporterFactoryId: o.factoryId,
                   neededIpm: totalIpm,
                   thenAdd: true,
@@ -378,7 +376,7 @@ export function SourcesPanel({
                 type="button"
                 disabled={raiseTarget.isPending}
                 onClick={() =>
-                  raiseTarget.mutate({ exporterFactoryId: o.factoryId, neededIpm: totalIpm })
+                  raiseFor({ exporterFactoryId: o.factoryId, neededIpm: totalIpm })
                 }
                 title={`Raise ${o.factoryName}'s ${itemName} target so it can spare your ${rate(totalIpm)}`}
                 className="flex shrink-0 items-center gap-1 rounded border border-warning/50 px-1.5 py-0.5 text-[11px] font-medium text-warning hover:bg-warning/10 disabled:opacity-50"
@@ -730,7 +728,7 @@ export function SourcesPanel({
                           // cap is what the solver reads.
                           onSetCap(itemId, src.index, needed);
                         }
-                        raiseTarget.mutate({ exporterFactoryId: sourceId, neededIpm: needed });
+                        raiseFor({ exporterFactoryId: sourceId, neededIpm: needed });
                       }}
                       title={`${
                         canOpenViaExport ? "Open" : "Raise"

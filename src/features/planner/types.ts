@@ -161,6 +161,14 @@ export interface ExistingProducerSource {
   /** `ExportOfferProduct.spareIpm` — what widening the export slice
    * alone would free up, no extra machines at the source. */
   spareIpm: number;
+  /** `ExportOfferProduct.remainingIpm` — the export slice already open,
+   * minus what others draw. This, not `spareIpm`, is what an uncapped
+   * import from this source resolves to. */
+  remainingIpm: number;
+  /** Whether the source has a plan *target* for this item — the only
+   * case with an export slice to open and a target to raise. An
+   * intermediate's surplus is capacity as it stands. */
+  hasTarget: boolean;
 }
 
 /** Per-compute knobs sent alongside the plan inputs. */
@@ -321,4 +329,37 @@ export interface RaiseExportTargetResult {
   introducedWarnings: PlanWarning[];
   /** Findings that were already open and got bigger. */
   worsenedWarnings: PlanWarning[];
+}
+
+/** One recipe a re-optimize would swap out, named on both sides so the
+ * trade can be judged without opening the factory. */
+export interface RecipeSwap {
+  itemId: string;
+  itemName: string;
+  fromRecipeId: string;
+  fromRecipeName: string;
+  toRecipeId: string;
+  toRecipeName: string;
+  /** The incoming recipe is an alt — the one a hard drive paid for. */
+  toIsAlt: boolean;
+}
+
+/**
+ * A standing factory whose plan would come out different if it were
+ * re-optimized against the recipes reachable at the current tier.
+ *
+ * A saved plan holds the recipes it was saved with, so reaching a new
+ * tier no longer redesigns anything on its own — this is what tells the
+ * player the better plan exists. Both sides of every figure are here
+ * because a prompt that only names the improvement asks them to accept
+ * a redesign of machines they've already placed on faith.
+ */
+export interface ReplanOffer {
+  factoryId: string;
+  factoryName: string;
+  currentMachines: number;
+  currentPowerMw: number;
+  reoptimizedMachines: number;
+  reoptimizedPowerMw: number;
+  swaps: RecipeSwap[];
 }

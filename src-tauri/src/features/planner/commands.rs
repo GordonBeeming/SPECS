@@ -472,11 +472,35 @@ pub(crate) fn plan_save_impl(
             .collect();
         plan_repo::plan_targets_replace(&tx, &input.factory_id, &target_rows, now)?;
 
-        let mut recipe_rows: Vec<(String, String)> = input
-            .recipe_overrides
+        // The recipe each step ended up on is part of what was saved,
+        // not a detail to re-derive later. A plan is a build sheet for
+        // machines the player has physically placed, and the recipe set
+        // the solver may choose from widens on its own as the
+        // playthrough reaches new tiers — so a save made on this
+        // factory's behalf from somewhere else (raising an exporter's
+        // target, sourcing an import from the map) would otherwise
+        // redesign a standing factory nobody asked about, with no diff
+        // and no way to refuse. Recording the choice makes every later
+        // solve reproduce the same sheet; the designer's Re-optimize
+        // drops these and takes the better plan deliberately.
+        //
+        // A submitted pin for an item the graph has no step for — one
+        // that's imported today — is kept as-is so the choice comes back
+        // if the import goes away.
+        let mut chosen: std::collections::HashMap<String, String> = graph
+            .nodes
             .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
+            .filter_map(|n| match n {
+                PlanNode::Recipe { item_id, recipe_id, .. } => {
+                    Some((item_id.clone(), recipe_id.clone()))
+                }
+                _ => None,
+            })
             .collect();
+        for (item_id, recipe_id) in &input.recipe_overrides {
+            chosen.entry(item_id.clone()).or_insert_with(|| recipe_id.clone());
+        }
+        let mut recipe_rows: Vec<(String, String)> = chosen.into_iter().collect();
         recipe_rows.sort();
         plan_repo::plan_recipes_replace(&tx, &input.factory_id, &recipe_rows, now)?;
 
@@ -849,6 +873,8 @@ fn attach_existing_producers(
                         factory_id: o.factory_id.clone(),
                         factory_name: o.factory_name.clone(),
                         spare_ipm: p.spare_ipm,
+                        remaining_ipm: p.remaining_ipm,
+                        has_target: p.has_target,
                     })
             })
             .collect();
@@ -1260,6 +1286,184 @@ fn list_item_tiers_impl(game_data: &GameData) -> Vec<super::dto::ItemTier> {
     out
 }
 
+/// What a factory's plan would look like re-solved from scratch at the
+/// current tier, next to what it is now. `None` when the factory has no
+/// saved plan, or when the fresh solve lands on the same recipes.
+fn replan_offer_impl(
+    db: &PlaythroughDb,
+    game_data: &GameData,
+    factory: &Factory,
+) -> AppResult<Option<super::dto::ReplanOffer>> {
+    let plan = plan_get_impl(db, &factory.id)?;
+    if plan.targets.is_empty() {
+        return Ok(None);
+    }
+    let Some(Ok(current)) = saved_plan_graph(db, game_data, &factory.id)? else {
+        // A plan that no longer computes has a finding of its own; the
+        // last thing it needs is a second card offering to redesign it.
+        return Ok(None);
+    };
+
+    let ctx = gather_plan_context(db, game_data, &factory.id)?;
+    let export_capacity = gather_export_capacity(db, game_data, &factory.id)?;
+    let imports: Vec<super::dto::PlanImportSpec> = plan
+        .imports
+        .iter()
+        .map(|i| super::dto::PlanImportSpec {
+            item_id: i.item_id.clone(),
+            source_factory_id: i.source_factory_id.clone(),
+            ipm_cap: i.ipm_cap,
+        })
+        .collect();
+    // Empty overrides is exactly the payload the designer's Re-optimize
+    // sends, so the offer can't promise a plan that button wouldn't
+    // produce.
+    let Ok(mut fresh) = compute_plan_graph(
+        &factory.id,
+        &plan.targets,
+        &ctx.alts,
+        Some(ctx.current_tier),
+        &ctx.supply,
+        &imports,
+        &Default::default(),
+        &export_capacity,
+        &super::dto::PlanComputeOptions {
+            include_sam: plan.include_sam,
+            ..Default::default()
+        },
+        game_data,
+    ) else {
+        return Ok(None);
+    };
+    add_bound_extractor_power(
+        &mut fresh,
+        &factory.id,
+        &ctx.claims,
+        &ctx.water_groups,
+        game_data,
+    );
+
+    let recipe_by_item = |graph: &super::dto::PlanGraph| -> std::collections::HashMap<String, String> {
+        graph
+            .nodes
+            .iter()
+            .filter_map(|n| match n {
+                PlanNode::Recipe { item_id, recipe_id, .. } => {
+                    Some((item_id.clone(), recipe_id.clone()))
+                }
+                _ => None,
+            })
+            .collect()
+    };
+    let now_recipes = recipe_by_item(&current);
+    let next_recipes = recipe_by_item(&fresh);
+    let name_of = |recipe_id: &str| {
+        game_data
+            .recipe(recipe_id)
+            .map(|r| r.name.clone())
+            .unwrap_or_else(|| recipe_id.to_string())
+    };
+
+    let mut swaps: Vec<super::dto::RecipeSwap> = next_recipes
+        .iter()
+        .filter_map(|(item_id, to_recipe_id)| {
+            let from_recipe_id = now_recipes.get(item_id)?;
+            if from_recipe_id == to_recipe_id {
+                return None;
+            }
+            Some(super::dto::RecipeSwap {
+                item_name: game_data
+                    .item(item_id)
+                    .map(|i| i.name.clone())
+                    .unwrap_or_else(|| item_id.clone()),
+                item_id: item_id.clone(),
+                from_recipe_name: name_of(from_recipe_id),
+                from_recipe_id: from_recipe_id.clone(),
+                to_recipe_name: name_of(to_recipe_id),
+                to_is_alt: game_data.recipe(to_recipe_id).is_some_and(|r| r.is_alt),
+                to_recipe_id: to_recipe_id.clone(),
+            })
+        })
+        .collect();
+    // A step that only exists on one side is a whole line appearing or
+    // disappearing, which the machine and power totals already carry.
+    // Listing it as a swap would need a recipe name for a side that has
+    // none.
+    swaps.sort_by(|a, b| a.item_name.cmp(&b.item_name));
+    if swaps.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(super::dto::ReplanOffer {
+        factory_id: factory.id.clone(),
+        factory_name: factory.name.clone(),
+        current_machines: current.total_machines,
+        current_power_mw: current.total_power_mw,
+        reoptimized_machines: fresh.total_machines,
+        reoptimized_power_mw: fresh.total_power_mw,
+        swaps,
+    }))
+}
+
+/// Every factory whose plan would change if it were re-optimized at the
+/// current tier — the "3 factories could be cheaper, review?" offer.
+///
+/// Read-only on purpose. Saved plans hold their recipes (see
+/// `plan_save_impl`), so nothing here applies anything; the player
+/// picks which factories to redesign, if any.
+#[tauri::command]
+pub fn list_replan_offers(
+    active: State<ActivePlaythrough>,
+    game_data: State<GameData>,
+) -> AppResult<Vec<super::dto::ReplanOffer>> {
+    let db = require_active(&active)?;
+    let factories = db.with(|c| factory_repo::factory_list(c).map_err(AppError::from))?;
+    let mut offers = Vec::new();
+    for factory in factories {
+        if let Some(offer) = replan_offer_impl(&db, &game_data, &factory)? {
+            offers.push(offer);
+        }
+    }
+    Ok(offers)
+}
+
+/// Take the offer for one factory: re-solve its saved targets and
+/// imports with the recipe choices dropped, and materialize the result.
+/// The same thing the designer's Re-optimize does, reachable from the
+/// screen that told the player it was worth doing.
+#[tauri::command]
+pub fn factory_plan_reoptimize(
+    active: State<ActivePlaythrough>,
+    game_data: State<GameData>,
+    factory_id: String,
+) -> AppResult<SavePlanResult> {
+    let db = require_active(&active)?;
+    let plan = plan_get_impl(&db, &factory_id)?;
+    plan_save_impl(
+        &db,
+        &game_data,
+        SavePlanInput {
+            factory_id,
+            targets: plan.targets,
+            imports: plan
+                .imports
+                .iter()
+                .map(|i| super::dto::PlanImportSpec {
+                    item_id: i.item_id.clone(),
+                    source_factory_id: i.source_factory_id.clone(),
+                    ipm_cap: i.ipm_cap,
+                })
+                .collect(),
+            recipe_overrides: Default::default(),
+            options: super::dto::PlanComputeOptions {
+                include_sam: plan.include_sam,
+                ..Default::default()
+            },
+        },
+        &now_iso(),
+    )
+}
+
 /// Persist a designer node position (mirrors `set_machine_layout`).
 #[tauri::command]
 pub fn factory_plan_layout_set(
@@ -1360,6 +1564,268 @@ mod tests {
         let plan = plan_get_impl(&db, "fac-1").unwrap();
         assert_eq!(plan.targets.len(), 1);
         assert_eq!(plan.targets[0].item_id, "Desc_Cable_C");
+    }
+
+    // ---------- build-sheet stability ----------
+
+    /// Screws at 60/min: one Constructor on `Recipe_Screw_C` at tier 0,
+    /// and `Recipe_Alternate_Screw_C` (Cast Screws, tier 1) is the
+    /// cheaper choice the moment the playthrough reaches tier 1.
+    fn screw_target() -> Vec<PlanTargetSpec> {
+        vec![PlanTargetSpec { item_id: "Desc_IronScrew_C".into(), ipm: 60.0, export_ipm: None }]
+    }
+
+    /// Which recipe each of a factory's materialized machines runs.
+    fn machine_recipes(db: &PlaythroughDb, factory_id: &str) -> Vec<String> {
+        let mut ids: Vec<String> = db
+            .with(|c| factory_repo::machines_for_factory(c, factory_id))
+            .expect("read machines")
+            .into_iter()
+            .map(|m| m.recipe_id)
+            .collect();
+        ids.sort();
+        ids
+    }
+
+    /// Re-save a factory's plan exactly as the app's own non-designer
+    /// save paths do — read the persisted plan back, hand it straight to
+    /// the save. `raise_export_target` and `assign_import_source` both
+    /// do this to a factory the player isn't looking at.
+    fn resave_persisted_plan(db: &PlaythroughDb, gd: &GameData, factory_id: &str) {
+        let plan = plan_get_impl(db, factory_id).expect("plan exists");
+        plan_save_impl(
+            db,
+            gd,
+            SavePlanInput {
+                factory_id: factory_id.to_string(),
+                targets: plan.targets,
+                imports: plan
+                    .imports
+                    .iter()
+                    .map(|i| PlanImportSpec {
+                        item_id: i.item_id.clone(),
+                        source_factory_id: i.source_factory_id.clone(),
+                        ipm_cap: i.ipm_cap,
+                    })
+                    .collect(),
+                recipe_overrides: plan.recipe_overrides,
+                options: Default::default(),
+            },
+            NOW,
+        )
+        .expect("re-save must succeed");
+    }
+
+    #[test]
+    fn a_tier_bump_must_not_rewrite_a_factory_that_is_already_built() {
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "iron-works", "Iron Works");
+
+        plan_save_impl(&db, &gd, save_input("iron-works", screw_target(), vec![]), NOW)
+            .expect("save at tier 0");
+        let as_built = machine_recipes(&db, "iron-works");
+        assert_eq!(
+            as_built,
+            vec![
+                "Recipe_IngotIron_C".to_string(),
+                "Recipe_IronRod_C".to_string(),
+                "Recipe_Screw_C".to_string(),
+            ],
+            "tier 0 has no alt to reach, so ore → ingot → rod → screws is what gets built"
+        );
+
+        // Reaching tier 1 widens the recipe set the solver may choose
+        // from. The machines are already placed in the game by then.
+        db.with(|c| crate::features::playthrough::repo::progress_set_tier(c, 1))
+            .expect("advance tier");
+        resave_persisted_plan(&db, &gd, "iron-works");
+
+        assert_eq!(
+            machine_recipes(&db, "iron-works"),
+            as_built,
+            "a save the player didn't ask for must reproduce the build sheet they built, \
+             not redesign it against recipes that became available since"
+        );
+    }
+
+    #[test]
+    fn collecting_alts_never_changes_a_plan() {
+        // The Alts checklist is an inventory of hard drives, not an
+        // input to the solver — plans are computed against every alt
+        // *reachable* at the current tier, and an uncollected one comes
+        // back as a shopping-list note on the graph instead. Pinned here
+        // because "unlocking an alt re-planned my factory" is the
+        // obvious-looking explanation for a rewrite this code can't
+        // produce, and chasing it costs a session.
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        db.with(|c| crate::features::playthrough::repo::progress_set_tier(c, 1))
+            .expect("advance tier");
+        insert_test_factory(&db, "iron-works", "Iron Works");
+
+        plan_save_impl(&db, &gd, save_input("iron-works", screw_target(), vec![]), NOW)
+            .expect("save at tier 1");
+        let before = machine_recipes(&db, "iron-works");
+
+        let every_alt: Vec<String> = gd
+            .recipes()
+            .iter()
+            .filter(|r| r.is_alt)
+            .map(|r| r.id.clone())
+            .collect();
+        db.with(|c| alts_repo::alt_set_many(c, &every_alt, true, NOW))
+            .expect("collect every alt");
+        resave_persisted_plan(&db, &gd, "iron-works");
+
+        assert_eq!(machine_recipes(&db, "iron-works"), before);
+    }
+
+    #[test]
+    fn a_plan_first_saved_at_a_higher_tier_takes_the_better_recipe() {
+        // Positive control for the stability test above: freezing a
+        // built factory's choices must not stop the solver reaching for
+        // the cheaper recipe when there is no build sheet to protect.
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        db.with(|c| crate::features::playthrough::repo::progress_set_tier(c, 1))
+            .expect("advance tier");
+        insert_test_factory(&db, "iron-works", "Iron Works");
+
+        plan_save_impl(&db, &gd, save_input("iron-works", screw_target(), vec![]), NOW)
+            .expect("save at tier 1");
+
+        assert_eq!(
+            machine_recipes(&db, "iron-works"),
+            vec![
+                "Recipe_Alternate_Screw_C".to_string(),
+                "Recipe_IngotIron_C".to_string(),
+            ],
+            "Cast Screws is reachable at tier 1, cheaper, and drops the rod line entirely, \
+             so a fresh plan must pick it"
+        );
+    }
+
+    #[test]
+    fn re_optimize_adopts_the_recipes_a_new_tier_opened_up() {
+        // The designer's Re-optimize button clears the recipe pins and
+        // saves. That's the consent the stability rule holds out for, so
+        // it has to actually land the better plan.
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "iron-works", "Iron Works");
+        plan_save_impl(&db, &gd, save_input("iron-works", screw_target(), vec![]), NOW)
+            .expect("save at tier 0");
+        db.with(|c| crate::features::playthrough::repo::progress_set_tier(c, 1))
+            .expect("advance tier");
+
+        // `save_input` submits no recipe overrides — the same payload
+        // the designer sends after dropping the pins.
+        plan_save_impl(&db, &gd, save_input("iron-works", screw_target(), vec![]), NOW)
+            .expect("re-optimize save");
+
+        assert_eq!(
+            machine_recipes(&db, "iron-works"),
+            vec![
+                "Recipe_Alternate_Screw_C".to_string(),
+                "Recipe_IngotIron_C".to_string(),
+            ],
+        );
+    }
+
+    fn offers(db: &PlaythroughDb, gd: &GameData) -> Vec<super::super::dto::ReplanOffer> {
+        let factories = db.with(|c| factory_repo::factory_list(c)).expect("list");
+        factories
+            .iter()
+            .filter_map(|f| replan_offer_impl(db, gd, f).expect("offer"))
+            .collect()
+    }
+
+    #[test]
+    fn a_tier_bump_offers_the_better_plan_instead_of_taking_it() {
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "iron-works", "Iron Works");
+        plan_save_impl(&db, &gd, save_input("iron-works", screw_target(), vec![]), NOW)
+            .expect("save at tier 0");
+        assert!(
+            offers(&db, &gd).is_empty(),
+            "a plan saved at the tier it's read at has nothing to offer"
+        );
+
+        db.with(|c| crate::features::playthrough::repo::progress_set_tier(c, 1))
+            .expect("advance tier");
+        let found = offers(&db, &gd);
+
+        assert_eq!(found.len(), 1);
+        let offer = &found[0];
+        assert_eq!(offer.factory_name, "Iron Works");
+        assert!(
+            offer.reoptimized_power_mw < offer.current_power_mw,
+            "the offer has to carry both sides: {} MW now vs {} MW re-optimized",
+            offer.current_power_mw,
+            offer.reoptimized_power_mw,
+        );
+        let screws = offer
+            .swaps
+            .iter()
+            .find(|s| s.item_id == "Desc_IronScrew_C")
+            .expect("the screw line is what changes");
+        assert_eq!(screws.from_recipe_id, "Recipe_Screw_C");
+        assert_eq!(screws.to_recipe_id, "Recipe_Alternate_Screw_C");
+        assert!(screws.to_is_alt);
+
+        // The offer is an offer: nothing is written until it's taken.
+        assert_eq!(
+            machine_recipes(&db, "iron-works"),
+            vec![
+                "Recipe_IngotIron_C".to_string(),
+                "Recipe_IronRod_C".to_string(),
+                "Recipe_Screw_C".to_string(),
+            ],
+        );
+    }
+
+    #[test]
+    fn taking_the_offer_lands_the_plan_it_advertised() {
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "iron-works", "Iron Works");
+        plan_save_impl(&db, &gd, save_input("iron-works", screw_target(), vec![]), NOW)
+            .expect("save at tier 0");
+        db.with(|c| crate::features::playthrough::repo::progress_set_tier(c, 1))
+            .expect("advance tier");
+        let offer = offers(&db, &gd).remove(0);
+
+        // What `factory_plan_reoptimize` does, minus the Tauri state.
+        let plan = plan_get_impl(&db, "iron-works").unwrap();
+        let saved = plan_save_impl(
+            &db,
+            &gd,
+            SavePlanInput {
+                factory_id: "iron-works".into(),
+                targets: plan.targets,
+                imports: vec![],
+                recipe_overrides: Default::default(),
+                options: Default::default(),
+            },
+            NOW,
+        )
+        .expect("re-optimize");
+
+        assert_eq!(saved.graph.total_machines, offer.reoptimized_machines);
+        assert_eq!(saved.graph.total_power_mw, offer.reoptimized_power_mw);
+        assert_eq!(
+            machine_recipes(&db, "iron-works"),
+            vec![
+                "Recipe_Alternate_Screw_C".to_string(),
+                "Recipe_IngotIron_C".to_string(),
+            ],
+        );
+        assert!(
+            offers(&db, &gd).is_empty(),
+            "the offer has to retire once it's been taken"
+        );
     }
 
     #[test]
@@ -2716,5 +3182,76 @@ mod tests {
             graph.existing_producers.is_empty(),
             "the flow it would suggest is the one already there"
         );
+    }
+
+    #[test]
+    fn an_offer_carries_what_the_source_actually_exports_not_just_what_it_spares() {
+        // An uncapped import resolves to the export slice, never to
+        // machine-side spare, so an offer that only reported spare left
+        // the taker unable to tell a source it can pull from today from
+        // one whose slice is still shut.
+        let mut graph = super::super::dto::PlanGraph {
+            nodes: vec![PlanNode::Recipe {
+                node_key: "recipe:Desc_IronPlateReinforced_C".into(),
+                item_id: "Desc_IronPlateReinforced_C".into(),
+                item_name: "Reinforced Iron Plate".into(),
+                recipe_id: "Recipe_IronPlateReinforced_C".into(),
+                recipe_name: "Reinforced Iron Plate".into(),
+                building_id: "Build_AssemblerMk1_C".into(),
+                building_name: "Assembler".into(),
+                machine_count: 1,
+                clock_pct: 100.0,
+                power_mw: 15.0,
+                output_ipm: 5.0,
+                free_output_ipm: 0.0,
+                is_alt: false,
+                is_target: false,
+                target_ipm: None,
+                inputs: vec![],
+                outputs: vec![],
+            }],
+            ..Default::default()
+        };
+        let offers = vec![
+            // Makes it as a product, offers none of it to anyone.
+            super::super::dto::ExportOffer {
+                factory_id: "fac-shut".into(),
+                factory_name: "Iron Works".into(),
+                products: vec![super::super::dto::ExportOfferProduct {
+                    item_id: "Desc_IronPlateReinforced_C".into(),
+                    item_name: "Reinforced Iron Plate".into(),
+                    produced_ipm: 20.0,
+                    export_ipm: 0.0,
+                    drawn_ipm: 0.0,
+                    remaining_ipm: 0.0,
+                    spare_ipm: 5.0,
+                    has_target: true,
+                }],
+            },
+            // Same spare, already on offer.
+            super::super::dto::ExportOffer {
+                factory_id: "fac-open".into(),
+                factory_name: "Plate Works".into(),
+                products: vec![super::super::dto::ExportOfferProduct {
+                    item_id: "Desc_IronPlateReinforced_C".into(),
+                    item_name: "Reinforced Iron Plate".into(),
+                    produced_ipm: 20.0,
+                    export_ipm: 5.0,
+                    drawn_ipm: 0.0,
+                    remaining_ipm: 5.0,
+                    spare_ipm: 5.0,
+                    has_target: true,
+                }],
+            },
+        ];
+        attach_existing_producers(&mut graph, "fac-self", &offers);
+
+        let sources = &graph.existing_producers[0].sources;
+        let shut = sources.iter().find(|s| s.factory_id == "fac-shut").unwrap();
+        let open = sources.iter().find(|s| s.factory_id == "fac-open").unwrap();
+        assert!((shut.spare_ipm - open.spare_ipm).abs() < 1e-3, "same spare");
+        assert!(shut.remaining_ipm.abs() < 1e-3, "nothing on offer yet");
+        assert!((open.remaining_ipm - 5.0).abs() < 1e-3, "5/min already on offer");
+        assert!(shut.has_target && open.has_target);
     }
 }

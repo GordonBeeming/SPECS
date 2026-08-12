@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import type { PlanNode } from "@/features/planner/types";
+import type { ExistingProducerSource, PlanNode } from "@/features/planner/types";
 import {
   ByproductNodeCard,
   ImportNodeCard,
@@ -49,6 +49,17 @@ const importNode: Extract<PlanNode, { kind: "import" }> = {
   allocations: [],
   unassignedIpm: 120,
 };
+
+// The same producer in the two states the click has to tell apart:
+// exporting enough of its spare already, and exporting none of it.
+const openSource: ExistingProducerSource = {
+  factoryId: "fac-rocket",
+  factoryName: "Rocket Works",
+  spareIpm: 40,
+  remainingIpm: 40,
+  hasTarget: true,
+};
+const shutSource: ExistingProducerSource = { ...openSource, remainingIpm: 0 };
 
 const recipeCardProps = {
   recipeOptions: [],
@@ -174,14 +185,91 @@ describe("RecipeStepNodeCard", () => {
           itemId: "Desc_Cable_C",
           itemName: "Cable",
           localIpm: 60,
-          sources: [{ factoryId: "fac-rocket", factoryName: "Rocket Works", spareIpm: 40 }],
+          sources: [openSource],
         }}
       />,
     );
     expect(screen.getByText(/Rocket Works/)).toBeInTheDocument();
     expect(screen.getByText(/40\/min spare/)).toBeInTheDocument();
     await user.click(screen.getByText("import instead"));
-    expect(onImportFromProducer).toHaveBeenCalledWith("Desc_Cable_C", "fac-rocket");
+    // The whole source, not just its id: what the click has to do first
+    // depends on how much of it the producer already exports.
+    expect(onImportFromProducer).toHaveBeenCalledWith("Desc_Cable_C", openSource, 60);
+  });
+
+  it("says the producer's export slice will be opened before it's clicked", () => {
+    // A producer that makes the item but exports none of it supplies
+    // 0/min to an uncapped source row, so the click has to open its
+    // slice — a consequence in somebody else's factory, and the offer
+    // is the only place it can be read before it happens.
+    render(
+      <RecipeStepNodeCard
+        node={{ ...recipeNode, isTarget: false, targetIpm: null }}
+        {...recipeCardProps}
+        existingProducer={{
+          nodeKey: "recipe:Desc_Cable_C",
+          itemId: "Desc_Cable_C",
+          itemName: "Cable",
+          localIpm: 60,
+          sources: [shutSource],
+        }}
+      />,
+    );
+    expect(screen.getByText(/opens a 40\/min export slice/)).toBeInTheDocument();
+  });
+
+  it("says the slice is being widened when the producer already exports some", () => {
+    render(
+      <RecipeStepNodeCard
+        node={{ ...recipeNode, isTarget: false, targetIpm: null }}
+        {...recipeCardProps}
+        existingProducer={{
+          nodeKey: "recipe:Desc_Cable_C",
+          itemId: "Desc_Cable_C",
+          itemName: "Cable",
+          localIpm: 60,
+          sources: [{ ...openSource, remainingIpm: 12 }],
+        }}
+      />,
+    );
+    expect(screen.getByText(/Only 12\/min of it is on offer/)).toBeInTheDocument();
+  });
+
+  it("stays quiet about the export slice when the producer already offers enough", () => {
+    render(
+      <RecipeStepNodeCard
+        node={{ ...recipeNode, isTarget: false, targetIpm: null }}
+        {...recipeCardProps}
+        existingProducer={{
+          nodeKey: "recipe:Desc_Cable_C",
+          itemId: "Desc_Cable_C",
+          itemName: "Cable",
+          localIpm: 60,
+          sources: [openSource],
+        }}
+      />,
+    );
+    expect(screen.queryByText(/export slice/)).not.toBeInTheDocument();
+  });
+
+  it("disables the offer while the import is being set up", () => {
+    render(
+      <RecipeStepNodeCard
+        node={{ ...recipeNode, isTarget: false, targetIpm: null }}
+        {...recipeCardProps}
+        importPending
+        existingProducer={{
+          nodeKey: "recipe:Desc_Cable_C",
+          itemId: "Desc_Cable_C",
+          itemName: "Cable",
+          localIpm: 60,
+          sources: [shutSource],
+        }}
+      />,
+    );
+    // Opening the slice is a round-trip; a live-looking button through
+    // it invites the second click that reads as "still nothing".
+    expect(screen.getByText("import instead")).toBeDisabled();
   });
 
   it("doesn't offer an existing-producer import for a target — the target is the product", () => {
@@ -194,7 +282,7 @@ describe("RecipeStepNodeCard", () => {
           itemId: "Desc_Cable_C",
           itemName: "Cable",
           localIpm: 60,
-          sources: [{ factoryId: "fac-rocket", factoryName: "Rocket Works", spareIpm: 40 }],
+          sources: [openSource],
         }}
       />,
     );
