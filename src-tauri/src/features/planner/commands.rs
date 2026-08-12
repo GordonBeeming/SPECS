@@ -1447,21 +1447,25 @@ pub fn list_replan_offers(
     Ok(offers)
 }
 
-/// Take the offer for one factory: re-solve its saved targets and
-/// imports with the recipe choices dropped, and materialize the result.
-/// The same thing the designer's Re-optimize does, reachable from the
-/// screen that told the player it was worth doing.
-#[tauri::command]
-pub fn factory_plan_reoptimize(
-    active: State<ActivePlaythrough>,
-    game_data: State<GameData>,
+/// Re-save a factory's plan against a given set of recipe choices,
+/// keeping its targets, imports and SAM toggle exactly as they are.
+///
+/// Both directions of a re-optimize run through here: an empty map is
+/// the re-solve itself, and the map a re-solve dropped is its undo.
+/// Sharing the path is what makes the undo faithful — anything that
+/// rebuilt the plan another way could land the player somewhere they
+/// have never been.
+fn plan_resave_with_recipes_impl(
+    db: &PlaythroughDb,
+    game_data: &GameData,
     factory_id: String,
-) -> AppResult<SavePlanResult> {
-    let db = require_active(&active)?;
-    let plan = plan_get_impl(&db, &factory_id)?;
-    plan_save_impl(
-        &db,
-        &game_data,
+    recipe_overrides: std::collections::HashMap<String, String>,
+) -> AppResult<(SavePlanResult, std::collections::HashMap<String, String>)> {
+    let plan = plan_get_impl(db, &factory_id)?;
+    let previous_recipes = plan.recipe_overrides;
+    let saved = plan_save_impl(
+        db,
+        game_data,
         SavePlanInput {
             factory_id,
             targets: plan.targets,
@@ -1474,14 +1478,49 @@ pub fn factory_plan_reoptimize(
                     ipm_cap: i.ipm_cap,
                 })
                 .collect(),
-            recipe_overrides: Default::default(),
+            recipe_overrides,
             options: super::dto::PlanComputeOptions {
                 include_sam: plan.include_sam,
                 ..Default::default()
             },
         },
         &now_iso(),
-    )
+    )?;
+    Ok((saved, previous_recipes))
+}
+
+/// Take the offer for one factory: re-solve its saved targets and
+/// imports with the recipe choices dropped, and materialize the result.
+/// The same thing the designer's Re-optimize does, reachable from the
+/// screen that told the player it was worth doing — and, like the
+/// designer's, undoable, which is what `dropped_recipes` carries.
+#[tauri::command]
+pub fn factory_plan_reoptimize(
+    active: State<ActivePlaythrough>,
+    game_data: State<GameData>,
+    factory_id: String,
+) -> AppResult<super::dto::ReoptimizeResult> {
+    let db = require_active(&active)?;
+    let (saved, dropped_recipes) =
+        plan_resave_with_recipes_impl(&db, &game_data, factory_id, Default::default())?;
+    Ok(super::dto::ReoptimizeResult {
+        saved,
+        dropped_recipes,
+    })
+}
+
+/// Put back the recipe choices a re-optimize dropped — the undo half of
+/// `factory_plan_reoptimize`.
+#[tauri::command]
+pub fn factory_plan_restore_recipes(
+    active: State<ActivePlaythrough>,
+    game_data: State<GameData>,
+    factory_id: String,
+    recipe_overrides: std::collections::HashMap<String, String>,
+) -> AppResult<SavePlanResult> {
+    let db = require_active(&active)?;
+    let (saved, _) = plan_resave_with_recipes_impl(&db, &game_data, factory_id, recipe_overrides)?;
+    Ok(saved)
 }
 
 /// Persist a designer node position (mirrors `set_machine_layout`).
@@ -2018,6 +2057,46 @@ mod tests {
         assert!(
             offers(&db, &gd).is_empty(),
             "the offer has to retire once it's been taken"
+        );
+    }
+
+    #[test]
+    fn a_taken_offer_can_be_put_back_exactly_as_it_stood() {
+        // The offer rebuilds machines and links for a factory that may
+        // already be standing in the game, so the recipes it drops are
+        // the only way back. Restoring them has to land the original
+        // build sheet, not merely something that solves.
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "iron-works", "Iron Works");
+        plan_save_impl(&db, &gd, save_input("iron-works", screw_target(), vec![]), NOW)
+            .expect("save at tier 0");
+        db.with(|c| crate::features::playthrough::repo::progress_set_tier(c, 1))
+            .expect("advance tier");
+        let before = machine_recipes(&db, "iron-works");
+
+        let (_, dropped) =
+            plan_resave_with_recipes_impl(&db, &gd, "iron-works".into(), Default::default())
+                .expect("take the offer");
+        assert_ne!(
+            machine_recipes(&db, "iron-works"),
+            before,
+            "positive control: the re-solve has to have actually changed the plan"
+        );
+        assert_eq!(
+            dropped.get("Desc_IronScrew_C").map(String::as_str),
+            Some("Recipe_Screw_C"),
+            "the undo payload has to name the recipe the plan was built on"
+        );
+
+        plan_resave_with_recipes_impl(&db, &gd, "iron-works".into(), dropped)
+            .expect("undo the offer");
+
+        assert_eq!(machine_recipes(&db, "iron-works"), before);
+        assert_eq!(
+            offers(&db, &gd).len(),
+            1,
+            "and the offer comes back, because the plan it was made against is back"
         );
     }
 

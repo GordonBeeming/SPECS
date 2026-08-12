@@ -4,6 +4,7 @@ import { ArrowLeft, Atom, Check, ExternalLink, Loader2, Pencil, ScrollText, Tras
 import { Button } from "@/shared/ui/Button";
 import { Icon } from "@/shared/ui/Icon";
 import { IconPicker } from "@/shared/ui/IconPicker";
+import { UndoSnackbar } from "@/shared/ui/UndoSnackbar";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useNavStore } from "@/shared/nav-store";
 import type { ImportAllocation, RaiseExportTargetResult } from "@/features/planner/types";
@@ -95,8 +96,13 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmReoptimize, setConfirmReoptimize] = useState(false);
   // Holds the recipe pins dropped by the last re-optimize so the Undo
-  // snackbar can put them back. Null = no snackbar showing.
-  const [reoptimizeUndo, setReoptimizeUndo] = useState<Record<string, string> | null>(null);
+  // snackbar can put them back. Null = no snackbar showing. The `seq`
+  // remounts the snackbar so a second re-optimize gets its own full undo
+  // window rather than the remains of the previous one.
+  const [reoptimizeUndo, setReoptimizeUndo] = useState<{
+    seq: number;
+    recipes: Record<string, string>;
+  } | null>(null);
 
   // The graph's "import instead": opens the producer's export slice,
   // then adds the source here. Its raises join the same tally the
@@ -262,15 +268,11 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
   const hasPlan = (working?.targets.length ?? 0) > 0;
   const currentTier = playthrough.data?.currentTier ?? 0;
 
-  // Auto-dismiss the re-optimize Undo snackbar after a short window.
-  useEffect(() => {
-    if (!reoptimizeUndo) return;
-    const t = window.setTimeout(() => setReoptimizeUndo(null), 8000);
-    return () => window.clearTimeout(t);
-  }, [reoptimizeUndo]);
-
   const reoptimize = () => {
-    setReoptimizeUndo(working ? { ...working.recipeOverrides } : {});
+    setReoptimizeUndo((prev) => ({
+      seq: (prev?.seq ?? 0) + 1,
+      recipes: working ? { ...working.recipeOverrides } : {},
+    }));
     designer.setRecipeOverrides({});
     setConfirmReoptimize(false);
   };
@@ -689,22 +691,16 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
         )}
 
         {reoptimizeUndo && (
-          <div
-            role="status"
-            className="absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-border bg-bg-raised px-4 py-2.5 text-sm shadow-xl"
-          >
-            <span className="text-fg">Recipes re-optimized.</span>
-            <button
-              type="button"
-              onClick={() => {
-                designer.setRecipeOverrides(reoptimizeUndo);
-                setReoptimizeUndo(null);
-              }}
-              className="font-medium text-primary hover:underline"
-            >
-              Undo
-            </button>
-          </div>
+          <UndoSnackbar
+            key={reoptimizeUndo.seq}
+            message="Recipes re-optimized."
+            className="absolute bottom-4 left-1/2 z-40 -translate-x-1/2"
+            onUndo={() => {
+              designer.setRecipeOverrides(reoptimizeUndo.recipes);
+              setReoptimizeUndo(null);
+            }}
+            onDismiss={() => setReoptimizeUndo(null)}
+          />
         )}
       </div>
     </div>

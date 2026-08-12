@@ -67,7 +67,11 @@ Things that genuinely cross slices:
   `features/resources/display.ts` re-exports `coordChip` for the
   callers that already imported it from there.
 - `theme/` — brand tokens, dark-mode store.
-- `ui/` — branded primitives (`Button`, `Card`, `Badge`).
+- `ui/` — branded primitives (`Button`, `Card`, `Badge`). `UndoSnackbar`
+  is here rather than in a slice because the length of the undo window
+  is the promise a destructive action makes, and the factory designer
+  and Home both make it for the same re-optimize — two copies of that
+  timer drift apart without anyone noticing.
 - `testing/` — Vitest setup.
 
 If you find yourself wanting to add anything else to `shared/`, prove that 2+

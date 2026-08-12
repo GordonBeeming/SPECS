@@ -517,6 +517,17 @@ figures and the recipes that would swap. Applying is per factory,
 because the whole point is being able to redesign the new plant and
 leave the one already standing in the game alone.
 
+**Both re-optimizes carry the same guard rails, because they are the
+same act.** Neither is a redesign one click can reach, and both leave an
+Undo on screen afterwards. Home's needs them more if anything: the
+designer's edits a draft that still has to be saved, where Home's writes
+the plan the moment it's confirmed, and its confirmation says as much.
+Its Undo puts back the recipes the re-solve dropped rather than solving
+again, since solving again is what produced the plan being undone.
+Guard rails belong to the action, not to the screen it was pressed
+from. Give one surface a cheaper version and that surface becomes the
+way to redesign a factory by accident.
+
 The header edits the factory in place: click the name to rename,
 the icon to open the icon picker, the trash to delete (the
 confirmation lists factories that currently draw inputs from this
