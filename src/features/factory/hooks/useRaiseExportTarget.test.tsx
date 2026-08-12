@@ -9,7 +9,7 @@ import type { ExistingProducerSource, RaiseExportTargetResult } from "@/features
 import { useImportFromProducer } from "./useImportFromProducer";
 import { useRaiseExportTarget } from "./useRaiseExportTarget";
 
-// The raise queue lives at module scope on purpose, so it survives
+// The raise queue lives at module scope on purpose, so it outlives
 // every hook instance a test renders — and every test in this file.
 // Each test therefore raises against exporter ids of its own, so a
 // chain left mid-flight by one test can never gate the next one.
@@ -68,11 +68,10 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("useRaiseExportTarget", () => {
   it("holds a raise against an exporter another hook instance is already raising", async () => {
-    // The graph in one window and the graph in a popped-out window are
-    // two hook instances with no shared React state between them. Both
-    // read-modify-write the same exporter's target list, so overlapping
-    // them means the later save carries the earlier one's stale targets
-    // and silently erases the raise the player just watched succeed.
+    // Two hook instances with no React state between them, both
+    // read-modify-writing one exporter's target list. Overlapping them
+    // means the later save carries the earlier one's stale targets and
+    // silently erases the raise the player just watched succeed.
     const api = controllableRaise();
     const first = renderHook(() => useRaiseExportTarget("fac-dest-a"), { wrapper });
     const second = renderHook(() => useRaiseExportTarget("fac-dest-b"), { wrapper });

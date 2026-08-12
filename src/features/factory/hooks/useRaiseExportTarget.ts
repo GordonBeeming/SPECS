@@ -25,11 +25,16 @@ export interface RaiseExportTargetVars {
  * Module-level, rather than a ref or a context, because the writers
  * that need ordering do not share a React tree: the graph's "import
  * instead" and the Sources panel's "Raise target" are separate hook
- * instances, and a popped-out factory window is a second React root
- * again. Anything React-scoped hands each of them its own queue and
- * leaves exactly the race the queue exists to close. One app window is
- * one process against one playthrough file, so module scope is the same
- * scope the write actually contends in.
+ * instances reachable on screen at the same time. Anything React-scoped
+ * hands each of them its own queue and leaves exactly the race the
+ * queue exists to close.
+ *
+ * Module scope is as wide as this goes, and it is not the whole of the
+ * race. A popped-out factory loads the app again in its own webview, so
+ * it gets its own copy of this map and can raise against an exporter
+ * the main window is already raising. Closing that needs the backend to
+ * hold the read-modify-write under one lock; a JS queue cannot reach
+ * across realms.
  */
 const raiseQueues = new Map<string, Promise<void>>();
 
