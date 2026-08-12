@@ -299,8 +299,11 @@ state the fix was meant to change. Writing a test from the current behaviour
 rather than the intended behaviour is how a suite ends up defending a bug.
 
 The other three came from something overclaiming what it did: a code comment, an
-undo, and a queue that only covered one React root while the graph, the Sources
-panel and the popped-out window each had their own.
+undo, and a queue whose reach stops at the webview boundary. Module scope does
+serialize the graph and the Sources panel together, which is what it was added
+for, but a popped-out factory reloads the app in its own realm with its own copy
+of the map. That's #139, and no JS queue can close it — it needs the backend
+holding the read-modify-write under a lock.
 
 What caught these was reverting each fix and watching a named test go red, then
 driving the built app. Neither happens on its own, and playing is where most of
