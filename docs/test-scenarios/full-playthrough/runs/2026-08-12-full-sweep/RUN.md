@@ -238,3 +238,42 @@ issue in this batch would have quietly widened the other.
 
 That pairing is the argument for fixing a tier group as one batch rather than
 issue by issue. Neither interaction is visible from a single issue.
+
+## Tiers 3–4 — started, not finished
+
+Tier set to 4 and all 32 reachable alts unlocked. **Steel Mill** placed at
+2.7 km W · 0.9 km N, between the western coal field and the iron nodes below
+it, planning Steel Beam 10/min and Steel Pipe 15/min. The optimizer chose
+Solid Steel Ingot and Iron Alloy Ingot, so the mill wants copper as well as
+coal and iron — 41.7 coal, 22.2 iron, 5.6 copper per minute. Coal and iron
+are claimed at 42/min and 22.5/min; copper is not.
+
+Not reached: Encased Industrial Beam, the coal power station and its water
+extractors, Motor Assembly, Versatile Framework for Phase 2, and the Miner
+Mk.2 upgrades. The tier page's checkpoint is untouched.
+
+One thing confirmed on the way: **#129's fix works in the wild.** Claiming a
+coal node with three factories on the map defaulted to Steel Mill — the one
+short of coal — rather than the nearest. Same for the iron claim. That's the
+fix I couldn't trigger during the Tiers 1–2 checkpoint because no factory was
+short of anything at the time.
+
+## Where this run stands
+
+| | |
+| --- | --- |
+| Tier 0 | shipped — PR #126, merged `fbf6b410` |
+| Tiers 1–2 | built and green in the app; fixes on PR #133, **held draft on two blockers** |
+| Tiers 3–4 | Steel Mill part-built, checkpoint not attempted |
+
+**PR #133 must not merge as it stands.** #134 and #135 are both regressions
+introduced by its own fixes, and the suite is green for both — the third and
+fourth time in this run that a batch has shipped a new defect while repairing
+an old one, and the third time a green suite failed to notice.
+
+Nine further review findings are recorded on the PR and want triage before it
+lands: a `has_target` propagation that no test drives to `false` (hard-coding
+`true` keeps the whole suite green while breaking "import instead" for every
+intermediate), a Home Re-optimize with neither the confirmation nor the undo
+its identical twin in the designer has, and a claim default computed in a
+`useState` initializer that never recomputes when the factory ledgers arrive.
