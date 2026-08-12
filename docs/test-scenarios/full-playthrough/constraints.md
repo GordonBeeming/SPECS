@@ -3,6 +3,22 @@
 Every plan the run produces must be buildable in the actual game at the tier
 it's planned in. These rules are how the run stays honest.
 
+## Every factory actually runs
+
+A factory the run signs off on has to be one you could switch on. Every machine
+input traces back to something real: a claimed node, a line inside the same
+factory, or a logistics link from a factory that genuinely has the surplus. A
+plan with a dangling input is a factory that produces nothing, however good the
+numbers above it look.
+
+So no unclaimed raws, no machine fed by an item nobody makes, no line drawing
+more of an intermediate than its supplier puts out, and no generator burning
+fuel that isn't produced or hand-feedable at that tier. Supply gaps report as
+warnings rather than errors, which makes them easy to wave through — don't. A
+tier group ends with Validate showing zero errors **and** zero supply warnings,
+or it isn't done. If a gap can't be closed at that tier, that's a finding to
+file and write into the ledger, not a checkbox to tick anyway.
+
 ## Source of truth
 
 The app's own library data (belt tiers, pipe tiers, recipe unlock tiers,
@@ -88,6 +104,15 @@ report — the run exists to find exactly those gaps.
 - Flows go through the real UI: creating factories, claiming nodes, editing
   plans, adding machines, linking factories. `ipc_execute_command` and
   backend-state reads are for assertions only.
+- **Two screens carry the run: the map and the factory you're inside.** Claim
+  on the node, drop the factory pin where it belongs, open it, build it there.
+  A pioneer should be able to play a whole tier without leaving those two, so
+  the run is played that way on purpose.
+- Reaching for Resources, Logistics, Power, Network or any other list screen
+  to get something done is a finding, not a shortcut. Log which screen you had
+  to leave the map for and what you went there to do — that's the list of
+  things the map and the factory view still can't do. Read-only visits to
+  confirm a number are fine; log them too if the map should have shown it.
 - Screenshot every tier checkpoint (the tier pages say what to capture).
 - If a UI flow dead-ends, misleads, or makes the realistic plan impossible,
   file a bug. If it blocks the run entirely, severity is `showstopper`: stop,

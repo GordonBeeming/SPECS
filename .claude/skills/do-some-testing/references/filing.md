@@ -39,14 +39,7 @@ Asset names are unique across the whole release, so prefix every one with the se
 2026-07-25-iron-giant-t3-4-coal-power-belt-mk-mismatch.png
 ```
 
-Never `screenshot.png`. Upload, then confirm the URL resolves before you put it in an issue body:
-
-```bash
-gh release upload assets 2026-07-25-iron-giant-t0-sources-panel-empty.png --repo GordonBeeming/SPECS
-curl -sIL https://github.com/GordonBeeming/SPECS/releases/download/assets/2026-07-25-iron-giant-t0-sources-panel-empty.png | grep ^HTTP
-```
-
-The last status has to be 200. `--clobber` replaces an asset of the same name if you're re-uploading a better capture.
+Never `screenshot.png`. Hand the named file to the `git-workflow:github-upload-file` skill and use the URL it gives back. It owns the upload, the bucket and the check that the URL actually resolves, so don't shell out to `gh release upload` yourself — a broken embed is invisible to the person who wrote the issue and obvious to everyone else.
 
 The same file stays in the run folder's `screenshots/` — the run artifact and the issue embed share one capture.
 
