@@ -141,6 +141,16 @@ generator id in the v1.1 dataset.
   `import.meta.glob` picks them up at build time; nothing reaches the
   network at runtime.
 
+**Icon picker tiles carry their name.** The picker grids on
+`auto-fill, minmax(84px, 1fr)` with the item name captioned under each
+thumbnail, not on a fixed column count with icon-only tiles. At the size a
+tile can afford, several of the game's icons are near-indistinguishable —
+Iron Plate against Reinforced Iron Plate is the standing example — so a
+picker that shows only the art asks the player to guess and confirm. A
+`title` tooltip doesn't rescue it: hover pays out one tile at a time, after
+you've already decided where to point. Selected state is conveyed by more
+than colour.
+
 The About panel credits Coffee Stain Studios + SatisfactoryTools by name.
 If Coffee Stain ever objects, swap to "extract from the player's local
 install on first run". The `<Icon itemId="…" />` component abstracts the
@@ -222,6 +232,45 @@ node markers + draggable factory pins.
   steps, coarse scrubbing) with a typed input where decimals are
   first-class — 100.01–250.00, matching the x100 storage precision.
   Sliders alone are banned; precision lives in the text field.
+- **Node card placement:** the selected-node card renders beside the
+  marker it describes, not in a dock — claiming is a pointing action,
+  and a card across the canvas from the thing pointed at has to be
+  re-verified every time. It flips to the other side of the pointer
+  rather than clipping, and both boxes (card and viewport) are
+  measured from the DOM: a card grows and shrinks with its conditional
+  rows, so an assumed height puts the Claim button off-screen. When the
+  camera moves itself to a node, the anchor is where that marker
+  actually landed — the pan clamps to keep bare canvas out of frame, so
+  a node near the world's edge doesn't end up centred and a card pinned
+  to the middle would point at empty map.
+- **The open card's node ignores the filters.** Whatever is selected
+  stays rendered even when a resource, purity or claimed-node filter
+  would hide it. The alternative — switching filters off to make room —
+  rewrites preferences the player set deliberately, and they persist,
+  so a one-off action would permanently change the saved view.
+- **Stacked markers:** markers hold a constant on-screen size while
+  the gap between them grows with zoom, so a cluster separates by
+  zooming in. Below the zoom that separates them the top marker is the
+  only route to the ones it covers, so activating it again pages
+  through the stack, and a pager above the card names the position
+  ("2 of 3 nodes stacked here"). The pager sits outside the card,
+  which is keyed by node id: inside it, paging would unmount the
+  button being pressed.
+
+  A cluster belongs to the *place*, not to the marker you happened to
+  ask. Membership is transitive — A covers B and B covers C without A
+  covering C, and all three are one pile — so every member sees the
+  same list in the same order. Built the other way, as "what overlaps
+  this one", the count changes as you page, paging wanders into
+  markers that were never in the pile, and the far members become
+  unreachable: they can't be clicked either, because something is
+  covering them.
+- **Marker naming:** the accessible name describes the node (resource,
+  purity, rate, coordinates, claim state) and stops there. Gesture
+  hints — "click to bind or drag onto a factory" — live in `title`
+  only: a name is re-announced on every focus pass, and click/drag
+  name gestures a keyboard user doesn't have. Markers activate on
+  Enter and Space, and Escape closes any open map card.
 
 ## Factory editor
 
@@ -238,7 +287,13 @@ header:
 - **Add machine** toggle → left panel with `AddMachineForm` to add a machine by
   hand, outside the plan. Hand-added machines coexist with plan-materialised ones
   (`plan_node_key = NULL`).
-- **Add power** → jumps to the Power tab scoped to this factory.
+- **Add power** toggle → left panel with this factory's generated / consumed /
+  net figures and a form to add generators. It sits beside the ledger and
+  add-machine panels rather than navigating away: the draw it balances against
+  is already printed in the same header, so leaving the factory to act on it
+  loses the number you came for. The whole-grid view stays one ghost button
+  away, and the panel is the only route to power in a popped-out factory
+  window, which has no app nav to jump to.
 
 ## Production plan designer
 
@@ -422,6 +477,17 @@ the icon to open the icon picker, the trash to delete (the
 confirmation lists factories that currently draw inputs from this
 one). New factories place-first on the map (canvas arm button or
 right-click → click the spot → name → straight into the designer).
+
+**Anywhere the player types a map position, they type the coordinates
+the app already shows them.** Positions are stored in Unreal `cm`, and
+that unit appears nowhere in the UI: a distance box in kilometres and a
+compass select, echoing back the same `1.9km W · 1.2km N` string the map
+and the resource rows print. Labelling a raw `World X` field with its
+unit would make it legible but still unusable — the number the player
+holds comes off a map pin, and there's no path from that to a cm value
+without doing arithmetic in your head. Direction lives in the compass select and only
+there, so a stray minus sign can't silently mirror a factory across the
+map.
 An empty plan — first run, or after clearing every product — shows
 a centered modal: large title, icon preview that fills in as you
 pick, the tier-grouped product `FilterSelect`, a big rate field,
@@ -445,13 +511,25 @@ right-hand slide-over (`max-w-xl`, backdrop `bg-black/40`) that runs
 the whole-playthrough sweep on mount. Presentation rules:
 
 - Summary chips up top: error count in a `danger` pill, warning count
-  in a `warning` pill, current tier in a neutral pill, then the grid
-  one-liner (danger-toned when net is negative).
+  in a `warning` pill, note count in a `primary` pill, current tier in
+  a neutral pill, then the grid one-liner (danger-toned when net is
+  negative). All three counts carry colour, icon and label together —
+  `CircleAlert`, `TriangleAlert`, `Info`. The tier chip stays bare on
+  purpose: it's metadata rather than a status, and the icon is what
+  separates them rather than a font weight.
 - Findings group under four sentence-case headings: "Above your
   tier", "Cross-factory flows", "Supply & power", "Alts you haven't
   collected". Rows are `bg-bg-raised` cards with a severity icon
-  (CircleAlert danger / TriangleAlert warning); clickable rows
-  deep-link to the owning view and close the panel.
+  (CircleAlert danger / TriangleAlert warning / Info note); clickable
+  rows deep-link to the owning view and close the panel.
+- **Three severities, and the third one earns its place.** A note is
+  something true the player should know and cannot act on — a
+  hand-fed Biomass Burner has no node to claim, so counting it as a
+  shortfall is an accusation the player can never answer. Notes stay
+  out of the error and warning counts, and the panel keeps its
+  all-clear with the notes listed underneath. Anything the player
+  *can* fix stays a warning; softening one to a note to reach a clean
+  sweep is the failure this level exists to prevent.
 - The hard-drive shopping list is its own warning-tinted card above
   the categories — it's the actionable output, not just another
   finding row.
@@ -489,6 +567,18 @@ the whole-playthrough sweep on mount. Presentation rules:
 
 - Every text/background pair WCAG AA verified before committing a token change.
   A spot-check helper script lives at `scripts/check-contrast.ts` _(planned)_.
+- **Text on a coloured fill picks its colour per token, never `text-white`
+  by default.** `primary` and `success` invert between modes (dark on light
+  mode, bright on dark mode), so text on those fills must be `text-bg`, which
+  inverts with them — white on dark-mode `success` (`#4ADE80`) is about 1.7:1.
+  `accent` is a dark blue in *both* modes, so it keeps `text-white`. A single
+  token across every fill always fails one of them.
+- Focus is never left on `document.body`. A floating card takes focus on open
+  and returns it to the control that opened it on close; anything that
+  remounts mid-interaction keeps its controls outside the remounting subtree.
+- Motion that moves the viewport or loops (camera flights, pulsing rings) is
+  guarded by `prefers-reduced-motion` — `motion-safe:` for CSS animation, a
+  zero duration for scripted transforms.
 - `*:focus-visible` shows a 2px primary outline with 2px offset.
 - Never colour-only signalling. Every red gets an icon. Every dashed edge gets
   a tooltip. Every status badge has both colour + icon + label.
