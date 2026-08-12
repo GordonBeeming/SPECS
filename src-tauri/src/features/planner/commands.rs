@@ -324,7 +324,27 @@ fn plan_get_impl(db: &PlaythroughDb, factory_id: &str) -> AppResult<FactoryPlan>
         return Err(AppError::NotFound(format!("factory {factory_id} not found")));
     }
     let targets = db.with(|c| plan_repo::plan_targets_for_factory(c, factory_id).map_err(AppError::from))?;
-    let recipes = db.with(|c| plan_repo::plan_recipes_for_factory(c, factory_id).map_err(AppError::from))?;
+    let mut recipes: std::collections::HashMap<String, String> = db
+        .with(|c| plan_repo::plan_recipes_for_factory(c, factory_id).map_err(AppError::from))?
+        .into_iter()
+        .collect();
+    // Plans saved before the recipe of every step was recorded only ever
+    // persisted the items the player pinned by hand, so a factory built
+    // without ever opening the recipe picker has none at all while its
+    // machines are standing in the game. Reading the choice back off
+    // those machines is what stops the next save — which can come from
+    // another factory's screen, and from a tier that reaches recipes the
+    // plan was never solved against — re-solving into a build sheet
+    // nobody asked for. A save persists the full chosen set, so this
+    // fills nothing on a plan saved since.
+    for (node_key, recipe_id) in db.with(|c| {
+        plan_repo::plan_machine_recipes_for_factory(c, factory_id).map_err(AppError::from)
+    })? {
+        let Some(item_id) = super::domain::recipe_node_item(&node_key) else {
+            continue;
+        };
+        recipes.entry(item_id.to_string()).or_insert(recipe_id);
+    }
     let imports = db.with(|c| plan_repo::plan_imports_for_factory(c, factory_id).map_err(AppError::from))?;
     let layout = db.with(|c| plan_repo::plan_layouts_for_factory(c, factory_id).map_err(AppError::from))?;
     let include_sam =
@@ -340,7 +360,7 @@ fn plan_get_impl(db: &PlaythroughDb, factory_id: &str) -> AppResult<FactoryPlan>
                 export_ipm: t.export_ipm,
             })
             .collect(),
-        recipe_overrides: recipes.into_iter().collect(),
+        recipe_overrides: recipes,
         imports: imports
             .into_iter()
             .map(|i| PlanImportRowDto {
@@ -1646,6 +1666,179 @@ mod tests {
             as_built,
             "a save the player didn't ask for must reproduce the build sheet they built, \
              not redesign it against recipes that became available since"
+        );
+    }
+
+    /// Put a factory back into the shape every plan saved before the
+    /// recipe of each step was recorded is in on disk: targets, imports
+    /// and materialized machines all present, the recipe table empty
+    /// except for anything the player pinned by hand.
+    fn strip_to_legacy_shape(db: &PlaythroughDb, factory_id: &str) {
+        db.with(|c| {
+            c.execute(
+                "DELETE FROM factory_plan_recipe WHERE factory_id = ?",
+                [factory_id],
+            )
+        })
+        .expect("clear recorded recipes");
+    }
+
+    /// The recipe choices a plan reads back, as a sorted whole.
+    fn plan_recipe_pairs(db: &PlaythroughDb, factory_id: &str) -> Vec<(String, String)> {
+        let mut pairs: Vec<(String, String)> = plan_get_impl(db, factory_id)
+            .expect("plan exists")
+            .recipe_overrides
+            .into_iter()
+            .collect();
+        pairs.sort();
+        pairs
+    }
+
+    #[test]
+    fn a_plan_saved_before_recipes_were_recorded_must_not_be_rewritten_either() {
+        // The stability test above saves with the current code, so its
+        // factory always has a full set of recorded recipes and never
+        // enters the state every playthrough on disk is actually in.
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "iron-works", "Iron Works");
+
+        plan_save_impl(&db, &gd, save_input("iron-works", screw_target(), vec![]), NOW)
+            .expect("save at tier 0");
+        let as_built = machine_recipes(&db, "iron-works");
+        strip_to_legacy_shape(&db, "iron-works");
+
+        db.with(|c| crate::features::playthrough::repo::progress_set_tier(c, 1))
+            .expect("advance tier");
+        resave_persisted_plan(&db, &gd, "iron-works");
+
+        assert_eq!(
+            machine_recipes(&db, "iron-works"),
+            as_built,
+            "a plan whose recipes were never recorded is still a build sheet the player \
+             has standing in the game, and a save nobody asked for must reproduce it"
+        );
+    }
+
+    #[test]
+    fn a_legacy_plan_reads_its_recipes_back_off_the_machines_it_built() {
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "iron-works", "Iron Works");
+        plan_save_impl(&db, &gd, save_input("iron-works", screw_target(), vec![]), NOW)
+            .expect("save at tier 0");
+
+        let as_recorded = plan_recipe_pairs(&db, "iron-works");
+        strip_to_legacy_shape(&db, "iron-works");
+
+        assert_eq!(
+            plan_recipe_pairs(&db, "iron-works"),
+            as_recorded,
+            "the whole choice set has to come back, not a subset — a step left without one \
+             is a step the next solve is free to redesign"
+        );
+        assert_eq!(
+            as_recorded,
+            vec![
+                ("Desc_IronIngot_C".to_string(), "Recipe_IngotIron_C".to_string()),
+                ("Desc_IronRod_C".to_string(), "Recipe_IronRod_C".to_string()),
+                ("Desc_IronScrew_C".to_string(), "Recipe_Screw_C".to_string()),
+            ],
+            "positive control: the recorded set is the tier 0 screw chain and nothing else, \
+             so the comparison above is against a set with something in it"
+        );
+    }
+
+    #[test]
+    fn a_legacy_plan_still_gets_told_a_better_one_exists() {
+        // The Home offer card diffs the saved plan against a fresh
+        // solve. With nothing recorded, both sides were the fresh
+        // solve, so the one plan a tier bump is about to rewrite was
+        // also the one nothing warned about.
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "iron-works", "Iron Works");
+        plan_save_impl(&db, &gd, save_input("iron-works", screw_target(), vec![]), NOW)
+            .expect("save at tier 0");
+        strip_to_legacy_shape(&db, "iron-works");
+
+        db.with(|c| crate::features::playthrough::repo::progress_set_tier(c, 1))
+            .expect("advance tier");
+        let found = offers(&db, &gd);
+
+        assert_eq!(found.len(), 1);
+        let swapped: Vec<(&str, &str)> = found[0]
+            .swaps
+            .iter()
+            .map(|s| (s.from_recipe_id.as_str(), s.to_recipe_id.as_str()))
+            .collect();
+        assert_eq!(
+            swapped,
+            vec![("Recipe_Screw_C", "Recipe_Alternate_Screw_C")],
+            "the whole diff is the screw line, and it names both sides"
+        );
+    }
+
+    #[test]
+    fn a_hand_placed_machine_is_never_read_back_as_a_plan_choice() {
+        // A manual Iron Rod bank survives plan saves untouched and is
+        // nobody's plan step. Pinning its recipe would hand the solver a
+        // choice the player never made — and on a factory that imports
+        // rods, would force it to build them.
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "cables", "Cables v1");
+        plan_save_impl(&db, &gd, save_input("cables", cable_target(), vec![]), NOW)
+            .expect("save at tier 0");
+        let plan_only = plan_recipe_pairs(&db, "cables");
+
+        insert_manual_rod_bank(&db, "cables");
+        strip_to_legacy_shape(&db, "cables");
+
+        assert_eq!(
+            plan_recipe_pairs(&db, "cables"),
+            plan_only,
+            "the read-back set must be exactly the plan's own steps"
+        );
+        assert!(
+            !plan_only.iter().any(|(item, _)| item == "Desc_IronRod_C"),
+            "positive control: cables never make rods, so the manual bank's item is one the \
+             plan's own set can't contain on its own"
+        );
+    }
+
+    #[test]
+    fn a_plan_whose_machines_are_gone_reads_back_no_choices() {
+        // Targets with nothing materialized against them: a plan whose
+        // every product arrives by import, or a factory torn down
+        // outside the designer. There's no standing build sheet to
+        // protect, so re-solving it fresh is right — what must not
+        // happen is a crash or a half-filled set.
+        let db = Arc::new(open_test_db());
+        let gd = GameData::from_bundled().unwrap();
+        insert_test_factory(&db, "iron-works", "Iron Works");
+        plan_save_impl(&db, &gd, save_input("iron-works", screw_target(), vec![]), NOW)
+            .expect("save at tier 0");
+
+        strip_to_legacy_shape(&db, "iron-works");
+        db.with(|c| plan_repo::plan_machines_delete(c, "iron-works"))
+            .expect("tear the machines down");
+
+        let plan = plan_get_impl(&db, "iron-works").expect("plan still loads");
+        assert_eq!(plan.recipe_overrides.len(), 0);
+        assert_eq!(plan.targets.len(), 1, "the plan itself is still there");
+
+        db.with(|c| crate::features::playthrough::repo::progress_set_tier(c, 1))
+            .expect("advance tier");
+        resave_persisted_plan(&db, &gd, "iron-works");
+        assert_eq!(
+            machine_recipes(&db, "iron-works"),
+            vec![
+                "Recipe_Alternate_Screw_C".to_string(),
+                "Recipe_IngotIron_C".to_string(),
+            ],
+            "with nothing built there is nothing to reproduce, so the solver takes the \
+             better tier 1 chain"
         );
     }
 

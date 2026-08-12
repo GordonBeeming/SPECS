@@ -223,13 +223,15 @@ describe("<PlanDesignerView /> — Add power", () => {
 });
 
 describe("<PlanDesignerView /> — Re-optimize", () => {
+  const screwTarget = [{ itemId: "Desc_IronScrew_C", ipm: 60 }];
+
   /** A plan whose steps carry recipes, which is every saved plan: the
    * save records what the solver landed on, not only what the player
    * pinned by hand. */
   function planWithRecipes() {
     vi.spyOn(plannerApi, "getPlan").mockResolvedValue({
       factoryId: "f1",
-      targets: [],
+      targets: screwTarget,
       includeSam: false,
       recipeOverrides: {
         Desc_IronScrew_C: "Recipe_Screw_C",
@@ -270,10 +272,27 @@ describe("<PlanDesignerView /> — Re-optimize", () => {
     expect(dialog).not.toHaveTextContent(/pinned/);
   });
 
+  it("is offered on a plan that has products but no recipes recorded against it", async () => {
+    // Every plan saved before the recipes were persisted looks like
+    // this on disk, and it's the plan most in need of the button: it's
+    // the one a save from another screen is about to re-solve.
+    vi.spyOn(plannerApi, "getPlan").mockResolvedValue({
+      factoryId: "f1",
+      targets: screwTarget,
+      includeSam: false,
+      recipeOverrides: {},
+      imports: [],
+      layout: [],
+    });
+    renderPlan();
+    const button = await screen.findByRole("button", { name: /re-optimize/i });
+    await waitFor(() => expect(button).toBeEnabled());
+  });
+
   it("stays disabled while there's no plan to re-solve", async () => {
     // Positive control on the gate: the default mock's plan has no
-    // recipes at all, which is the one state where the button has
-    // nothing to act on.
+    // products, which is the one state where the button has nothing to
+    // act on.
     renderPlan();
     expect(await screen.findByRole("button", { name: /re-optimize/i })).toBeDisabled();
   });

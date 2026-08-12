@@ -254,11 +254,12 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
   }, [popped]);
 
   const factoryName = detail.data?.factory.name ?? "…";
-  // A saved plan carries a recipe for every step it built, whether the
-  // player picked it or the solver did, so this is never a count of
-  // deliberate choices and nothing user-facing can describe it as one.
-  // It gates the button on "is there a plan here at all".
-  const hasPlan = Object.keys(working?.recipeOverrides ?? {}).length > 0;
+  // Targets are what makes a plan a plan — a factory with products to
+  // build has one to re-solve whether or not any recipe was ever
+  // recorded against it. Counting recipes instead reads as "nothing
+  // planned here" on a factory whose plan predates those being saved,
+  // which is exactly the plan most in need of the button.
+  const hasPlan = (working?.targets.length ?? 0) > 0;
   const currentTier = playthrough.data?.currentTier ?? 0;
 
   // Auto-dismiss the re-optimize Undo snackbar after a short window.
