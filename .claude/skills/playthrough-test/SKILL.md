@@ -85,11 +85,12 @@ because it reads as current.
 
    **The group ends merged, not pushed.** Take the batch all the way through `git-workflow:pull-request` — draft, bot review rounds, publish, merge — and only then start the next tier. A draft PR left open is the same stall as stopping to ask: the next group builds on this one, so it wants the fixes on `main`, not sitting in review. Leaving it draft "for someone to look at" is a decision nobody asked for.
 
+   **Write the artifacts into the same batch, before the review.** Factory layout pages for anything built or changed this group, checkpoint screenshots, the run index, and the ledger row with the issue numbers and the PR they went out on. These are part of the change, not a follow-up to it: a ledger updated after the merge needs a second PR, and until that lands the file on `main` says a shipped batch is still in review. Record the PR number, which is known as soon as the draft exists; the merge SHA is the one field worth filling in afterward, and it belongs in the same commit as the next group's ledger row rather than a PR of its own.
+
    Nothing leaves the machine until `git-workflow:review-branch` has run over the batch as a whole — the fixes, the scenario doc edits and the run artifacts together, not one commit at a time. A batch of a dozen small fixes lands as one change and deserves one review of that change.
 
    **The bar is 95% and the loop runs until it's met.** Review, fix what came back, review again, and keep going round; one pass that finds twelve things and fixes ten is not a finished batch. At least 95% of the panel's findings resolved, no unresolved blocker at any severity, and the tier's own checkpoint still green on the fixed build. Only then push and start the next group. If a round keeps surfacing the same class of problem, that's the signal to fix the cause rather than the instances.
-8. **Write the artifacts.** Factory layout pages for anything built or changed this group, checkpoint screenshots, the run index, and the ledger row with the issue numbers and where they landed.
-9. **Report back.** What you built, what worked, the issues filed and fixed with their numbers, and the verdict for the group.
+8. **Report back.** What you built, what worked, the issues filed and fixed with their numbers, and the verdict for the group.
 
 ## Rules that shape the run
 
