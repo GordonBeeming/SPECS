@@ -120,7 +120,7 @@ export type FindingKind =
       claimedIpm: number;
     }
   | {
-      kind: "generatorFuelHandFed";
+      kind: "generatorFuelHandGathered";
       factoryId: string;
       factoryName: string;
       itemId: string;

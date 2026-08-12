@@ -28,7 +28,6 @@ import {
   useRecipes,
 } from "@/features/library/hooks/useLibrary";
 import { TierBadge } from "@/features/library/components/TierBadge";
-import { traceRawDemand } from "@/features/factory/traceRaw";
 import { useLogisticsLinks } from "@/features/logistics/hooks/useLogistics";
 import { useAllPowerGens } from "@/features/power/hooks/usePower";
 import {
@@ -62,6 +61,8 @@ import {
 } from "lucide-react";
 
 import { MapLinksLayer, NodeBindingLinesLayer } from "./MapLinksLayer";
+import { useFactoryShortfalls } from "../hooks/useFactoryShortfalls";
+import { rawRequirements, type RawRequirement } from "../shortfalls";
 import {
   clampLoadoutMinerId,
   PlacementLoadout,
@@ -227,8 +228,19 @@ export function nodeMarkerText(
  *    shortfall is on screen is overwhelmingly a claim for that factory.
  * 2. The only factory there is. Placed or not, there's nothing to be
  *    wrong about.
- * 3. The nearest factory that has a map position, ranked by the same
+ * 3. The only factory currently short of this node's resource. Wanting
+ *    the ore is a stronger claim to it than any distance.
+ * 4. The nearest of the factories short of it, ranked by the same
  *    distances the dropdown itself prints.
+ * 5. The nearest factory of any kind, on the same ranking.
+ *
+ * Rules 3 and 4 sit above plain distance because distance on its own
+ * answers a question nobody asked. A copper plant 100 m closer than the
+ * iron plant is still the wrong home for an iron node, and a default
+ * that looks considered gets committed without being read — worse than
+ * the "— none —" that at least makes the player choose. `shortOfItem`
+ * is the same shortfall the factory card's own "Claim a node" button is
+ * built on, so the two can't disagree.
  *
  * Otherwise `null`. Two or more factories that have never been dragged
  * onto the map carry no distance to rank by, and `factoryPickerOptions`
@@ -246,16 +258,24 @@ export function defaultClaimFactoryId(
   node: { x: number; y: number },
   factories: FactoryPickerCandidate[],
   selectedFactoryId: string | null,
+  /** Ids of the factories still short of this node's resource. Empty
+   * when nobody is (or when the ledgers haven't loaded), which drops
+   * the pick back to distance alone. */
+  shortOfItem: ReadonlySet<string> = new Set(),
 ): string | null {
   if (factories.length === 0) return null;
   if (selectedFactoryId && factories.some((f) => f.id === selectedFactoryId)) {
     return selectedFactoryId;
   }
   if (factories.length === 1) return factories[0].id;
-  const placed = factories.filter(hasWorldPosition);
-  if (placed.length === 0) return null;
-  const [nearest] = factoryPickerOptions(node, placed);
-  return nearest?.value ?? null;
+  const wanting = factories.filter((f) => shortOfItem.has(f.id));
+  if (wanting.length === 1) return wanting[0].id;
+  const nearestOf = (candidates: FactoryPickerCandidate[]): string | null => {
+    const placed = candidates.filter(hasWorldPosition);
+    if (placed.length === 0) return null;
+    return factoryPickerOptions(node, placed)[0]?.value ?? null;
+  };
+  return nearestOf(wanting) ?? nearestOf(factories);
 }
 
 // Image dimensions of the bundled WebP. Must stay in lockstep with
@@ -603,6 +623,7 @@ export function MapView() {
   const items = useItems();
   const powerGens = useAllPowerGens();
   const unsourcedInputs = useUnsourcedInputs();
+  const shortfalls = useFactoryShortfalls();
   const waterGroups = useWaterExtractorGroups();
   const waterPumpIpm = useWaterPumpIpm();
   const setClaim = useSetNodeClaim();
@@ -2436,6 +2457,7 @@ export function MapView() {
                 loadout={effectiveLoadout}
                 factories={factories.data ?? []}
                 selectedFactoryId={selectedFactoryId}
+                shortOfResource={shortfalls.byItem.get(selectedNode.resourceItemId)}
                 bindTo={
                   claimIntent?.nodeId === selectedNode.id ? claimIntent.factoryId : undefined
                 }
@@ -3003,53 +3025,12 @@ function FactoryPopover({
   const f = detail.data?.factory;
   const ledger = detail.data?.ledger;
 
-  // Roll every deficit input back through the recipe graph so the
-  // popover can show 'this factory ultimately needs X Iron Ore /
-  // min' — burning down as bound nodes contribute. We trace GROSS
-  // demand (pre-subtracting fromNodes) so the UI can render the
-  // burn-down as "180 of 675 bound · 495 missing"; subtracting too
-  // early collapses that into a single 'missing' number and loses
-  // the telemetry. Intermediates (Iron Rod, Screw, …) never bind
-  // from nodes so the rollup is the only useful demand view.
+  // "This factory ultimately needs X Iron Ore / min", burning down as
+  // bound nodes contribute. Shared with the claim popup's factory
+  // default (`shortfalls.ts`), which ranks on the same answer.
   const requires = useMemo(() => {
-    if (!ledger || !recipes.data || !extracted.data) return [] as Array<{
-      itemId: string;
-      required: number;
-      bound: number;
-      missing: number;
-    }>;
-    // A deficit covered by an incoming logistics link is supplied,
-    // not missing — test 45 importing its Copper Ingot from another
-    // factory must not roll that demand back to "ore missing".
-    const grossDeficits = ledger.flows
-      .filter((flow) => flow.netPerMinute < -0.001)
-      .map((flow) => ({
-        itemId: flow.itemId,
-        ratePerMin: Math.max(
-          0,
-          -flow.netPerMinute - (flow.fromLinksPerMinute ?? 0),
-        ),
-      }))
-      .filter((d) => d.ratePerMin > 0.001);
-    const raw = grossDeficits.length === 0
-      ? {}
-      : traceRawDemand(grossDeficits, recipes.data, new Set(extracted.data));
-    // Map raw item id → bound supply from the factory's flow rows.
-    const boundFor = (itemId: string): number => {
-      const flow = ledger.flows.find((f) => f.itemId === itemId);
-      return flow?.fromNodesPerMinute ?? 0;
-    };
-    return Object.entries(raw)
-      .map(([itemId, required]) => {
-        const bound = boundFor(itemId);
-        return {
-          itemId,
-          required,
-          bound: Math.min(bound, required),
-          missing: Math.max(0, required - bound),
-        };
-      })
-      .sort((a, b) => b.required - a.required);
+    if (!ledger || !recipes.data || !extracted.data) return [] as RawRequirement[];
+    return rawRequirements(ledger, recipes.data, new Set(extracted.data));
   }, [ledger, recipes.data, extracted.data]);
   // Bound supply for items the factory doesn't actually need (so a
   // wired-up node never silently disappears from the UI).
@@ -3337,6 +3318,9 @@ interface NodePopoverProps {
   /** The factory whose card is open, if any — the first candidate for
    * a fresh claim's binding (see `defaultClaimFactoryId`). */
   selectedFactoryId: string | null;
+  /** Factories still short of this node's resource, which is what a
+   * fresh claim is ranked on before distance. */
+  shortOfResource?: ReadonlySet<string>;
   /** The factory the player explicitly sent this card here to bind to.
    * Outranks an existing claim's saved factory, and only this does:
    * the request was "point a node at this factory", so arriving with
@@ -3366,6 +3350,7 @@ function NodePopover({
   loadout,
   factories,
   selectedFactoryId,
+  shortOfResource,
   bindTo,
   onClaim,
   onRelease,
@@ -3384,7 +3369,7 @@ function NodePopover({
     bindTo ??
       (node.claim
         ? node.claim.factoryId ?? null
-        : defaultClaimFactoryId(node, factories, selectedFactoryId)),
+        : defaultClaimFactoryId(node, factories, selectedFactoryId, shortOfResource)),
   );
   const kindLabel = nodeKindLabel(node);
   // What this claim would actually extract at the clock currently in

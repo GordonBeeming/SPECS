@@ -1189,6 +1189,7 @@ function mockClaimFlowApis(nodes: ResourceNodeRow[]) {
     machines: [],
     ledger: shortfallLedger,
   });
+  vi.spyOn(factoryApi, "ledger").mockResolvedValue(shortfallLedger);
   vi.spyOn(resourcesApi, "list").mockResolvedValue(nodes);
   vi.spyOn(resourcesApi, "listWaterGroups").mockResolvedValue([]);
   vi.spyOn(resourcesApi, "budget").mockResolvedValue({ assumptionLabel: "x", rows: [] });
@@ -1553,6 +1554,53 @@ describe("defaultClaimFactoryId — only pre-bind a pick it can actually justify
   });
 });
 
+describe("defaultClaimFactoryId — wanting the resource beats being near it", () => {
+  // The reported case, to scale: claiming a Pure iron node with Copper
+  // Works at 494 m and Iron Works at 597 m. Copper Works is genuinely
+  // nearer and has no iron line at all.
+  const node = { x: 0, y: 0 };
+  const copperWorks = { id: "copper-works", name: "Copper Works", worldX: 49400, worldY: 0 };
+  const ironWorks = { id: "iron-works", name: "Iron Works", worldX: 59700, worldY: 0 };
+  const both = [copperWorks, ironWorks];
+
+  it("picks the factory short of this resource over the nearer one that isn't", () => {
+    expect(
+      defaultClaimFactoryId(node, both, null, new Set(["iron-works"])),
+    ).toBe("iron-works");
+  });
+
+  it("falls back to nearest when every candidate wants it", () => {
+    // Positive control: the distance ranking is still doing its job —
+    // shortfall narrows the field, it doesn't replace the ordering.
+    expect(
+      defaultClaimFactoryId(node, both, null, new Set(["iron-works", "copper-works"])),
+    ).toBe("copper-works");
+  });
+
+  it("falls back to nearest when nobody is short of it", () => {
+    // Covers the ledgers not having loaded as well as a genuinely
+    // covered playthrough — an empty set is "no reason to prefer
+    // anyone", which is where distance earns its place.
+    expect(defaultClaimFactoryId(node, both, null, new Set())).toBe("copper-works");
+  });
+
+  it("pre-binds the only factory that wants it even without a position", () => {
+    const unplacedIron = { ...ironWorks, worldX: 0, worldY: 0 };
+    expect(
+      defaultClaimFactoryId(node, [copperWorks, unplacedIron], null, new Set(["iron-works"])),
+    ).toBe("iron-works");
+  });
+
+  it("still yields to the factory whose card is open", () => {
+    // The player opened Copper Works and clicked a node from there.
+    // That's an instruction, not a guess to be second-guessed by a
+    // shortfall somewhere else on the map.
+    expect(
+      defaultClaimFactoryId(node, both, "copper-works", new Set(["iron-works"])),
+    ).toBe("copper-works");
+  });
+});
+
 describe("defaultClaimClockPct", () => {
   const loadout = { minerClockPct: 37.5 };
 
@@ -1573,6 +1621,66 @@ const secondFactory: Factory = {
   worldX: 12000,
   worldY: 12000,
 };
+
+describe("<MapView /> — the claim popup defaults to a factory that wants the resource", () => {
+  // The reported shape: a copper plant sitting closer to an iron node
+  // than the iron plant that's short of iron. `nearIronNode` is at
+  // (11000, 11000), so Copper Works wins on distance alone and loses on
+  // the only thing that matters.
+  const copperWorks: Factory = { ...secondFactory, worldX: 11500, worldY: 11500 };
+  const ironWorks: Factory = { ...factory, worldX: 40000, worldY: 40000 };
+  const coveredLedger = {
+    factoryId: "f-2",
+    powerMw: 4,
+    flows: [
+      {
+        itemId: "Desc_OreCopper_C",
+        itemName: "Copper Ore",
+        isFluid: false,
+        producedPerMinute: 0,
+        consumedPerMinute: 30,
+        netPerMinute: -30,
+        fromNodesPerMinute: 0,
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    mockClaimFlowApis([nearIronNode]);
+    vi.spyOn(factoryApi, "list").mockResolvedValue([ironWorks, copperWorks]);
+    vi.spyOn(factoryApi, "ledger").mockImplementation((id: string) =>
+      Promise.resolve(id === "f-1" ? shortfallLedger : coveredLedger),
+    );
+    vi.spyOn(libraryApi, "extractedResources").mockResolvedValue([
+      "Desc_OreIron_C",
+      "Desc_OreCopper_C",
+    ]);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it("picks the iron plant over the nearer copper plant with no iron line", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MapView />);
+    await user.click(await screen.findByTitle(/Iron Ore · Normal/));
+
+    expect(await screen.findByRole("combobox", { name: /factory/i })).toHaveValue("Iron Works");
+  });
+
+  it("goes back to nearest once the iron plant's shortfall is covered", async () => {
+    // Positive control on the whole wiring, not just the ranking: with
+    // nobody short of iron, the distance ranking has to be what answers,
+    // and it has to answer differently.
+    vi.spyOn(factoryApi, "ledger").mockResolvedValue(coveredLedger);
+    const user = userEvent.setup();
+    renderWithProviders(<MapView />);
+    await user.click(await screen.findByTitle(/Iron Ore · Normal/));
+
+    expect(await screen.findByRole("combobox", { name: /factory/i })).toHaveValue("Copper Works");
+  });
+});
 
 /** Claimed, bound to nothing — the state whose saved binding a stale
  * instruction would overwrite, since an unclaimed node has no saved

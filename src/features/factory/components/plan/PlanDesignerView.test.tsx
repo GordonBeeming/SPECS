@@ -221,3 +221,60 @@ describe("<PlanDesignerView /> — Add power", () => {
     expect(await screen.findByRole("dialog", { name: "Ledger" })).toBeInTheDocument();
   });
 });
+
+describe("<PlanDesignerView /> — Re-optimize", () => {
+  /** A plan whose steps carry recipes, which is every saved plan: the
+   * save records what the solver landed on, not only what the player
+   * pinned by hand. */
+  function planWithRecipes() {
+    vi.spyOn(plannerApi, "getPlan").mockResolvedValue({
+      factoryId: "f1",
+      targets: [],
+      includeSam: false,
+      recipeOverrides: {
+        Desc_IronScrew_C: "Recipe_Screw_C",
+        Desc_IronRod_C: "Recipe_IronRod_C",
+      },
+      imports: [],
+      layout: [],
+    });
+  }
+
+  it("offers to re-solve against the tier rather than counting the player's pins", async () => {
+    // The recipes on a saved plan are mostly the solver's own choices,
+    // so a count of them describes nothing the player did. What decides
+    // the outcome is the tier being solved against, and that's what the
+    // control names.
+    planWithRecipes();
+    renderPlan();
+    const button = await screen.findByRole("button", { name: /re-optimize/i });
+
+    // The plan lands a tick after the header does, so the enabled state
+    // is what has to settle, not the button's existence.
+    await waitFor(() => expect(button).toBeEnabled());
+    expect(button).toHaveAttribute(
+      "title",
+      "Re-solve this factory against every recipe reachable at Tier 5",
+    );
+  });
+
+  it("warns about what moves, not about losing pinned work", async () => {
+    planWithRecipes();
+    const user = userEvent.setup();
+    renderPlan();
+    await user.click(await screen.findByRole("button", { name: /re-optimize/i }));
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent(/reachable at Tier 5/);
+    expect(dialog).toHaveTextContent(/imports or links may end up unsourced or unused/);
+    expect(dialog).not.toHaveTextContent(/pinned/);
+  });
+
+  it("stays disabled while there's no plan to re-solve", async () => {
+    // Positive control on the gate: the default mock's plan has no
+    // recipes at all, which is the one state where the button has
+    // nothing to act on.
+    renderPlan();
+    expect(await screen.findByRole("button", { name: /re-optimize/i })).toBeDisabled();
+  });
+});

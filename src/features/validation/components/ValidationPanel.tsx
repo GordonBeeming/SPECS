@@ -228,7 +228,7 @@ function findingTarget(f: Finding): (() => void) | null {
     case "powerDeficit":
     case "gridDeficit":
     case "generatorFuelShort":
-    case "generatorFuelHandFed":
+    case "generatorFuelHandGathered":
       return () => nav.goTo("power");
     case "segmentOverBeltCapacity":
     case "segmentOverPipeCapacity":
@@ -287,12 +287,18 @@ function findingText(f: Finding): string {
       return `Grid short: ${f.consumedMw.toFixed(0)} MW drawn vs ${f.generatedMw.toFixed(0)} MW generated`;
     case "generatorFuelShort":
       return `${f.factoryName}: generators need ${f.demandIpm.toFixed(1)}/min of ${f.itemName}, claims cover ${f.claimedIpm.toFixed(1)}`;
-    case "generatorFuelHandFed":
-      return `${f.factoryName}: generators burn ${f.demandIpm.toFixed(1)}/min of ${f.itemName} — no belt can supply it, so this one's fed by hand`;
+    // Says where the chore is, not how the fuel gets in. Liquid Biofuel
+    // reaches the generator by pipe, so telling the player to hand-feed
+    // it described something they cannot physically do.
+    case "generatorFuelHandGathered":
+      return `${f.factoryName}: generators burn ${f.demandIpm.toFixed(1)}/min of ${f.itemName} — every route to it starts with hand-gathered pickups, so no build removes the gathering`;
+    // A layout fact, not a problem to fix: the player lays the belts and
+    // the segment still reads the same rate, so wording it as a demand
+    // ("or an underclock") asked for something that never lands.
     case "segmentOverBeltCapacity":
-      return `${f.factoryName}: ${f.itemName} segment runs ${f.ipm.toFixed(1)}/min — needs ${f.beltsNeeded}× Mk.${f.beltMark} belts (${f.beltCapacityIpm}/min each) or an underclock`;
+      return `${f.factoryName}: ${f.itemName} segment runs ${f.ipm.toFixed(1)}/min — needs ${f.beltsNeeded} belts at Mk.${f.beltMark} (${f.beltCapacityIpm}/min each)`;
     case "segmentOverPipeCapacity":
-      return `${f.factoryName}: ${f.itemName} segment runs ${f.ipm.toFixed(1)} m³/min — needs ${f.pipesNeeded}× Mk.${f.pipeMark} pipe headers (${f.pipeCapacityIpm} m³/min each) or an underclock`;
+      return `${f.factoryName}: ${f.itemName} segment runs ${f.ipm.toFixed(1)} m³/min — needs ${f.pipesNeeded} pipe headers at Mk.${f.pipeMark} (${f.pipeCapacityIpm} m³/min each)`;
     case "fluidSegmentNoPipeAtTier":
       return `${f.factoryName}: ${f.itemName} segment runs ${f.ipm.toFixed(1)} m³/min — no pipe is unlocked yet to move it`;
     case "checkFailed":

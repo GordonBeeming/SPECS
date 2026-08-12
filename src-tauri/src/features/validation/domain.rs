@@ -158,14 +158,26 @@ pub fn check_plan_graph(
 /// Plan-graph edges (within-factory segments) whose rate exceeds the
 /// best belt/pipe tier unlocked at the current playthrough tier.
 ///
-/// Deliberately *not* an error and deliberately not silent about the
-/// fix: `N` parallel belts/headers of the best unlocked tier cover the
-/// rate just fine — running two Mk3 belts side by side for a 439.5/min
-/// line is correct play, not a problem — but the app has the belt/pipe
-/// table already and a beginner doesn't, so the count is worth stating
-/// instead of leaving the segment rendered identically to a compliant
-/// one. Fluids below Tier 3 get a distinct finding: there's no pipe to
-/// count multiples of yet.
+/// The two over-capacity findings are **notes**, not warnings: `N`
+/// parallel belts/headers of the best unlocked tier carry the rate, so
+/// a 439.5/min line on two Mk3 belts is a finished build rather than a
+/// problem — and building it that way changes nothing here, because a
+/// segment's rate is what the plan asks for and reads identically
+/// before and after the belts go down. A warning no build can retire
+/// stops being information. The belt count still earns a row: the app
+/// has the belt/pipe table and a beginner doesn't.
+///
+/// The genuinely unbuildable case — a *single* extractor clocked past
+/// what its one output port can carry, where a splitter downstream only
+/// divides what already came through — keeps warning severity over in
+/// `check_claim_port_capacity`, which works from the claims and so
+/// knows it's looking at one extractor. A segment carries aggregate
+/// flow with no record of how many extractors or machine banks feed it,
+/// so it can never make that call itself.
+///
+/// Fluids below Tier 3 get a distinct finding and keep warning
+/// severity: with no pipe unlocked there's no multiple to lay, and the
+/// fix (reach Tier 3) is real and observable here.
 pub fn check_plan_graph_capacity(
     factory: &FactoryRef,
     graph: &PlanGraph,
@@ -195,7 +207,7 @@ pub fn check_plan_graph_capacity(
                 Some(p) => {
                     let cap = p.cubic_meters_per_minute as f32;
                     if edge.ipm > cap + EPS {
-                        out.push(warn(
+                        out.push(note(
                             Category::Capacity,
                             FindingKind::SegmentOverPipeCapacity {
                                 factory_id: factory.factory_id.clone(),
@@ -214,7 +226,7 @@ pub fn check_plan_graph_capacity(
         } else if let Some(b) = best_belt {
             let cap = b.items_per_minute as f32;
             if edge.ipm > cap + EPS {
-                out.push(warn(
+                out.push(note(
                     Category::Capacity,
                     FindingKind::SegmentOverBeltCapacity {
                         factory_id: factory.factory_id.clone(),
@@ -492,7 +504,7 @@ pub fn check_generator_supply(
         if available <= EPS && no_automated_supply.contains(&flow.item_id) {
             out.push(note(
                 Category::SupplyPower,
-                FindingKind::GeneratorFuelHandFed {
+                FindingKind::GeneratorFuelHandGathered {
                     factory_id: factory.factory_id.clone(),
                     factory_name: factory.factory_name.clone(),
                     item_id: flow.item_id.clone(),
@@ -683,6 +695,10 @@ mod tests {
         PowerFuelFlow { item_id: item_id.into(), item_name: item_name.into(), is_fluid: false, per_minute }
     }
 
+    fn fluid_fuel_flow(item_id: &str, item_name: &str, per_minute: f32) -> PowerFuelFlow {
+        PowerFuelFlow { item_id: item_id.into(), item_name: item_name.into(), is_fluid: true, per_minute }
+    }
+
     /// The real set, so these tests exercise the same membership the
     /// sweep does rather than a hand-picked stand-in.
     fn stranded() -> HashSet<String> {
@@ -737,12 +753,12 @@ mod tests {
         assert_eq!(findings[0].severity, Severity::Info, "not a warning — nothing is wrong");
         assert_eq!(findings[0].category, Category::SupplyPower);
         match &findings[0].kind {
-            FindingKind::GeneratorFuelHandFed { item_name, demand_ipm, .. } => {
+            FindingKind::GeneratorFuelHandGathered { item_name, demand_ipm, .. } => {
                 assert_eq!(item_name, "Wood");
                 // The burn rate survives: it's the part a player acts on.
                 assert_eq!(*demand_ipm, 18.0);
             }
-            other => panic!("expected GeneratorFuelHandFed, got {other:?}"),
+            other => panic!("expected GeneratorFuelHandGathered, got {other:?}"),
         }
     }
 
@@ -763,7 +779,7 @@ mod tests {
         assert_eq!(findings.len(), 1, "got {findings:?}");
         assert_eq!(findings[0].severity, Severity::Info);
         assert!(
-            matches!(&findings[0].kind, FindingKind::GeneratorFuelHandFed { demand_ipm, .. } if *demand_ipm == 18.0),
+            matches!(&findings[0].kind, FindingKind::GeneratorFuelHandGathered { demand_ipm, .. } if *demand_ipm == 18.0),
             "the generator's own burn rate: {findings:?}"
         );
     }
@@ -840,6 +856,36 @@ mod tests {
             );
             assert_eq!(findings.len(), 1, "{item_name}: got {findings:?}");
             assert_eq!(findings[0].severity, Severity::Info, "{item_name} can never be supplied");
+        }
+    }
+
+    #[test]
+    fn a_zero_supply_fluid_fuel_is_the_same_note_as_a_solid_one() {
+        // Liquid Biofuel is the case the note's old wording got wrong.
+        // A Refinery does make it, so it reads automatable — but the
+        // Refinery eats Solid Biofuel, which eats Biomass, which eats
+        // Wood, Leaves, Mycelia or Alien Protein, and no recipe or node
+        // in the dataset produces any of those. Building the whole
+        // chain moves the gathering, it doesn't remove it, so zero
+        // supply here is a standing chore rather than a shortfall.
+        // Pinned separately from the solids because the fluid is the
+        // one nobody can pour into a generator by hand.
+        let fuel_flows = vec![fluid_fuel_flow("Desc_LiquidBiofuel_C", "Liquid Biofuel", 270.0)];
+        let mut findings = Vec::new();
+        check_generator_supply(
+            &fref(), &HashMap::new(), &HashMap::new(), &fuel_flows, &HashMap::new(), &stranded(),
+            &mut findings,
+        );
+
+        assert_eq!(findings.len(), 1, "got {findings:?}");
+        assert_eq!(findings[0].severity, Severity::Info);
+        assert_eq!(findings[0].category, Category::SupplyPower);
+        match &findings[0].kind {
+            FindingKind::GeneratorFuelHandGathered { item_name, demand_ipm, .. } => {
+                assert_eq!(item_name, "Liquid Biofuel");
+                assert_eq!(*demand_ipm, 270.0);
+            }
+            other => panic!("expected GeneratorFuelHandGathered, got {other:?}"),
         }
     }
 
@@ -1063,6 +1109,9 @@ mod tests {
             other => panic!("expected SegmentOverBeltCapacity, got {other:?}"),
         }
         assert_eq!(findings[0].category, Category::Capacity);
+        // Aggregate flow: two Mk1 belts carry it, and laying them leaves
+        // the segment reading 90/min — a warning here could never clear.
+        assert_eq!(findings[0].severity, Severity::Info);
     }
 
     #[test]
@@ -1085,6 +1134,9 @@ mod tests {
 
         assert_eq!(findings.len(), 1, "got {findings:?}");
         assert!(matches!(&findings[0].kind, FindingKind::FluidSegmentNoPipeAtTier { ipm, .. } if *ipm == 30.0));
+        // Stays a warning while the over-capacity pair are notes:
+        // reaching Tier 3 really does retire this one.
+        assert_eq!(findings[0].severity, Severity::Warning);
     }
 
     #[test]
@@ -1109,6 +1161,9 @@ mod tests {
             }
             other => panic!("expected SegmentOverPipeCapacity, got {other:?}"),
         }
+        // Same reasoning as the belt pair: three headers carry it, and
+        // building them leaves this segment reading 630 m³/min.
+        assert_eq!(findings[0].severity, Severity::Info);
     }
 
     #[test]
