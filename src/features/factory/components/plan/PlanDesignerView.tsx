@@ -15,6 +15,7 @@ import { useUnlockedAlts } from "@/features/alts/hooks/useAlts";
 import { useLogisticsLinks } from "@/features/logistics/hooks/useLogistics";
 import { useCurrentPlaythrough } from "@/features/playthrough/hooks/usePlaythroughs";
 import { buildRecipesByOutput } from "@/features/planner/options";
+import { FactoryPowerPanel } from "@/features/power/components/FactoryPowerPanel";
 
 import {
   useDeleteFactory,
@@ -31,6 +32,15 @@ import { PlanTotals } from "./PlanTotals";
 import { PlanTargetsBar } from "./PlanTargetsBar";
 import { errorLine, PlanWarningsBanner, UncollectedAltsBanner } from "./PlanWarningsBanner";
 import { SourcesPanel } from "./SourcesPanel";
+
+/** Left-panel modes, and the accessible name each one answers to. */
+const LEFT_PANEL_TITLES = {
+  ledger: "Ledger",
+  machines: "Add machine",
+  power: "Power",
+} as const;
+
+type LeftPanel = keyof typeof LEFT_PANEL_TITLES;
 
 export interface PlanDesignerViewProps {
   factoryId: string;
@@ -71,9 +81,13 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
   // replacing the last.
   const [raiseLog, setRaiseLog] = useState<RaiseExportTargetResult[]>([]);
   // Left-side overlay panel: the per-item ledger and manual add-machine that
-  // used to live in the (now removed) factory detail pane. Mutually exclusive
-  // so they don't stack; independent of the right-hand SourcesPanel.
-  const [leftPanel, setLeftPanel] = useState<null | "ledger" | "machines">(null);
+  // used to live in the (now removed) factory detail pane, plus this
+  // factory's power generation. Mutually exclusive so they don't stack;
+  // independent of the right-hand SourcesPanel.
+  const [leftPanel, setLeftPanel] = useState<LeftPanel | null>(null);
+  const leftPanelRef = useRef<HTMLDivElement | null>(null);
+  // Whatever opened the panel, so closing can hand focus back to it.
+  const leftPanelOpenerRef = useRef<HTMLElement | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [editingIcon, setEditingIcon] = useState(false);
@@ -172,6 +186,30 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
       setIcon.mutate({ id: factoryId, iconId: first.itemId });
     }
   }, [working, detail.data, factoryId, setIcon]);
+
+  // Focus moves into the panel on open, so the next Tab lands on its own
+  // controls rather than continuing through the canvas behind it, and so
+  // the panel's Escape handler is reachable from the keyboard at all.
+  // Closing hands it back to whatever opened it: the focused element
+  // unmounts with the panel, and without a deliberate hand-back focus
+  // falls to <body> and the next Tab restarts from the top of the page.
+  // Same contract the map's node card keeps for its markers.
+  useEffect(() => {
+    if (leftPanel) {
+      const active = document.activeElement;
+      // Skip when focus is already inside the panel — switching modes
+      // from a control within it must not record the panel as its own
+      // opener, which would strand focus on close.
+      if (active instanceof HTMLElement && !leftPanelRef.current?.contains(active)) {
+        leftPanelOpenerRef.current = active;
+      }
+      leftPanelRef.current?.focus();
+      return;
+    }
+    const opener = leftPanelOpenerRef.current;
+    leftPanelOpenerRef.current = null;
+    opener?.focus();
+  }, [leftPanel]);
 
   const handleBack = () => {
     // Leaving never loses work: flush any pending edits first.
@@ -344,20 +382,16 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
             <Wrench className="h-3.5 w-3.5" />
             Add machine
           </Button>
-          {!popped && (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                useNavStore.getState().selectFactory(factoryId);
-                useNavStore.getState().goTo("power");
-              }}
-              title="Plan power for this factory"
-              className="px-2 py-1 text-xs"
-            >
-              <Zap className="h-3.5 w-3.5 text-warning" />
-              Add power
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            onClick={() => setLeftPanel((p) => (p === "power" ? null : "power"))}
+            aria-pressed={leftPanel === "power"}
+            title="Plan this factory's generators against the draw in this header"
+            className="px-2 py-1 text-xs"
+          >
+            <Zap className="h-3.5 w-3.5 text-warning" />
+            Add power
+          </Button>
           <Button
             variant="ghost"
             onClick={() => setConfirmReoptimize(true)}
@@ -522,9 +556,26 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
 
         {leftPanel && (
           <div className="absolute left-3 top-3 bottom-3 z-30">
+            {/* A floating panel over the canvas is a dialog in every way
+                that matters to a keyboard or screen-reader user, so it
+                gets the same treatment the app's modals do: a labelled
+                role, Escape to leave, and focus moved in on open so the
+                next Tab lands inside rather than back on the canvas.
+                Not `aria-modal` — the graph behind it stays usable on
+                purpose, which is the point of a side panel. */}
             <div
-              className={`flex max-h-full flex-col overflow-hidden rounded-lg border border-border bg-bg-raised shadow-xl ${
-                leftPanel === "machines" ? "w-[480px]" : "w-[360px]"
+              ref={leftPanelRef}
+              role="dialog"
+              aria-label={LEFT_PANEL_TITLES[leftPanel]}
+              tabIndex={-1}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.stopPropagation();
+                  setLeftPanel(null);
+                }
+              }}
+              className={`flex max-h-full flex-col overflow-hidden rounded-lg border border-border bg-bg-raised shadow-xl outline-none ${
+                leftPanel === "ledger" ? "w-[360px]" : "w-[480px]"
               }`}
             >
               <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
@@ -532,6 +583,10 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
                   {leftPanel === "ledger" ? (
                     <>
                       <ScrollText className="h-4 w-4" /> Ledger
+                    </>
+                  ) : leftPanel === "power" ? (
+                    <>
+                      <Zap className="h-4 w-4 text-warning" /> Power
                     </>
                   ) : (
                     <>
@@ -555,6 +610,21 @@ export function PlanDesignerView({ factoryId, firstRun, popped, onBack, onDelete
                   ) : (
                     <div className="text-sm text-fg-muted">Loading ledger…</div>
                   )
+                ) : leftPanel === "power" ? (
+                  <FactoryPowerPanel
+                    factoryId={factoryId}
+                    // A popped-out factory window has no app nav to send
+                    // the player to, so the grid-wide view is offered
+                    // only from the main window.
+                    onOpenGridView={
+                      popped
+                        ? undefined
+                        : () => {
+                            useNavStore.getState().selectFactory(factoryId);
+                            useNavStore.getState().goTo("power");
+                          }
+                    }
+                  />
                 ) : (
                   <AddMachineForm factoryId={factoryId} onSubmitted={() => setLeftPanel(null)} />
                 )}

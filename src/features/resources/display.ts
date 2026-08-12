@@ -1,4 +1,13 @@
+import { coordChip } from "@/shared/format/coords";
+
 import type { Purity, ResourceNodeRow } from "./types";
+
+// `coordChip` reads world coords for the resource rows, the map and the
+// new-factory dialog, and that dialog also needs to parse the same
+// reading back — so the conversion now lives in `shared/format/coords`.
+// Re-exported here because half the app already imports it from this
+// module, and one import path for one formatter beats two.
+export { coordChip };
 
 /**
  * The extractor a fresh claim should default to: the caller's preferred
@@ -105,17 +114,3 @@ export function nodeKindLabel(
   return null;
 }
 
-/**
- * Round world coords (Unreal `cm`) to a `(x km, y km)` chip. Compass
- * suffixes (E/W, N/S) save the player from having to remember which
- * axis is which.
- */
-export function coordChip(x: number, y: number): string {
-  // Unreal world coords are stored in cm — divide by 100,000 to land
-  // on kilometres for human-readable distances. SCIM's convention
-  // puts +x = east, +y = south (north is the smaller y).
-  const km = (v: number) => (v / 100000).toFixed(1);
-  const ew = x >= 0 ? "E" : "W";
-  const ns = y >= 0 ? "S" : "N";
-  return `${km(Math.abs(x))}km ${ew} · ${km(Math.abs(y))}km ${ns}`;
-}

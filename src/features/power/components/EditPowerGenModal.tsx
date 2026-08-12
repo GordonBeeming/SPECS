@@ -44,8 +44,11 @@ export function EditPowerGenModal({
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (!Number.isFinite(count) || count < 1 || count > 1000) {
-      setError("Count must be between 1 and 1,000.");
+    // Whole generators only — `count` is an i64 over IPC, and a
+    // fractional value gets rejected by serde with a raw type error
+    // rather than anything a player can act on.
+    if (!Number.isInteger(count) || count < 1 || count > 1000) {
+      setError("Count must be a whole number between 1 and 1,000.");
       return;
     }
     if (!Number.isFinite(clockPct) || clockPct < 1 || clockPct > 250) {
