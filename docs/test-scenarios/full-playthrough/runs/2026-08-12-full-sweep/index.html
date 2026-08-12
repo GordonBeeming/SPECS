@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  Run index template — copy to runs/<run>/index.html and fill in. This is
+  the page a reviewer opens first: verdict up top, then tiers → factories,
+  then the issue ledger. Local links stay relative (factories/, screenshots/);
+  findings link out to GitHub issues.
+-->
+<title>Full playthrough run — 2026-08-12-full-sweep</title>
+<style>
+  :root {
+    --bg: #1a1a1a; --bg-raised: #232323; --fg: #e0e0e0; --fg-muted: #d1d5db;
+    --primary: #46cbff; --border: #2c2c2c;
+    --success: #4ade80; --warning: #fbbf24; --danger: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0 auto; max-width: 960px; padding: 28px 20px;
+         background: var(--bg); color: var(--fg);
+         font: 14px/1.55 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 26px 0 8px; color: var(--primary); }
+  a { color: var(--primary); }
+  .verdict { display: inline-block; margin: 10px 0 4px; padding: 4px 14px;
+             border-radius: 999px; font-weight: 600; border: 1px solid; }
+  .verdict.worked { color: var(--success); border-color: var(--success); }
+  .verdict.with-bugs { color: var(--warning); border-color: var(--warning); }
+  .verdict.blocked { color: var(--danger); border-color: var(--danger); }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid var(--border); padding: 6px 10px; text-align: left;
+           font-size: 13px; overflow-wrap: anywhere; }
+  th { background: var(--bg-raised); }
+  .sev-showstopper { color: var(--danger); font-weight: 600; }
+  .sev-blocking-flow { color: var(--warning); }
+  .muted { color: var(--fg-muted); font-size: 12px; }
+  footer { margin-top: 30px; font-size: 11px; color: var(--fg-muted); }
+</style>
+</head>
+<body>
+<h1>Full playthrough run — 2026-08-12-full-sweep</h1>
+<p class="muted">Playthrough created 12 Aug 2026 at Tier 0, game 1.2 ·
+Played from the map and the factory view only, per
+<a href="../../constraints.md">constraints.md</a></p>
+
+<p><span class="verdict with-bugs">Tier 0 complete — 9 issues found, filed and fixed</span></p>
+
+<p>Tier 0 could not be powered at all when the run started: the Biomass Burner
+is the only generator the tier unlocks, and its fuel picker offered nothing at
+any tier. Everything else in the group built and supplied cleanly first time.
+After the batch landed, Validate reads <strong>"Nothing to fix at T0"</strong>
+— 0 errors, 0 warnings, 2 notes for the hand-fed burners.</p>
+
+<h2>Tier index</h2>
+<table>
+  <tr><th>Tier group</th><th>Status</th><th>Validate</th><th>Issues</th></tr>
+  <tr>
+    <td>Tier 0</td>
+    <td>Complete</td>
+    <td>Nothing to fix — 60 MW gen / 49 MW draw (+11 MW)</td>
+    <td>#113–#121</td>
+  </tr>
+  <tr><td>Tier 1–2</td><td class="muted">Not started</td><td class="muted">—</td><td class="muted">—</td></tr>
+  <tr><td>Tier 3–4</td><td class="muted">Not started</td><td class="muted">—</td><td class="muted">—</td></tr>
+  <tr><td>Tier 5–6</td><td class="muted">Not started</td><td class="muted">—</td><td class="muted">—</td></tr>
+  <tr><td>Tier 7–8</td><td class="muted">Not started</td><td class="muted">—</td><td class="muted">—</td></tr>
+  <tr><td>Tier 9</td><td class="muted">Not started</td><td class="muted">—</td><td class="muted">—</td></tr>
+</table>
+
+<h2>Factories</h2>
+<table>
+  <tr><th>Factory</th><th>Position</th><th>Makes</th><th>Power</th></tr>
+  <tr>
+    <td><a href="factories/iron-works.html">Iron Works</a></td>
+    <td>1.7 km W · 1.3 km N</td>
+    <td>Iron Plate 20/min, Iron Rod 20/min, Screws 40/min</td>
+    <td>+2 MW</td>
+  </tr>
+  <tr>
+    <td><a href="factories/copper-works.html">Copper Works</a></td>
+    <td>1.4 km W · 1.0 km N</td>
+    <td>Wire 30/min, Cable 15/min, Concrete 15/min</td>
+    <td>+9 MW</td>
+  </tr>
+</table>
+
+<h2>Findings</h2>
+<table>
+  <tr><th>#</th><th>Severity</th><th>Title</th></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/113">113</a></td><td class="sev-showstopper">showstopper</td><td>Biomass Burner has no selectable fuel, so no generator can be added at any tier</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/114">114</a></td><td class="sev-blocking-flow">blocking-flow</td><td>Map claim popup ignores the selected factory and defaults to "— none —"</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/121">121</a></td><td class="sev-blocking-flow">blocking-flow</td><td>Hand-gathered generator fuel warns forever because the fuel check demands a claim</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/115">115</a></td><td>wrong-data</td><td>Product picker offers Crude Oil, Nitrogen Gas and Water at Tier 0, plus a raw blueprint id</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/120">120</a></td><td>wrong-data</td><td>Editing a claim from the Resources row silently wipes its notes</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/116">116</a></td><td>friction</td><td>The map's claim flow withholds the numbers you need to make the choice</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/117">117</a></td><td>friction</td><td>The map factory card reports a missing input it can't help you fix</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/118">118</a></td><td>friction</td><td>"Add power" inside a factory throws you out of the factory</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/119">119</a></td><td>polish</td><td>Icon results, map-position fields and the claim row don't say what they mean</td></tr>
+</table>
+<p class="muted">#120 and #121 were found by the fixes rather than by playing —
+#120 while checking whether rebinding a node preserved a deliberate underclock,
+#121 by #113 removing the wall that had been hiding it.</p>
+
+<h2>What the run got wrong</h2>
+<p>Four of the nine issues asserted something about the code that turned out to
+be false. Kept here because a run that only records its hits isn't much of a
+record.</p>
+<ul>
+  <li><strong>#113</strong> asked for all five biomass fuels at tier 0. Solid Biofuel belongs at 2 — <code>Recipe_Biofuel_C</code> is a Tier 2 recipe, so tier 0 would have been #115's own bug in reverse.</li>
+  <li><strong>#115</strong> said Tier 0 unlocks nine products. It's eight; the three wrong rows had been counted into the total.</li>
+  <li><strong>#116</strong> claimed the factory card anchors near its pin and that an unclaimed node's yield is hidden. The card is docked bottom-right, and the yield is genuinely <code>0</code> until a claim exists.</li>
+  <li><strong>#119.3</strong> asked for the claim row to follow the editor live. That row was frozen deliberately under <a href="https://github.com/GordonBeeming/SPECS/issues/49">#49</a>, with a test guarding it.</li>
+</ul>
+
+<h2>Screenshots</h2>
+<ul>
+  <li><a href="screenshots/2026-08-12-full-sweep-t0-checkpoint-validate-clean.png">Tier 0 checkpoint — Validate clean</a></li>
+  <li><a href="screenshots/2026-08-12-full-sweep-t0-biomass-burner-no-fuel.png">#113 — fuel picker empty</a></li>
+  <li><a href="screenshots/2026-08-12-full-sweep-t0-product-list-tiers.png">#115 — product picker tiers</a></li>
+  <li><a href="screenshots/2026-08-12-full-sweep-t0-hand-fed-fuel-warning.png">#121 — hand-fed fuel warning</a></li>
+</ul>
+
+<footer>SPECS full-playthrough run artifact &middot; template v1</footer>
+</body>
+</html>
