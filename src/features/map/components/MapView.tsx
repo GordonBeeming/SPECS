@@ -1,5 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, LocateFixed, MapPin, Minus, Plus, RotateCcw } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  LocateFixed,
+  MapPin,
+  Minus,
+  Plus,
+  RotateCcw,
+} from "lucide-react";
 import {
   TransformComponent,
   TransformWrapper,
@@ -65,12 +74,25 @@ import { ResourceBudgetPanel } from "@/features/resources/components/ResourceBud
 import type { PortCapacityFinding } from "@/features/resources/components/NodeRow";
 import { useValidation } from "@/features/validation/hooks/useValidation";
 import { floorClockPct } from "@/features/validation/clock";
-import { ClockInput } from "@/shared/ui/ClockInput";
+import { ClockInput, formatClockPct } from "@/shared/ui/ClockInput";
 
 import mapAsset from "@/assets/map/satisfactory-map.webp";
 
-import { factoryPickerOptions, pctToWorld, worldToPct, type FactoryPickerCandidate } from "../transform";
-import { claimDefaultExtractor, coordChip, nodeKindLabel } from "@/features/resources/display";
+import {
+  factoryPickerOptions,
+  hasWorldPosition,
+  pctToWorld,
+  worldDistance,
+  worldToPct,
+  type FactoryPickerCandidate,
+} from "../transform";
+import {
+  claimDefaultExtractor,
+  coordChip,
+  nodeKindLabel,
+  previewExtractorIpm,
+} from "@/features/resources/display";
+import { num } from "@/shared/format/rates";
 import type { ResourceNodeRow, WaterExtractorGroup } from "@/features/resources/types";
 import { FilterSelect } from "@/shared/ui/FilterSelect";
 
@@ -93,30 +115,147 @@ function markerIconId(resourceItemId: string): string {
 }
 
 /**
- * A node marker's tooltip/aria-label. A claimed node's marker is the
- * map's only record of which factory that claim feeds — a bare
- * "Iron Ore · Normal · 30 ipm" can't answer "which factory?" without
- * opening the card, so a claimed node's tooltip names the factory and
- * repeats the coordinates. Unclaimed nodes keep the plain bind hint;
- * there's no claim to describe yet. Exported so a regression test can
- * pin the exact string for a known node + claim.
+ * The clock a *fresh* claim starts at. The placement loadout is a
+ * miner mark and the clock that goes with it, so it only speaks for
+ * miner nodes; a well satellite or a geyser has no mark to carry a
+ * clock preference and starts neutral.
+ *
+ * The one definition for every path that opens or commits a fresh
+ * claim — the card, drag-to-bind, and the marker tooltip that
+ * advertises both. Three copies of this rule is three chances for the
+ * tooltip to promise a rate that the gesture it names doesn't deliver.
  */
-export function nodeTooltip(
+export function defaultClaimClockPct(
+  node: Pick<ResourceNodeRow, "kind">,
+  loadout: Pick<MapLoadout, "minerClockPct">,
+): number {
+  return node.kind === "miner_node" ? loadout.minerClockPct : 100;
+}
+
+/** The claim a node would get from a plain click or drag-bind right
+ * now: the loadout's extractor when the node accepts it, at
+ * `defaultClaimClockPct`. `null` for a node with no extractor at all,
+ * i.e. a geyser. */
+function pendingClaimShape(
+  node: Pick<ResourceNodeRow, "allowedExtractors" | "kind" | "purity">,
+  loadout: Pick<MapLoadout, "minerId" | "minerClockPct">,
+): { extractorName: string; clockPct: number; ipm: number } | null {
+  const extractorId = claimDefaultExtractor(node, loadout.minerId);
+  const extractor = node.allowedExtractors?.find((e) => e.id === extractorId);
+  if (!extractor) return null;
+  const clockPct = defaultClaimClockPct(node, loadout);
+  return {
+    extractorName: extractor.name,
+    clockPct,
+    ipm: previewExtractorIpm(extractor.baseIpm, node.purity, clockPct),
+  };
+}
+
+/**
+ * The two strings a node marker needs, kept apart on purpose.
+ *
+ * `label` describes the node and nothing else — it's the accessible
+ * name, re-announced on every focus pass, and a name that ends in
+ * "click to bind or drag onto a factory" both repeats an instruction
+ * endlessly and names two gestures a keyboard user doesn't have. The
+ * mouse-only hint belongs in `title`, which is exactly where a hover
+ * hint is expected to live.
+ *
+ * A claimed node's marker is the map's only record of which factory
+ * that claim feeds — a bare "Iron Ore · Normal · 30 ipm" can't answer
+ * "which factory?" without opening the card, so a claimed node names
+ * the factory and repeats the coordinates.
+ *
+ * An unclaimed node carries the same coordinates plus the rate the
+ * current loadout would actually extract, because siting and yield are
+ * what the *choice between nodes* turns on — withholding them until
+ * after the claim is committed is backwards. The rate names its own
+ * assumptions (which extractor, which clock) so it can't be misread as
+ * a property of the node.
+ *
+ * Both states advertise drag-to-bind: the drag handler rebinds a
+ * claimed node just as happily as it binds a fresh one, and dropping
+ * the hint once a claim exists hides the recovery path for a claim
+ * bound to the wrong factory (or to none). Exported so a regression
+ * test can pin the exact strings for a known node + claim.
+ */
+export function nodeMarkerText(
   node: Pick<
     ResourceNodeRow,
-    "resourceItemName" | "purity" | "x" | "y" | "itemsPerMinute" | "claim" | "kind" | "resourceItemId"
+    | "resourceItemName"
+    | "purity"
+    | "x"
+    | "y"
+    | "itemsPerMinute"
+    | "claim"
+    | "kind"
+    | "resourceItemId"
+    | "allowedExtractors"
   >,
   factoryNameById: Map<string, string>,
-): string {
+  loadout: Pick<MapLoadout, "minerId" | "minerClockPct">,
+): { label: string; title: string } {
   const kindLabel = nodeKindLabel(node);
   const base = kindLabel
     ? `${node.resourceItemName} · ${node.purity} · ${kindLabel}`
     : `${node.resourceItemName} · ${node.purity}`;
-  if (!node.claim) return `${base} · click to bind or drag onto a factory`;
+  const coords = coordChip(node.x, node.y);
+  if (!node.claim) {
+    const pending = pendingClaimShape(node, loadout);
+    const yieldPart = pending
+      ? ` · ${num(pending.ipm)} ipm with ${pending.extractorName} at ${formatClockPct(pending.clockPct)}%`
+      : "";
+    // "unclaimed" earns its place once the gesture hint moves out:
+    // without it, claim state was only ever implied by *which*
+    // instruction the name ended with.
+    const label = `${base}${yieldPart} · ${coords} · unclaimed`;
+    return { label, title: `${label} · click to bind or drag onto a factory` };
+  }
   const factoryLabel = node.claim.factoryId
     ? factoryNameById.get(node.claim.factoryId) ?? "unknown factory"
     : "no factory yet";
-  return `${base} · ${node.itemsPerMinute.toFixed(0)} ipm · ${coordChip(node.x, node.y)} · feeds ${factoryLabel}`;
+  const label = `${base} · ${node.itemsPerMinute.toFixed(0)} ipm · ${coords} · feeds ${factoryLabel}`;
+  return { label, title: `${label} · click to edit or drag onto a factory to rebind` };
+}
+
+/**
+ * Which factory a fresh claim should point at before the player touches
+ * the dropdown, in falling order of how much the pick is actually
+ * *known*:
+ *
+ * 1. The factory whose card is open — a claim made while a factory's
+ *    shortfall is on screen is overwhelmingly a claim for that factory.
+ * 2. The only factory there is. Placed or not, there's nothing to be
+ *    wrong about.
+ * 3. The nearest factory that has a map position, ranked by the same
+ *    distances the dropdown itself prints.
+ *
+ * Otherwise `null`. Two or more factories that have never been dragged
+ * onto the map carry no distance to rank by, and `factoryPickerOptions`
+ * falls back to sorting those alphabetically — pre-binding to whichever
+ * name sorts first would present a coin toss in the same shape as a
+ * real nearest-neighbour answer, and the player has no way to tell the
+ * two apart. An empty picker at least reads as "you pick".
+ *
+ * A node that already carries a claim is not this function's business:
+ * its saved factory (including a deliberate "none") is what the card
+ * has to show, or Update would silently rewrite a binding the player
+ * never edited.
+ */
+export function defaultClaimFactoryId(
+  node: { x: number; y: number },
+  factories: FactoryPickerCandidate[],
+  selectedFactoryId: string | null,
+): string | null {
+  if (factories.length === 0) return null;
+  if (selectedFactoryId && factories.some((f) => f.id === selectedFactoryId)) {
+    return selectedFactoryId;
+  }
+  if (factories.length === 1) return factories[0].id;
+  const placed = factories.filter(hasWorldPosition);
+  if (placed.length === 0) return null;
+  const [nearest] = factoryPickerOptions(node, placed);
+  return nearest?.value ?? null;
 }
 
 // Image dimensions of the bundled WebP. Must stay in lockstep with
@@ -169,6 +308,221 @@ const DEFAULT_SCALE = 0.6;
 function coverFitScale(width: number, height: number): number {
   const cover = Math.max(width / MAP_W, height / MAP_H);
   return Math.min(Math.max(cover, 0.4), 6); // matches TransformWrapper's own min/maxScale
+}
+
+/** Water is the one required resource with no nodes on the map at
+ * all: extractors are free-placed on any lake or ocean tile, so a
+ * water shortfall routes to the placement tool instead of a claim. */
+const WATER_ITEM_ID = "Desc_Water_C";
+
+/** A node marker's box in map pixels, before the counter-scale below
+ * cancels the ambient zoom out of it. */
+const MARKER_PX = 24;
+
+/** As close as anything auto-framed gets to zoom in. Past this the map
+ * image is running out of detail and the player loses the surroundings
+ * they'd site a factory against. */
+const MAX_FRAME_SCALE = 1.5;
+
+/**
+ * Every cluster of markers that overlap on screen at this zoom, as a
+ * lookup from node id to the whole pile it belongs to (a lone marker
+ * maps to a one-entry list containing itself).
+ *
+ * Membership is *transitive*, and that is the whole point. Asking
+ * "which markers overlap this one" gives a different answer for every
+ * node in a pile — A covers B and B covers C without A covering C —
+ * so a pager built on it renumbers as you walk, wanders into markers
+ * that were never in the pile you opened, and leaves the far members
+ * unreachable. They aren't clickable either, since something is
+ * covering them; that combination is a node with no route to it at
+ * all. A cluster is a property of the *place*, so every member sees
+ * the same list in the same order and paging is closed over it.
+ *
+ * A marker's on-screen footprint is constant (the wrapper's
+ * counter-scale cancels the map's own zoom) while the gap between two
+ * markers grows with zoom, so clusters dissolve as you zoom in —
+ * around 3× the whole map is singletons.
+ */
+export function nodeClusters<T extends Pick<ResourceNodeRow, "id" | "x" | "y" | "resourceItemName">>(
+  nodes: T[],
+  zoomScale: number,
+  /** Map-pixel position of a node. The default derives it; the map
+   * passes a lookup into the positions it already computed for
+   * rendering. */
+  pointOf: (node: T) => { x: number; y: number } = (n) => {
+    const p = worldToPct(n.x, n.y);
+    return { x: p.xPct * MAP_W, y: p.yPct * MAP_H };
+  },
+): Map<string, T[]> {
+  const radius = (MARKER_PX * DEFAULT_SCALE) / Math.max(zoomScale, 0.01);
+  const points = nodes.map(pointOf);
+
+  // Union-find over array indices rather than ids: no string hashing
+  // in the hot loop, and no lookups that could come back undefined.
+  const parent = points.map((_, i) => i);
+  const find = (start: number): number => {
+    let i = start;
+    while (parent[i] !== i) {
+      parent[i] = parent[parent[i]]; // path halving
+      i = parent[i];
+    }
+    return i;
+  };
+
+  // Buckets one radius wide, so any pair close enough to overlap
+  // shares a cell or sits in one of the eight around it. Without this
+  // the sweep is every node against every other one, on every zoom
+  // change that happens while a card is open.
+  const cells = new Map<string, number[]>();
+  const cellKey = (x: number, y: number) =>
+    `${Math.floor(x / radius)},${Math.floor(y / radius)}`;
+  points.forEach((p, i) => {
+    const key = cellKey(p.x, p.y);
+    const bucket = cells.get(key);
+    if (bucket) bucket.push(i);
+    else cells.set(key, [i]);
+  });
+
+  points.forEach((p, i) => {
+    const cx = Math.floor(p.x / radius);
+    const cy = Math.floor(p.y / radius);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (const j of cells.get(`${cx + dx},${cy + dy}`) ?? []) {
+          if (j <= i) continue;
+          if (Math.hypot(points[j].x - p.x, points[j].y - p.y) > radius) continue;
+          const a = find(i);
+          const b = find(j);
+          if (a !== b) parent[a] = b;
+        }
+      }
+    }
+  });
+
+  const grouped = new Map<number, T[]>();
+  nodes.forEach((node, i) => {
+    const root = find(i);
+    const bucket = grouped.get(root);
+    if (bucket) bucket.push(node);
+    else grouped.set(root, [node]);
+  });
+
+  const byId = new Map<string, T[]>();
+  for (const cluster of grouped.values()) {
+    cluster.sort(
+      (a, b) => a.resourceItemName.localeCompare(b.resourceItemName) || a.id.localeCompare(b.id),
+    );
+    for (const node of cluster) byId.set(node.id, cluster);
+  }
+  return byId;
+}
+
+/** Whether the OS asks for reduced motion. Guarded because jsdom (and
+ * any non-browser host) has no `matchMedia`, the same guard
+ * `useThemeMode` needs for `prefers-color-scheme`. */
+export function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/**
+ * Zoom that frames a span of map pixels inside the container with room
+ * to breathe, never so far out that bare canvas shows around the map
+ * (the same floor `coverFitScale` enforces on load) and never past
+ * `MAX_FRAME_SCALE`. A single point has no span at all, which is the
+ * case that would otherwise divide by zero and ask for infinite zoom.
+ */
+export function frameScale(
+  spanX: number,
+  spanY: number,
+  rect: { width: number; height: number },
+): number {
+  const padded = 1.5;
+  const fit = Math.min(
+    rect.width / Math.max(spanX * padded, 1),
+    rect.height / Math.max(spanY * padded, 1),
+  );
+  return Math.max(Math.min(fit, MAX_FRAME_SCALE), coverFitScale(rect.width, rect.height));
+}
+
+/**
+ * Pan that puts a map-pixel point in the middle of the container —
+ * except where centring it would drag the map's own edge into view.
+ * `limitToBounds` is off (the map is meant to be panned freely), so a
+ * jump aimed near a corner of the world would otherwise land with a
+ * third of the viewport showing black canvas and no way to tell what
+ * it framed. Exported for the regression test: the clamp is the whole
+ * behaviour and it isn't observable through jsdom layout.
+ */
+export function centerPan(
+  cx: number,
+  cy: number,
+  scale: number,
+  rect: { width: number; height: number },
+): { x: number; y: number } {
+  const axis = (center: number, viewport: number, content: number): number => {
+    const centered = viewport / 2 - center * scale;
+    // A map smaller than the viewport can't cover it at all — centring
+    // the leftover margin is the least-bad framing.
+    if (content < viewport) return (viewport - content) / 2;
+    return Math.min(0, Math.max(viewport - content, centered));
+  };
+  return {
+    x: axis(cx, rect.width, MAP_W * scale),
+    y: axis(cy, rect.height, MAP_H * scale),
+  };
+}
+
+/**
+ * Where a popover anchored to a click should actually render, in
+ * container-relative pixels: beside the thing that was clicked, and
+ * flipped to the other side rather than clipped when it won't fit.
+ * Card sizes are the caller's business — a node card and the
+ * quick-create card are different shapes.
+ */
+export function popoverAnchor(
+  anchor: { x: number; y: number },
+  container: { width: number; height: number },
+  card: { width: number; height: number },
+): { left: number; top: number } {
+  const gap = 14;
+  const margin = 8;
+  const clamp = (v: number, max: number) => Math.max(margin, Math.min(v, max - margin));
+  const right = anchor.x + gap;
+  const below = anchor.y + gap;
+  return {
+    left: clamp(
+      right + card.width <= container.width - margin ? right : anchor.x - gap - card.width,
+      container.width - card.width,
+    ),
+    top: clamp(
+      below + card.height <= container.height - margin ? below : anchor.y - gap - card.height,
+      container.height - card.height,
+    ),
+  };
+}
+
+/**
+ * The node a "claim one of these for me" action should land on: the
+ * closest one to the factory that wants the resource. A factory that
+ * has never been dragged onto the map has no position to measure from
+ * (see `hasWorldPosition`), so distance would rank against the world
+ * origin — order the candidates arrived in is more honest than a
+ * confident-looking wrong answer.
+ */
+export function nearestClaimableNode<T extends { x: number; y: number }>(
+  candidates: T[],
+  factory: { worldX: number; worldY: number } | undefined,
+): T | null {
+  if (candidates.length === 0) return null;
+  if (!factory || !hasWorldPosition(factory)) return candidates[0];
+  return candidates.reduce((best, n) =>
+    worldDistance(n.x, n.y, factory.worldX, factory.worldY) <
+    worldDistance(best.x, best.y, factory.worldX, factory.worldY)
+      ? n
+      : best,
+  );
 }
 
 /** Last pan/zoom state, restored on mount so leaving the tab and
@@ -368,6 +722,54 @@ export function MapView() {
   }, [showClaimedToo]);
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  // Where the node card renders, in container-relative screen px — the
+  // spot the player clicked, not a fixed corner. Claiming is a
+  // pointing action: a card that answers it from the far side of the
+  // map makes the player check twice that it's describing the node
+  // they meant.
+  const [nodeAnchor, setNodeAnchor] = useState<{ x: number; y: number } | null>(null);
+  const nodeCardRef = useRef<HTMLDivElement | null>(null);
+  const [nodeCardPos, setNodeCardPos] = useState<{ left: number; top: number } | null>(null);
+  // A pending "bind this node to that factory" the player asked for
+  // explicitly, from a factory card's shortfall row. Only this counts
+  // as permission to prefill a factory over an existing claim's own
+  // saved binding — merely opening a claimed node's card must never
+  // rewrite what it's bound to.
+  // `seq` is what makes a *repeated* instruction land. The card is
+  // keyed by node id, so when the target node's card is already open
+  // (a factory card and a node card can both be up at once) selecting
+  // it again changes nothing and the prefill never runs — `bindTo` is
+  // read in a `useState` initialiser, which only fires on mount.
+  // Folding the sequence into the key remounts the card for each
+  // fresh instruction, including a second one naming the same pair.
+  const [claimIntent, setClaimIntent] = useState<{
+    nodeId: string;
+    factoryId: string;
+    seq: number;
+  } | null>(null);
+  // An instruction outlives its card by exactly nothing. Every way of
+  // finishing with the card — committing, releasing, closing, paging to
+  // a stacked neighbour, clicking another marker — moves the selection
+  // off this node, so tying the intent's life to that covers all of
+  // them at once. Left standing, it would outrank the *saved* binding
+  // the next time the same node's card opened, and quietly rewrite it
+  // on the next Update: the same silent overwrite the notes fix closed.
+  useEffect(() => {
+    if (claimIntent && selectedNodeId !== claimIntent.nodeId) setClaimIntent(null);
+  }, [selectedNodeId, claimIntent]);
+  // Nodes to ring briefly after the camera moves on its own. A jump
+  // that lands without saying what it landed on leaves the player
+  // hunting for a marker that looks like every other marker.
+  const [flashNodeIds, setFlashNodeIds] = useState<Set<string>>(() => new Set());
+  const flashTimer = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (flashTimer.current) window.clearTimeout(flashTimer.current);
+  }, []);
+  const flashNodes = (ids: string[]) => {
+    if (flashTimer.current) window.clearTimeout(flashTimer.current);
+    setFlashNodeIds(new Set(ids));
+    flashTimer.current = window.setTimeout(() => setFlashNodeIds(new Set()), 2600);
+  };
   const [selectedFactoryId, setSelectedFactoryId] = useState<string | null>(null);
   const [selectedWaterGroupId, setSelectedWaterGroupId] = useState<string | null>(null);
   // "What I'm currently placing": miner mark + clock for claims, count
@@ -416,6 +818,24 @@ export function MapView() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [placingWater, placingFactory]);
+  // Escape closes whichever card is open. These float over the map,
+  // anchored and dismissible-looking, which is a shape people press
+  // Escape at; without it the only way out is finding the small ×.
+  // Armed placement gets Escape first — that banner is the more urgent
+  // mode to be able to cancel, and its own handler above already owns
+  // the key while it's up.
+  useEffect(() => {
+    if (placingWater || placingFactory) return;
+    if (!selectedNodeId && !selectedFactoryId && !selectedWaterGroupId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setSelectedNodeId(null);
+      setSelectedFactoryId(null);
+      setSelectedWaterGroupId(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [placingWater, placingFactory, selectedNodeId, selectedFactoryId, selectedWaterGroupId]);
   const [showAllLinks, setShowAllLinks] = useState(() =>
     readBool(scopedKey(STORAGE.showAllLinks, playthroughId), true),
   );
@@ -534,6 +954,12 @@ export function MapView() {
   const [_selectedPowerGenId, setSelectedPowerGenId] = useState<string | null>(null);
   void _selectedPowerGenId;
   const [dragging, setDragging] = useState<string | null>(null);
+  // Marker drags attach their move/up handlers to `window` and tear
+  // them down in the up handler. Unmounting mid-drag never reaches
+  // that, so the listeners outlive the tree and the surviving mouseup
+  // fires openNodeCard/setClaim against a component that's gone.
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragCleanupRef.current?.(), []);
 
   // Bound inputs (claimed nodes + upstream factories) for the
   // currently-selected factory. Drives the SVG line overlay and the
@@ -641,27 +1067,90 @@ export function MapView() {
     () => (nodes.data ?? []).filter((n) => n.claim),
     [nodes.data],
   );
-  const jumpToClaims = () => {
+  /** Moves the camera so `points` (map pixels) are framed and centred,
+   * at a zoom picked for the spread rather than whatever the player
+   * happened to be at. Returns the pan and scale it applied, so a
+   * caller can work out where a given map point ended up on screen —
+   * which is *not* the middle of the view whenever `centerPan` clamped
+   * to keep bare canvas out of frame, i.e. anywhere near the world's
+   * edge. */
+  const frameMapPoints = (
+    points: Array<{ x: number; y: number }>,
+  ): { rect: DOMRect; pan: { x: number; y: number }; scale: number } | null => {
     const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect || claimedNodes.length === 0) return;
+    if (!rect || points.length === 0) return null;
+    const xs = points.map((p) => p.x);
+    const ys = points.map((p) => p.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const scale = frameScale(maxX - minX, maxY - minY, rect);
+    const pan = centerPan((minX + maxX) / 2, (minY + maxY) / 2, scale, rect);
+    // The wrapper's own onTransform lands this too, but not until the
+    // animation's first frame — setting it here keeps every marker's
+    // counter-scale in step with the zoom from the outset.
+    setZoomScale(Math.round(scale * 100) / 100);
+    // A camera that flies across the map is exactly the vestibular
+    // trigger `prefers-reduced-motion` exists for — arrive instantly
+    // instead, which loses nothing but the travel.
+    wrapRef.current?.setTransform(pan.x, pan.y, scale, prefersReducedMotion() ? 0 : 300);
+    return { rect, pan, scale };
+  };
+
+  const mapPoint = (node: { x: number; y: number }) => {
+    const p = worldToPct(node.x, node.y);
+    return { x: p.xPct * MAP_W, y: p.yPct * MAP_H };
+  };
+
+  const jumpToClaims = () => {
+    if (claimedNodes.length === 0) return;
     // Frame every claim's bounding box, not just the first one — a
     // network usually spans more than one node by the time this
     // button matters.
-    const xs = claimedNodes.map((n) => n.x);
-    const ys = claimedNodes.map((n) => n.y);
-    const center = worldToPct((Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2);
-    // Same centering the library's own recenter would do — solved
-    // from `clientToMap`'s inverse: pick positionX/Y so the target
-    // map-pixel lands in the middle of the visible container at the
-    // current zoom, rather than resetting zoom (which would also
-    // fight a player who's mid-zoom on their own network already).
-    const scale = wrapRef.current?.state.scale ?? DEFAULT_SCALE;
-    wrapRef.current?.setTransform(
-      rect.width / 2 - center.xPct * MAP_W * scale,
-      rect.height / 2 - center.yPct * MAP_H * scale,
-      scale,
-      300,
+    frameMapPoints(claimedNodes.map(mapPoint));
+    flashNodes(claimedNodes.map((n) => n.id));
+  };
+
+  /**
+   * Open a marker's card, or — when its card is already the one open —
+   * page to the next marker stacked underneath it. A marker covering
+   * another is unclickable by definition, so the top one has to be the
+   * way in to its neighbours; a marker with nothing under it keeps
+   * plain activate-to-close. Shared by the pointer and keyboard paths
+   * so both do the same thing, `anchor` being the only difference
+   * (where the pointer was, versus where the marker is).
+   */
+  const openNodeCard = (node: ResourceNodeRow, anchor: { x: number; y: number } | null) => {
+    if (anchor) setNodeAnchor(anchor);
+    setSelectedNodeId((prev) => {
+      if (prev !== node.id) return node.id;
+      const stack = nodeClusters(visibleNodes, zoomScale, pointOfNode).get(node.id) ?? [];
+      if (stack.length < 2) return null;
+      const at = stack.findIndex((n) => n.id === node.id);
+      return stack[(at + 1) % stack.length].id;
+    });
+  };
+
+  /** Centre a single node, ring it, and open its card — the landing
+   * half of every "take me to this node" action on the map. */
+  const focusNode = (node: ResourceNodeRow) => {
+    const point = mapPoint(node);
+    const framed = frameMapPoints([point]);
+    // Where the marker actually is after the pan, not where we asked
+    // for it to be: `centerPan` refuses to pull bare canvas into view,
+    // so a node near the world's edge lands off-centre and a card
+    // pinned to the middle would point at empty map.
+    setNodeAnchor(
+      framed
+        ? {
+            x: framed.pan.x + point.x * framed.scale,
+            y: framed.pan.y + point.y * framed.scale,
+          }
+        : null,
     );
+    setSelectedNodeId(node.id);
+    flashNodes([node.id]);
   };
 
   const visibleNodes = useMemo(() => {
@@ -672,17 +1161,190 @@ export function MapView() {
       // clicked a factory to see its inputs; hiding them because
       // a filter is on would defeat the point.
       if (boundNodeIds.has(n.id)) return true;
+      // Whatever is open stays on screen. Without this the card's own
+      // node can be filtered out from under it — and the alternative,
+      // switching filters off to make room, rewrites preferences the
+      // player set deliberately and persists them.
+      if (n.id === selectedNodeId) return true;
       if (!showClaimedToo && n.claim) return false;
       if (hiddenResources.has(n.resourceItemId)) return false;
       if (hiddenPurities.has(n.purity)) return false;
       return true;
     });
-  }, [nodes.data, showClaimedToo, hiddenResources, hiddenPurities, boundNodeIds]);
+  }, [nodes.data, showClaimedToo, hiddenResources, hiddenPurities, boundNodeIds, selectedNodeId]);
 
   const selectedNode = useMemo(
     () => visibleNodes.find((n) => n.id === selectedNodeId) ?? null,
     [visibleNodes, selectedNodeId],
   );
+
+  // Both of these hang off `nodes.data` rather than being derived in
+  // the marker loop, because that loop re-runs on every `zoomScale`
+  // change — which `onTransform` fires per wheel tick, so tens of times
+  // a second during a trackpad zoom. Built per marker instead, the
+  // label alone cost two scans of `allowedExtractors` and a handful of
+  // string allocations, times the world's ~600 nodes, per tick.
+  const nodePoints = useMemo(() => {
+    const map = new Map<string, { x: number; y: number }>();
+    for (const n of nodes.data ?? []) {
+      const p = worldToPct(n.x, n.y);
+      map.set(n.id, { x: p.xPct * MAP_W, y: p.yPct * MAP_H });
+    }
+    return map;
+  }, [nodes.data]);
+  const markerText = useMemo(() => {
+    const map = new Map<string, { label: string; title: string }>();
+    for (const n of nodes.data ?? []) {
+      map.set(n.id, nodeMarkerText(n, factoryNameById, effectiveLoadout));
+    }
+    return map;
+  }, [nodes.data, factoryNameById, effectiveLoadout]);
+  const pointOfNode = useMemo(
+    () => (n: ResourceNodeRow) => {
+      const known = nodePoints.get(n.id);
+      if (known) return known;
+      const p = worldToPct(n.x, n.y);
+      return { x: p.xPct * MAP_W, y: p.yPct * MAP_H };
+    },
+    [nodePoints],
+  );
+
+  // The whole pile the selected marker belongs to — one entry (itself)
+  // when nothing overlaps it. Only built while a card is actually
+  // open: with nothing selected this returns immediately, so a zoom
+  // gesture doesn't pay for a clustering pass nobody is reading.
+  const selectedStack = useMemo(
+    () =>
+      selectedNode
+        ? nodeClusters(visibleNodes, zoomScale, pointOfNode).get(selectedNode.id) ?? [selectedNode]
+        : [],
+    [selectedNode, visibleNodes, zoomScale, pointOfNode],
+  );
+  const stepStack = (delta: number) => {
+    if (!selectedNode || selectedStack.length < 2) return;
+    const at = selectedStack.findIndex((n) => n.id === selectedNode.id);
+    setSelectedNodeId(
+      selectedStack[(at + delta + selectedStack.length) % selectedStack.length].id,
+    );
+  };
+
+  // Focus follows the card: into it on open (it renders after every
+  // marker in the DOM, so Tab would otherwise walk hundreds of
+  // controls to reach it), and back to the marker it describes on
+  // close, so a keyboard user resumes where they left off instead of
+  // at the top of the document.
+  const lastFocusedNodeIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = lastFocusedNodeIdRef.current;
+    lastFocusedNodeIdRef.current = selectedNodeId;
+    if (!selectedNodeId) setNodeAnchor(null);
+    if (selectedNodeId) {
+      // Only on the closed→open transition. Paging the stack keeps one
+      // card open across a node change, and pulling focus back to the
+      // dialog each time would take it off the pager button being
+      // pressed — the same one-press-then-re-tab this move exists to
+      // prevent.
+      if (!previous) nodeCardRef.current?.focus();
+      return;
+    }
+    if (!previous) return;
+    // Node ids are catalog identifiers, but the escape keeps a quote
+    // or backslash in one from silently breaking the selector.
+    const id = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(previous) : previous;
+    const marker = containerRef.current?.querySelector<HTMLElement>(`[data-node-id="${id}"]`);
+    // The marker is routinely *gone* by the time the card closes —
+    // claiming a node drops it out of the visible set whenever "show
+    // claimed nodes too" is off, which is the main path through this
+    // code, not an edge case. Falling back to the map region keeps
+    // focus where the player was working; without it the common case
+    // silently lands on `document.body` and the guarantee only holds
+    // when you cancel.
+    (marker ?? containerRef.current)?.focus();
+  }, [selectedNodeId]);
+
+  // Both boxes the anchored card has to fit — its own and the map
+  // viewport's — are measured from the live DOM rather than assumed.
+  // A hardcoded card size is a guess that goes stale the moment a
+  // conditional row (the stack pager, the port-cap pill, the
+  // no-factories warning) renders, and it's the Claim button at the
+  // bottom that ends up off-screen. Re-measuring on resize matters for
+  // the same reason: a window resized while the card is open would
+  // otherwise clamp against a box that no longer exists, and strand the
+  // card outside the viewport with no way back except closing it.
+  // `useLayoutEffect` so the card is positioned in the same frame it
+  // appears, never painted at a placeholder spot first.
+  useLayoutEffect(() => {
+    const card = nodeCardRef.current;
+    const container = containerRef.current;
+    if (!selectedNode || !nodeAnchor || !card || !container) {
+      setNodeCardPos(null);
+      return;
+    }
+    const place = () => {
+      const box = container.getBoundingClientRect();
+      setNodeCardPos(
+        popoverAnchor(
+          nodeAnchor,
+          { width: box.width, height: box.height },
+          { width: card.offsetWidth, height: card.offsetHeight },
+        ),
+      );
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(card);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [selectedNode, nodeAnchor]);
+
+  // Nodes that could still be pointed at a factory: unclaimed, or
+  // claimed but never bound. A node already feeding some factory isn't
+  // a candidate — taking it would just move the shortfall elsewhere.
+  const claimableNodesByItem = useMemo(() => {
+    const map = new Map<string, ResourceNodeRow[]>();
+    for (const n of nodes.data ?? []) {
+      if (n.claim?.factoryId) continue;
+      const arr = map.get(n.resourceItemId) ?? [];
+      arr.push(n);
+      map.set(n.resourceItemId, arr);
+    }
+    return map;
+  }, [nodes.data]);
+  // Both halves matter to the factory card, and they mean different
+  // things: `total` 0 says this resource has no map nodes at all (it
+  // isn't claimed, it's placed or piped), while `claimable` 0 says
+  // there were nodes and they're all spoken for.
+  const nodeSupplyByItem = useMemo(() => {
+    const map = new Map<string, { total: number; claimable: number }>();
+    for (const n of nodes.data ?? []) {
+      const entry = map.get(n.resourceItemId) ?? { total: 0, claimable: 0 };
+      entry.total++;
+      if (!n.claim?.factoryId) entry.claimable++;
+      map.set(n.resourceItemId, entry);
+    }
+    return map;
+  }, [nodes.data]);
+
+  /**
+   * "This factory is short on Iron Ore" → the nearest node that could
+   * fix it, framed and open with the factory already selected in its
+   * picker. The factory card names the gap; this is the map acting on
+   * it without a detour through the plan and back.
+   */
+  const claimNodeForFactory = (factoryId: string, itemId: string) => {
+    const factory = (factories.data ?? []).find((f) => f.id === factoryId);
+    const target = nearestClaimableNode(claimableNodesByItem.get(itemId) ?? [], factory);
+    if (!target) return;
+    // Carried on the node id it was formed against, so a later
+    // hand-picked node can't inherit an intent aimed at a different
+    // one — there's no clearing step to forget.
+    setClaimIntent((prev) => ({ nodeId: target.id, factoryId, seq: (prev?.seq ?? 0) + 1 }));
+    // No filter is touched on the way: `visibleNodes` keeps whatever
+    // is selected on screen regardless, and every filter here persists
+    // to localStorage — a shortcut that quietly rewrites the player's
+    // saved view to do its job is a worse trade than the one it makes.
+    focusNode(target);
+  };
 
   const toggleSet = (set: Set<string>, value: string): Set<string> => {
     const next = new Set(set);
@@ -944,8 +1606,15 @@ export function MapView() {
           {(placingWater || placingFactory) && (
             <div
               role="status"
-              className={`pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium text-white shadow-lg ${
-                placingWater ? "border-accent bg-accent" : "border-primary bg-primary"
+              // `accent` is a dark blue in both themes, so white
+              // stays its readable pairing; `primary` inverts (dark
+              // blue on light, bright cyan on dark) and needs the
+              // theme's own background colour to keep contrast on both
+              // sides. One token for both fills fails one of them.
+              className={`pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium shadow-lg ${
+                placingWater
+                  ? "border-accent bg-accent text-white"
+                  : "border-primary bg-primary text-bg"
               }`}
             >
               {placingWater
@@ -954,7 +1623,14 @@ export function MapView() {
             </div>
           )}
 
-          <div ref={containerRef} className="absolute inset-0 bg-black/40">
+          <div
+            ref={containerRef}
+            // Focusable only as a target, never as a tab stop: it's
+            // where focus lands when a card closes and the marker it
+            // came from is no longer rendered.
+            tabIndex={-1}
+            className="absolute inset-0 bg-black/40 outline-none"
+          >
             <TransformWrapper
               ref={wrapRef}
               minScale={0.4}
@@ -1082,8 +1758,11 @@ export function MapView() {
                   {visibleNodes.map((node) => {
                     const { xPct, yPct } = worldToPct(node.x, node.y);
                     const selected = selectedNodeId === node.id;
-                    const size = 24;
-                    const tooltip = nodeTooltip(node, factoryNameById);
+                    const size = MARKER_PX;
+                    const flashing = flashNodeIds.has(node.id);
+                    const text =
+                      markerText.get(node.id) ??
+                      nodeMarkerText(node, factoryNameById, effectiveLoadout);
                     return (
                       <div
                         key={node.id}
@@ -1139,9 +1818,32 @@ export function MapView() {
                       >
                         <button
                           type="button"
-                          aria-label={tooltip}
-                          title={tooltip}
-                          className="relative inline-flex items-center justify-center rounded-full bg-bg-raised transition-transform hover:scale-125"
+                          data-node-id={node.id}
+                          aria-label={text.label}
+                          aria-expanded={selected}
+                          title={text.title}
+                          // The ring is a class, not an inline style,
+                          // so the cue lives entirely in the stylesheet
+                          // alongside the pulse it pairs with — a test
+                          // that asserts it is then asserting the real
+                          // styling rather than a string that could
+                          // stay true after the styling is gone. Flash
+                          // outranks selection: a jump that just moved
+                          // the camera has to say which marker it moved
+                          // to, and by then the node is selected
+                          // anyway, so the two cues would land on the
+                          // same marker and cancel out.
+                          className={[
+                            "relative inline-flex items-center justify-center rounded-full bg-bg-raised transition-transform hover:scale-125",
+                            "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary",
+                            flashing
+                              ? "outline outline-[3px] outline-offset-[5px] outline-warning motion-safe:animate-pulse"
+                              : selected
+                                ? "outline outline-2 outline-offset-[3px] outline-primary"
+                                : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" ")}
                           onClick={(e) => {
                             // mousedown→up already toggles the popover
                             // — stop the synthetic click bubbling so the
@@ -1149,20 +1851,45 @@ export function MapView() {
                             // doesn't immediately clear what we just set.
                             e.stopPropagation();
                           }}
+                          onKeyDown={(e) => {
+                            // The whole marker interaction is built on
+                            // mousedown/mouseup, so without this a
+                            // focused marker does nothing at all on
+                            // Enter or Space — and a focusable control
+                            // that can't be activated is worse than one
+                            // that was never in the tab order.
+                            if (e.key !== "Enter" && e.key !== " ") return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const rect = containerRef.current?.getBoundingClientRect();
+                            const box = e.currentTarget.getBoundingClientRect();
+                            openNodeCard(
+                              node,
+                              rect
+                                ? {
+                                    x: box.left + box.width / 2 - rect.left,
+                                    y: box.top + box.height / 2 - rect.top,
+                                  }
+                                : null,
+                            );
+                          }}
                           style={{
                             width: size,
                             height: size,
                             boxShadow:
                               PURITY_GLOW[node.purity as keyof typeof PURITY_GLOW],
                             opacity: node.claim ? 1 : 0.78,
-                            outline: selected
-                              ? "2px solid var(--color-primary)"
-                              : undefined,
-                            outlineOffset: 3,
                           }}
                           onMouseDown={(e) => {
+                            // preventDefault stops the browser's own
+                            // drag/selection, and with it the focus a
+                            // mousedown would normally move — so the
+                            // card's focus handling has a marker to
+                            // return focus *to*, this puts it there
+                            // explicitly.
                             e.preventDefault();
                             e.stopPropagation();
+                            e.currentTarget.focus();
                             // Water placement is armed and wins over
                             // whatever's under the cursor — without this,
                             // a node sitting where the player meant to
@@ -1219,13 +1946,19 @@ export function MapView() {
                               });
                             };
                             const onUp = () => {
-                              window.removeEventListener("mousemove", onMove);
-                              window.removeEventListener("mouseup", onUp);
+                              detach();
                               if (!armed) {
                                 // Plain click — fall through to existing
                                 // popover behaviour.
-                                setSelectedNodeId(
-                                  node.id === selectedNodeId ? null : node.id,
+                                const rect = containerRef.current?.getBoundingClientRect();
+                                openNodeCard(
+                                  node,
+                                  rect
+                                    ? {
+                                        x: startClientX - rect.left,
+                                        y: startClientY - rect.top,
+                                      }
+                                    : null,
                                 );
                                 return;
                               }
@@ -1249,12 +1982,20 @@ export function MapView() {
                                     node,
                                     existing?.minerId ?? effectiveLoadout.minerId,
                                   ),
-                                  clockPct: existing?.clockPct ?? effectiveLoadout.minerClockPct,
+                                  clockPct:
+                                    existing?.clockPct ??
+                                    defaultClaimClockPct(node, effectiveLoadout),
                                   factoryId: targetFactoryId,
                                   notes: existing?.notes ?? null,
                                 });
                               }
                             };
+                            const detach = () => {
+                              window.removeEventListener("mousemove", onMove);
+                              window.removeEventListener("mouseup", onUp);
+                              dragCleanupRef.current = null;
+                            };
+                            dragCleanupRef.current = detach;
                             window.addEventListener("mousemove", onMove);
                             window.addEventListener("mouseup", onUp);
                           }}
@@ -1276,7 +2017,7 @@ export function MapView() {
                               aria-hidden="true"
                               className="absolute -bottom-0.5 -right-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full bg-success ring-1 ring-bg-raised"
                             >
-                              <Check className="h-2 w-2 text-white" strokeWidth={3} />
+                              <Check className="h-2 w-2 text-bg" strokeWidth={3} />
                             </span>
                           )}
                         </button>
@@ -1563,9 +2304,10 @@ export function MapView() {
             );
           })()}
 
-          {/* Whole-map resource budget dock. Shares the bottom-left
-              corner with the node popover — the popover wins while a
-              node is selected so claiming never fights the budget. */}
+          {/* Whole-map resource budget dock. The node popover follows
+              the marker it describes, so it can land anywhere
+              including on top of this — the dock steps aside while a
+              node card is open rather than being half-covered by it. */}
           {!selectedNode && !selectedWaterGroup && (
             <div className="absolute bottom-3 left-3 z-20">
               <ResourceBudgetPanel variant="compact" />
@@ -1624,18 +2366,79 @@ export function MapView() {
           )}
 
           {/* Selected-node popover. Floats over the map so the user
-              doesn't lose their pan/zoom state when claiming. */}
+              doesn't lose their pan/zoom state when claiming, and
+              renders beside the marker it describes rather than in a
+              corner — a claim is a pointing action, and a card a
+              screen away from the thing pointed at has to be
+              re-verified every time. */}
           {selectedNode && (
-            <div className="absolute bottom-3 left-3 z-20">
+            <div
+              ref={nodeCardRef}
+              role="dialog"
+              aria-label={`${selectedNode.resourceItemName} node`}
+              tabIndex={-1}
+              // Focused on open, because the popovers render after all
+              // 600-odd markers in the DOM — reaching this card by Tab
+              // otherwise means passing through every marker on the
+              // map. Closing hands focus back to the marker it
+              // describes (see the effect above).
+              // No anchor means the selection didn't come from a
+              // pointer at all — the dock is the safe place for it.
+              className={`outline-none ${nodeAnchor ? "absolute z-30" : "absolute bottom-3 left-3 z-30"}`}
+              style={nodeAnchor ? (nodeCardPos ?? undefined) : undefined}
+            >
+              {/* Outside `NodePopover`, and deliberately: the card is
+                  keyed by node id, so paging would unmount the very
+                  button being pressed and drop focus to the document
+                  body — one press, then a re-tab from the top. The
+                  stack belongs to the *place* anyway, not to whichever
+                  of its nodes is currently showing. */}
+              {selectedStack.length > 1 && (
+                <div className="mb-1 flex items-center justify-between gap-2 rounded-md border border-border bg-bg-raised px-2 py-1 text-[11px] text-fg-muted shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => stepStack(-1)}
+                    aria-label="Previous node at this spot"
+                    className="rounded p-0.5 hover:bg-border hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </button>
+                  {/* Live, because paging swaps the card's whole
+                      contents with no other signal that the position
+                      moved. */}
+                  <span aria-live="polite" className="tabular-nums">
+                    {selectedStack.findIndex((n) => n.id === selectedNode.id) + 1} of{" "}
+                    {selectedStack.length} nodes stacked here
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => stepStack(1)}
+                    aria-label="Next node at this spot"
+                    className="rounded p-0.5 hover:bg-border hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
               <NodePopover
-                // key={selectedNode.id} forces a remount when the
-                // selection changes — without it the previous node's
-                // minerId / clockPct / factoryId stay in form state
-                // and would be saved onto the freshly-picked node.
-                key={selectedNode.id}
+                // Remounts when the selection changes — without it the
+                // previous node's minerId / clockPct / factoryId stay
+                // in form state and would be saved onto the freshly-
+                // picked node. The claim-intent sequence rides along so
+                // an instruction aimed at the node already showing
+                // still resets the form to carry it out.
+                key={
+                  claimIntent?.nodeId === selectedNode.id
+                    ? `${selectedNode.id}:${claimIntent.seq}`
+                    : selectedNode.id
+                }
                 node={selectedNode}
                 loadout={effectiveLoadout}
                 factories={factories.data ?? []}
+                selectedFactoryId={selectedFactoryId}
+                bindTo={
+                  claimIntent?.nodeId === selectedNode.id ? claimIntent.factoryId : undefined
+                }
                 portWarning={portWarningsByNode.get(selectedNode.id)}
                 onClaim={(input) => {
                   void setClaim
@@ -1663,6 +2466,10 @@ export function MapView() {
                   (g) => g.factoryId === selectedFactoryId,
                 )}
                 unsourcedInputs={unsourcedByFactory.get(selectedFactoryId) ?? []}
+                nodeSupplyByItem={nodeSupplyByItem}
+                nodesPending={nodes.isPending}
+                onClaimNodeFor={(itemId) => claimNodeForFactory(selectedFactoryId, itemId)}
+                onPlaceWater={() => setPlacingWater(true)}
                 onStartImportDrag={(input, e) => {
                   // Ghost line anchors at the owning factory's pin —
                   // the demand originates there.
@@ -2142,6 +2949,16 @@ interface FactoryPopoverProps {
       drag handles so the user can drop them on the supplying pin. */
   unsourcedInputs?: UnsourcedInput[];
   onStartImportDrag?: (input: UnsourcedInput, e: React.MouseEvent) => void;
+  /** Per resource: how many nodes exist at all, and how many are still
+      free to point at this factory. */
+  nodeSupplyByItem?: Map<string, { total: number; claimable: number }>;
+  /** The node list hasn't loaded yet, so an empty map means "not known
+      yet", not "this resource has no nodes". */
+  nodesPending?: boolean;
+  /** Take the map to the nearest claimable node of this resource. */
+  onClaimNodeFor?: (itemId: string) => void;
+  /** Arm water placement — water has no nodes to claim. */
+  onPlaceWater?: () => void;
   onOpenPlan?: () => void;
   onEditPower?: () => void;
   onClose: () => void;
@@ -2154,6 +2971,10 @@ function FactoryPopover({
   hasPower,
   unsourcedInputs = [],
   onStartImportDrag,
+  nodeSupplyByItem,
+  nodesPending,
+  onClaimNodeFor,
+  onPlaceWater,
   onOpenPlan,
   onEditPower,
   onClose,
@@ -2328,43 +3149,102 @@ function FactoryPopover({
                 <ul className="mt-1 space-y-1 text-[11px]">
                   {requires.map((r) => {
                     const fullyCovered = r.missing <= 0.001;
+                    const itemName = itemNames.get(r.itemId) ?? r.itemId;
+                    const supply = nodeSupplyByItem?.get(r.itemId);
+                    const nodesInWorld = supply?.total ?? 0;
+                    const claimable = supply?.claimable ?? 0;
                     return (
-                      <li
-                        key={r.itemId}
-                        className="flex items-center justify-between gap-2"
-                      >
-                        <span className="flex min-w-0 items-center gap-1.5">
-                          <Icon
-                            itemId={markerIconId(r.itemId)}
-                            alt=""
-                            className="h-3.5 w-3.5"
-                          />
-                          <span className="truncate">
-                            {itemNames.get(r.itemId) ?? r.itemId}
+                      <li key={r.itemId}>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <Icon
+                              itemId={markerIconId(r.itemId)}
+                              alt=""
+                              className="h-3.5 w-3.5"
+                            />
+                            <span className="truncate">{itemName}</span>
                           </span>
-                        </span>
-                        <span className="flex items-center gap-1 tabular-nums">
-                          {fullyCovered ? (
-                            <span
-                              className="text-success"
-                              title={`Bound: ${r.bound.toFixed(1)}/min covers required ${r.required.toFixed(1)}/min`}
-                            >
-                              {r.required.toFixed(0)}/min ✓
+                          <span className="flex items-center gap-1 tabular-nums">
+                            {fullyCovered ? (
+                              <span
+                                className="text-success"
+                                title={`Bound: ${r.bound.toFixed(1)}/min covers required ${r.required.toFixed(1)}/min`}
+                              >
+                                {r.required.toFixed(0)}/min ✓
+                              </span>
+                            ) : (
+                              <>
+                                <span className="text-danger">
+                                  {r.missing.toFixed(0)}/min missing
+                                </span>
+                                <span
+                                  className="rounded-full bg-primary/10 px-1.5 text-[10px] font-medium text-primary"
+                                  title={`Bound nodes provide ${r.bound.toFixed(1)}/min of ${r.required.toFixed(1)}/min required`}
+                                >
+                                  {r.bound.toFixed(0)}/{r.required.toFixed(0)}
+                                </span>
+                              </>
+                            )}
+                          </span>
+                        </div>
+                        {/* The shortfall is only actionable from the
+                            surface that can see both the gap and the
+                            nodes that would close it — this card. Sent
+                            to the plan instead, the player comes back
+                            to the map anyway, hunting for a node by
+                            eye.
+
+                            When there's nothing to claim, the reason
+                            is plain text rather than a disabled
+                            button's tooltip: a disabled button is out
+                            of the tab order and fires no hover for
+                            most assistive tech, so the answer the
+                            control exists to give would be reachable
+                            by mouse only. */}
+                        {/* Nodes and factories are independent queries
+                            and the factory one can win the race, so an
+                            empty node list here means "still loading"
+                            as often as it means "none exist" —
+                            asserting the second while the first is true
+                            tells the player a resource isn't on the map
+                            at all. */}
+                        {!fullyCovered &&
+                          !nodesPending &&
+                          (nodesInWorld === 0 ? (
+                            r.itemId === WATER_ITEM_ID && onPlaceWater ? (
+                              <button
+                                type="button"
+                                onClick={onPlaceWater}
+                                aria-label={`Place water extractors for ${itemName}`}
+                                title="Water has no nodes to claim — extractors go anywhere on a lake or ocean"
+                                className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-accent/50 bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent hover:bg-accent/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+                              >
+                                <Droplets className="h-2.5 w-2.5" />
+                                Place extractors
+                              </button>
+                            ) : (
+                              <span className="mt-0.5 block text-[10px] text-fg-muted">
+                                No map nodes for {itemName} — it comes from a plan or a link
+                              </span>
+                            )
+                          ) : claimable === 0 ? (
+                            <span className="mt-0.5 block text-[10px] text-fg-muted">
+                              Every {itemName} node already feeds a factory
                             </span>
                           ) : (
-                            <>
-                              <span className="text-danger">
-                                {r.missing.toFixed(0)}/min missing
-                              </span>
-                              <span
-                                className="rounded-full bg-primary/10 px-1.5 text-[10px] font-medium text-primary"
-                                title={`Bound nodes provide ${r.bound.toFixed(1)}/min of ${r.required.toFixed(1)}/min required`}
+                            onClaimNodeFor && (
+                              <button
+                                type="button"
+                                onClick={() => onClaimNodeFor(r.itemId)}
+                                aria-label={`Claim a node for ${itemName} — nearest of ${claimable} unbound`}
+                                title={`Open the nearest of ${claimable} unbound ${itemName} node${claimable === 1 ? "" : "s"} and bind it to this factory`}
+                                className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-primary/50 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
                               >
-                                {r.bound.toFixed(0)}/{r.required.toFixed(0)}
-                              </span>
-                            </>
-                          )}
-                        </span>
+                                <MapPin className="h-2.5 w-2.5" />
+                                Claim a node
+                              </button>
+                            )
+                          ))}
                       </li>
                     );
                   })}
@@ -2454,6 +3334,16 @@ interface NodePopoverProps {
   /** Placement loadout — initial miner/clock for unclaimed miner nodes. */
   loadout: MapLoadout;
   factories: FactoryPickerCandidate[];
+  /** The factory whose card is open, if any — the first candidate for
+   * a fresh claim's binding (see `defaultClaimFactoryId`). */
+  selectedFactoryId: string | null;
+  /** The factory the player explicitly sent this card here to bind to.
+   * Outranks an existing claim's saved factory, and only this does:
+   * the request was "point a node at this factory", so arriving with
+   * "— none —" would drop the instruction on the floor. The claim's
+   * own extractor and clock are untouched either way — a deliberate
+   * underclock is not the binding's to overwrite. */
+  bindTo?: string;
   onClaim: (input: {
     minerId: string | null;
     clockPct: number;
@@ -2471,17 +3361,40 @@ interface NodePopoverProps {
   portWarning?: PortCapacityFinding;
 }
 
-function NodePopover({ node, loadout, factories, onClaim, onRelease, onClose, portWarning }: NodePopoverProps) {
+function NodePopover({
+  node,
+  loadout,
+  factories,
+  selectedFactoryId,
+  bindTo,
+  onClaim,
+  onRelease,
+  onClose,
+  portWarning,
+}: NodePopoverProps) {
   // claimDefaultExtractor coerces stale claims (e.g. a Mk2 saved on an
   // oil node) to the node's valid building, so Update repairs them.
   const [minerId, setMinerId] = useState<string>(
     claimDefaultExtractor(node, node.claim?.minerId ?? loadout.minerId) ?? "",
   );
   const [clockPct, setClockPct] = useState(
-    node.claim?.clockPct ?? (node.kind === "miner_node" ? loadout.minerClockPct : 100),
+    node.claim?.clockPct ?? defaultClaimClockPct(node, loadout),
   );
-  const [factoryId, setFactoryId] = useState<string | null>(node.claim?.factoryId ?? null);
+  const [factoryId, setFactoryId] = useState<string | null>(
+    bindTo ??
+      (node.claim
+        ? node.claim.factoryId ?? null
+        : defaultClaimFactoryId(node, factories, selectedFactoryId)),
+  );
   const kindLabel = nodeKindLabel(node);
+  // What this claim would actually extract at the clock currently in
+  // the box, matching the Resources row's own live preview — a bare
+  // percentage asks the player to hold a purity multiplier and a
+  // building's base rate in their head to hit a target rate.
+  const selectedExtractor = node.allowedExtractors?.find((e) => e.id === minerId);
+  const previewIpm = selectedExtractor
+    ? previewExtractorIpm(selectedExtractor.baseIpm, node.purity, clockPct)
+    : 0;
 
   return (
     <Card className="w-[300px] p-3">
@@ -2565,6 +3478,13 @@ function NodePopover({ node, loadout, factories, onClaim, onRelease, onClose, po
                 // different controls.
                 ariaLabel="Claim clock percent"
               />
+              {/* Same live readout the Resources row prints under its
+                  own clock — without it, landing on a target rate from
+                  the map is arithmetic against a purity multiplier the
+                  player has to remember. */}
+              <span className="mt-1 block text-[11px] font-medium text-fg">
+                {num(previewIpm)} ipm at this clock
+              </span>
             </div>
           </label>
         </div>
@@ -2582,6 +3502,15 @@ function NodePopover({ node, loadout, factories, onClaim, onRelease, onClose, po
             onChange={setFactoryId}
           />
         </div>
+        {/* A claim bound to nothing is still worth making — it reserves
+            the node — but the picker offering only "— none —" reads as
+            a broken control rather than an empty world, so say which
+            it is. */}
+        {factories.length === 0 && (
+          <span className="mt-1 block text-[11px] text-warning">
+            No factories yet — claim it now and bind it once one exists.
+          </span>
+        )}
       </label>
 
       <div className="mt-3 flex items-center justify-end gap-2">
@@ -2596,7 +3525,11 @@ function NodePopover({ node, loadout, factories, onClaim, onRelease, onClose, po
               minerId: minerId === "" ? null : minerId,
               clockPct,
               factoryId,
-              notes: null,
+              // This card has no notes field, so it has nothing to say
+              // about them — sending `null` would delete a note the
+              // player wrote elsewhere every time they nudged a clock.
+              // Drag-to-bind already carries the existing note through.
+              notes: node.claim?.notes ?? null,
             })
           }
           className="px-3 py-1 text-xs"
