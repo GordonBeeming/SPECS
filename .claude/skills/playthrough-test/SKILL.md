@@ -49,7 +49,31 @@ Each run owns `docs/test-scenarios/full-playthrough/runs/<YYYY-MM-DD>-<label>/RU
 | tiers-1-2  | not started | — |
 ```
 
-## Workflow
+### Verify the ledger's own claims
+
+The ledger is the one artifact written from memory rather than from the app, so
+it's the one that quietly goes wrong. Check every factual claim in it against
+the repo before committing it:
+
+- **Which PR fixed what** — `git log -S"<Identifier>"` against the symbol the fix
+  introduced. PR subjects are vague enough to read several ways, and a batch PR
+  titled "fix what tier N turned up" often carries repairs a later PR looks like
+  it owns.
+- **Issue counts** — `gh issue list --state all --limit 200`, never arithmetic on
+  the number range. Both flags carry weight: the command lists open issues only
+  and stops at 30 by default, so the bare form undercounts a finished batch twice
+  over and would report just the handful still open. Issues and PRs also share
+  one number sequence on GitHub, so counting the span from the first issue to the
+  last folds in every PR along the way.
+- **How a mechanism works** — read the code rather than trusting the memory of
+  having written it. A module-scoped queue that serializes two callers is easy to
+  write up as the opposite.
+- **Every status table in the file** — a run ledger accumulates more than one, and
+  updating the one you're editing leaves the file contradicting itself.
+
+When a tier group's fixes have shipped, update the ledger in the same batch. A
+ledger that still says a merged PR is in review is worse than one that's silent,
+because it reads as current.
 
 1. **Connect and orient.** Start the driver session. Read the ledger if a run is open; otherwise create the run folder and a fresh playthrough through the UI, named after the run folder.
 2. **Open the tier.** Set the playthrough to the group's top tier, then unlock every alternate recipe with `unlock_tier` at or below it on the Alts screen. The run assumes the pioneer sweeps every reachable hard drive the moment a tier opens.
@@ -61,11 +85,14 @@ Each run owns `docs/test-scenarios/full-playthrough/runs/<YYYY-MM-DD>-<label>/RU
 
    **The group ends merged, not pushed.** Take the batch all the way through `git-workflow:pull-request` — draft, bot review rounds, publish, merge — and only then start the next tier. A draft PR left open is the same stall as stopping to ask: the next group builds on this one, so it wants the fixes on `main`, not sitting in review. Leaving it draft "for someone to look at" is a decision nobody asked for.
 
+   **Write the artifacts into the same batch, before the review.** Factory layout pages for anything built or changed this group, checkpoint screenshots, the run index, and the ledger row with the issue numbers. These are part of the change, not a follow-up to it: a ledger updated after the merge needs a second PR, and until that one lands the file on `main` says a shipped batch is still in review.
+
+   The ledger row records issue numbers, which are known before the review, and the PR number, which isn't: the draft doesn't exist until the branch is pushed, and nothing is pushed until the review has run. So the row goes in without it, and the number gets added during the draft phase alongside whatever else the review rounds change. The merge SHA needs no such handling, since `gh pr view <n> --json mergeCommit` recovers it from the PR number whenever it's wanted. Rows that already carry one are fine to leave, but never open a PR to add one, which is the follow-up change arriving in another form.
+
    Nothing leaves the machine until `git-workflow:review-branch` has run over the batch as a whole — the fixes, the scenario doc edits and the run artifacts together, not one commit at a time. A batch of a dozen small fixes lands as one change and deserves one review of that change.
 
    **The bar is 95% and the loop runs until it's met.** Review, fix what came back, review again, and keep going round; one pass that finds twelve things and fixes ten is not a finished batch. At least 95% of the panel's findings resolved, no unresolved blocker at any severity, and the tier's own checkpoint still green on the fixed build. Only then push and start the next group. If a round keeps surfacing the same class of problem, that's the signal to fix the cause rather than the instances.
-8. **Write the artifacts.** Factory layout pages for anything built or changed this group, checkpoint screenshots, the run index, and the ledger row with the issue numbers and where they landed.
-9. **Report back.** What you built, what worked, the issues filed and fixed with their numbers, and the verdict for the group.
+8. **Report back.** What you built, what worked, the issues filed and fixed with their numbers, and the verdict for the group.
 
 ## Rules that shape the run
 
@@ -83,7 +110,7 @@ That second kind hides from revert-to-red as well, since it fails to fail in bot
 
 **A visual fix owes DESIGN.md an edit.** `CLAUDE.md` requires `DESIGN.md` to be updated *before* component standards, icon usage or visual behaviour change, and the batch at the end of a tier group is exactly where that gets forgotten — the teammates are each holding one issue and nobody is holding the design system. So the brief says it, and the review checks it. A doc that still describes the behaviour you just replaced is worse than no doc: it contradicts the test that now pins the new behaviour, and the next reader has no way to tell which one is stale.
 
-**Don't stop to ask — run the group to the end.** Steps 1 through 9 are the whole job, and a group left sitting at "shall I file these?" or "want me to plan the fixes?" has burnt whatever hours passed before anyone read the question. File the findings, plan the batch, fix it, review it past the bar, push, and only then report. Approval for the run was given when the run was asked for. The one thing that justifies stopping early is a showstopper you cannot get past, and even that gets filed and written into the ledger before you hand back.
+**Don't stop to ask — run the group to the end.** Steps 1 through 8 are the whole job, and a group left sitting at "shall I file these?" or "want me to plan the fixes?" has burnt whatever hours passed before anyone read the question. File the findings, plan the batch, fix it, review it past the bar, push, and only then report. Approval for the run was given when the run was asked for. The one thing that justifies stopping early is a showstopper you cannot get past, and even that gets filed and written into the ledger before you hand back.
 
 **Don't fix mid-tier.** While you're building, app code is off limits, however trivial and tempting the fix looks — stopping to patch something loses the thread of the playthrough and biases what you notice next. Findings go in the log and wait for step 7, where the whole batch is planned and fixed together.
 
