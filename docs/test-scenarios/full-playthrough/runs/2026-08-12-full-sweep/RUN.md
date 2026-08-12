@@ -254,9 +254,12 @@ Mk.2 upgrades. The tier page's checkpoint is untouched.
 
 One thing confirmed on the way: **#129's fix works in the wild.** Claiming a
 coal node with three factories on the map defaulted to Steel Mill — the one
-short of coal — rather than the nearest. Same for the iron claim. That's the
-fix I couldn't trigger during the Tiers 1–2 checkpoint because no factory was
-short of anything at the time.
+short of coal — rather than the nearest. Same for the iron and copper claims,
+three for three. That's the fix I couldn't trigger during the Tiers 1–2
+checkpoint because no factory was short of anything at the time.
+
+The Mk3 unlock also shows the belt note tracking the tier: the Iron Works ore
+segment now reads "needs 2 belts at Mk.3 (270/min each)", down from 3 at Mk.2.
 
 ## Where this run stands
 
