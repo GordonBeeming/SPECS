@@ -71,32 +71,70 @@ describe("<CreateFactoryModal />", () => {
     const onCreated = vi.fn();
     renderWithProviders(<CreateFactoryModal onClose={vi.fn()} onCreated={onCreated} />);
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: "Iron Plant" } });
-    fireEvent.change(screen.getByLabelText("Factory world X coordinate"), {
-      target: { value: "12345" },
+    fireEvent.change(screen.getByLabelText(/east or west, in kilometres/i), {
+      target: { value: "1.9" },
     });
-    fireEvent.change(screen.getByLabelText("Factory world Y coordinate"), {
-      target: { value: "-6789" },
+    fireEvent.change(screen.getByLabelText(/north or south, in kilometres/i), {
+      target: { value: "1.2" },
     });
     fireEvent.click(screen.getByRole("button", { name: /create/i }));
     await waitFor(() => {
+      // W and N are the field defaults, so both figures come through
+      // negative — the same signs the map reads back as "1.9km W".
       expect(factoryApi.setPosition).toHaveBeenCalledWith({
         id: "f1",
-        worldX: 12345,
-        worldY: -6789,
+        worldX: -190000,
+        worldY: -120000,
       });
       expect(onCreated).toHaveBeenCalledWith("f1");
     });
   });
 
+  it("flips the sign with the compass selects rather than asking for a negative distance", async () => {
+    renderWithProviders(<CreateFactoryModal onClose={vi.fn()} onCreated={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: "Iron Plant" } });
+    fireEvent.change(screen.getByLabelText(/east or west, in kilometres/i), {
+      target: { value: "2.5" },
+    });
+    fireEvent.change(screen.getByLabelText("East or west"), { target: { value: "E" } });
+    fireEvent.change(screen.getByLabelText(/north or south, in kilometres/i), {
+      target: { value: "1.3" },
+    });
+    fireEvent.change(screen.getByLabelText("North or south"), { target: { value: "S" } });
+    fireEvent.click(screen.getByRole("button", { name: /create/i }));
+    await waitFor(() => {
+      expect(factoryApi.setPosition).toHaveBeenCalledWith({
+        id: "f1",
+        worldX: 250000,
+        worldY: 130000,
+      });
+    });
+  });
+
+  it("echoes the typed position back in the coordinate language the map uses", () => {
+    renderWithProviders(<CreateFactoryModal onClose={vi.fn()} />);
+    // Without this the fields had no relation to the `1.9km W · 1.2km N`
+    // every other screen prints, so there was no way to tell whether a
+    // typed pair meant the place you had in mind.
+    expect(screen.getByText(/example: 1\.9 km W, 1\.2 km N/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/east or west, in kilometres/i), {
+      target: { value: "1.9" },
+    });
+    fireEvent.change(screen.getByLabelText(/north or south, in kilometres/i), {
+      target: { value: "1.2" },
+    });
+    expect(screen.getByText("Lands at 1.9km W · 1.2km N")).toBeInTheDocument();
+  });
+
   it("rejects a half-filled position instead of silently placing it at (0, y)", async () => {
     renderWithProviders(<CreateFactoryModal onClose={vi.fn()} />);
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: "Iron Plant" } });
-    fireEvent.change(screen.getByLabelText("Factory world X coordinate"), {
-      target: { value: "12345" },
+    fireEvent.change(screen.getByLabelText(/east or west, in kilometres/i), {
+      target: { value: "1.9" },
     });
     fireEvent.click(screen.getByRole("button", { name: /create/i }));
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(/world x and world y/i);
+      expect(screen.getByRole("alert")).toHaveTextContent(/distance in both directions/i);
     });
     expect(factoryApi.create).not.toHaveBeenCalled();
   });

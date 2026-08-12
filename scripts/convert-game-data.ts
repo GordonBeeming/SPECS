@@ -112,6 +112,9 @@ type ScSchematic = {
 type ScData = {
   branch: string;
   itemsData: Record<string, ScItem>;
+  /** Hand equipment (Portable Miner, Chainsaw, …). Kept apart from
+   * `itemsData` in the dump even when a recipe produces one. */
+  toolsData: Record<string, ScItem>;
   buildingsData: Record<string, ScBuilding>;
   recipesData: Record<string, ScRecipe>;
   schematicsData: Record<string, ScSchematic>;
@@ -164,34 +167,93 @@ function isFluid(item: ScItem): boolean {
   return FLUID_CATEGORIES.has(item.category ?? "");
 }
 
-const RAW_PREFIXES = ["Desc_Ore", "Desc_Stone", "Desc_Coal", "Desc_Sulfur", "Desc_RawQuartz", "Desc_LiquidOil", "Desc_Water", "Desc_NitrogenGas", "Desc_Wood", "Desc_Mycelia", "Desc_Leaves", "Desc_Flower", "Desc_GenericBiomass", "Desc_SAM"];
-const INGOT_PATTERN = /Ingot/;
+// Exact ids, not prefixes: `Desc_SAM` also matches the SAM Fluctuator,
+// which is manufactured, and a prefix match filed it as something you
+// dig out of the ground. Reanimated SAM and Sulfuric Acid match the
+// same loose prefixes and are only saved by an earlier branch catching
+// them first, which is a fragile way to be right.
+//
+// Everything an extractor pulls up, plus what the player picks off the
+// ground: the app treats the whole set as supply a factory draws on
+// rather than a product it can be planned around.
+//
+// "Raw" is not "extractable". Wood is raw and no extractor reaches it;
+// the Rust side answers the extractor question from
+// `EXTRACTED_RESOURCES`, and a consumer that reads this category as a
+// stand-in for it gets the opposite answer. Biomass used to sit here
+// and is the reason that's worth spelling out — four Constructor
+// recipes make it, so it belongs with the parts.
+const RAW_IDS = new Set([
+  "Desc_OreIron_C",
+  "Desc_OreCopper_C",
+  "Desc_OreGold_C",
+  "Desc_Stone_C",
+  "Desc_Coal_C",
+  "Desc_Sulfur_C",
+  "Desc_OreBauxite_C",
+  "Desc_RawQuartz_C",
+  "Desc_OreUranium_C",
+  "Desc_SAM_C",
+  "Desc_LiquidOil_C",
+  "Desc_Water_C",
+  "Desc_NitrogenGas_C",
+  "Desc_Wood_C",
+  "Desc_Leaves_C",
+  "Desc_Mycelia_C",
+]);
+// Exact ids for the same reason as `RAW_IDS`: `/Ingot/` also matches
+// Desc_SAMIngot_C (Reanimated SAM), which is a Constructor product in
+// the SAM line rather than anything a Smelter pours.
+const INGOT_IDS = new Set([
+  "Desc_IronIngot_C",
+  "Desc_CopperIngot_C",
+  "Desc_GoldIngot_C",
+  "Desc_SteelIngot_C",
+  "Desc_AluminumIngot_C",
+  "Desc_FicsiteIngot_C",
+]);
 const AMMO_PATTERNS = [/Cartridge/, /Rebar/, /Nobelisk/, /^Desc_Bullet/];
-const EQUIPMENT_PATTERNS = [/JetPack/, /BladeRunners/, /Parachute/, /Rifle/, /GasMask/, /HazmatSuit/, /ZipLine/, /JumpingStilts/, /HoverPack/];
+// Wearable gear (Jetpack, Blade Runners, Hazmat Suit, ...) lives in the
+// dump's `toolsData`, never in `itemsData`, so it reaches the dataset
+// through `categoriseTool` and there is nothing here for a pattern over
+// item ids to match. The equivalent list of patterns used to sit here
+// matching nothing at all.
+//
+// Same for Somersloops, Mercer Spheres, Hard Drives and the four
+// creature drops: all `toolsData`, all already categorised `special`
+// by the dump's own category. Only ids that genuinely appear in
+// `itemsData` earn a place here.
 const SPECIAL_IDS = new Set([
-  "Desc_WAT1_C",
-  "Desc_WAT2_C",
   "Desc_AlienProtein_C",
   "Desc_AlienDNACapsule_C",
   "Desc_CrystalShard_C",
-  "Desc_PowerShard_C",
-  "Desc_SomersloopMK1_C",
-  "Desc_MercerSphere_C",
-  "Desc_HardDrive_C",
-  "Desc_HogParts_C",
-  "Desc_SpitterParts_C",
-  "Desc_StingerParts_C",
-  "Desc_HatcherParts_C",
+  // Power slugs are world pickups like the creature drops, and were
+  // the one group of them filed as ordinary parts.
+  "Desc_Crystal_C",
+  "Desc_Crystal_mk2_C",
+  "Desc_Crystal_mk3_C",
 ]);
+
+/** A `toolsData` entry's category. The dump splits its tools into gear
+ * you equip ("hand", "back", "weapon", …) and the "special" pile —
+ * creature remains, Somersloops, foraged food — which is the same set
+ * `SPECIAL_IDS` covers on the item side. */
+function categoriseTool(tool: ScItem): string {
+  return tool.category === "special" ? "special" : "equipment";
+}
 
 function categorise(item: ScItem): string {
   const id = item.className;
+  // Raw before fluid: Crude Oil, Water and Nitrogen Gas are all three
+  // of them raw *and* fluid, and `isFluid` answering first filed them
+  // as manufacturable products a factory could be planned around. The
+  // `isFluid` flag is read straight off the dump, so nothing is lost by
+  // letting the category say the more useful thing.
+  if (RAW_IDS.has(id)) return "raw";
   if (isFluid(item)) return "fluid";
   if (SPECIAL_IDS.has(id)) return "special";
-  for (const pat of EQUIPMENT_PATTERNS) if (pat.test(id)) return "equipment";
   for (const pat of AMMO_PATTERNS) if (pat.test(id)) return "ammo";
-  if (INGOT_PATTERN.test(id)) return "ingot";
-  for (const pre of RAW_PREFIXES) if (id.startsWith(pre)) return "raw";
+  if (INGOT_IDS.has(id)) return "ingot";
   // Items like Plate, Rod, Wire are parts; heavy modular frames etc. components.
   if (/Modular|Frame|Computer|MotorLightweight|Stator|HighSpeedConnector|HeatSink|SuperPositionOscillator|Quantum|Ficsite/.test(id)) return "component";
   return "part";
@@ -790,8 +852,8 @@ for (const [shortId, raw] of Object.entries(sc.itemsData)) {
     id: shortId,
     name: it.name,
     category: cat,
-    stackSize: it.stack ?? (cat === "fluid" ? 1 : 100),
-    isFluid: cat === "fluid",
+    stackSize: it.stack ?? (isFluid(it) ? 1 : 100),
+    isFluid: isFluid(it),
   };
   if (it.color) entry.color = it.color;
   items.push(entry);
@@ -799,17 +861,23 @@ for (const [shortId, raw] of Object.entries(sc.itemsData)) {
 }
 // Sanity: any referenced item missing from the dump's item table gets a
 // minimal synthesised entry so the loader's validator doesn't reject the
-// recipe that points at it. With the 1.2 dump this should be empty — the
-// old hand-authored SAM/Ficsonium fallbacks now come from the data itself.
+// recipe that points at it.
+//
+// The dump keeps equipment and creature drops in `toolsData` rather
+// than `itemsData`, and a recipe can produce one (the Portable Miner
+// has an Assembler alt). Those carry a real name and are gear or
+// forage, not a production part — without the lookup the app offers
+// the raw blueprint id as a buildable product.
 const synthesised: string[] = [];
 for (const id of referencedItems) {
   if (itemIds.has(id)) continue;
   synthesised.push(id);
+  const tool = sc.toolsData[id];
   items.push({
     id,
-    name: id.replace(/^Desc_/, "").replace(/_C$/, "").replace(/_/g, " "),
-    category: "part",
-    stackSize: 100,
+    name: tool?.name ?? id.replace(/^Desc_/, "").replace(/_C$/, "").replace(/_/g, " "),
+    category: tool ? categoriseTool(tool) : "part",
+    stackSize: tool?.stack ?? 100,
     isFluid: false,
   });
   itemIds.add(id);
@@ -827,18 +895,70 @@ const buildings = [...INCLUDED_BUILDINGS].map((id) => ({
 
 // --- Hand-authored: milestones, generators, miners, vehicles, belts, pipes
 
-const milestones = [
-  { id: "tier-0", tier: 0, name: "HUB Upgrade 1", unlocks: ["Build_ConstructorMk1_C", "Build_SmelterMk1_C"] },
-  { id: "tier-1", tier: 1, name: "Field Research", unlocks: ["Build_AssemblerMk1_C", "Build_ConveyorBeltMk2_C"] },
-  { id: "tier-2", tier: 2, name: "Logistics Mk.2", unlocks: ["Build_StorageContainerMk1_C"] },
-  { id: "tier-3", tier: 3, name: "Coal Power", unlocks: ["Build_GeneratorCoal_C", "Build_FoundryMk1_C", "Build_MinerMk2_C", "Build_ConveyorBeltMk3_C"] },
-  { id: "tier-4", tier: 4, name: "Advanced Steel Production", unlocks: ["Build_ConveyorBeltMk4_C"] },
-  { id: "tier-5", tier: 5, name: "Oil Processing", unlocks: ["Build_OilRefinery_C", "Build_OilPump_C", "Build_Packager_C", "Build_ConveyorBeltMk5_C", "Build_GeneratorFuel_C"] },
-  { id: "tier-6", tier: 6, name: "Expanded Power Infrastructure", unlocks: ["Build_PipelineMK2_C"] },
-  { id: "tier-7", tier: 7, name: "Bauxite Refinement", unlocks: ["Build_ManufacturerMk1_C", "Build_Blender_C", "Build_MinerMk3_C", "Build_FrackingExtractor_C"] },
-  { id: "tier-8", tier: 8, name: "Particle Enrichment", unlocks: ["Build_HadronCollider_C", "Build_GeneratorNuclear_C", "Build_Converter_C", "Build_ConveyorBeltMk6_C"] },
-  { id: "tier-9", tier: 9, name: "Project Assembly Phase 5", unlocks: ["Build_QuantumEncoder_C"] },
-];
+const MILESTONE_NAMES: Record<number, string> = {
+  0: "HUB Upgrade 1",
+  1: "Field Research",
+  2: "Logistics Mk.2",
+  3: "Coal Power",
+  4: "Advanced Steel Production",
+  5: "Oil Processing",
+  6: "Expanded Power Infrastructure",
+  7: "Bauxite Refinement",
+  8: "Particle Enrichment",
+  9: "Project Assembly Phase 5",
+};
+
+/** `mark` → the pipe the player actually builds. Belts follow
+ * `Build_ConveyorBeltMk<mark>_C` mechanically; pipes don't (Mk1 has no
+ * mark in its id at all), so the two ids are written out. */
+const PIPE_BUILDING_BY_MARK: Record<number, string> = {
+  1: "Build_Pipeline_C",
+  2: "Build_PipelineMK2_C",
+};
+
+/** Milestone unlocks with no cross-checkable source anywhere else in
+ * the conversion. Everything derivable is derived below instead. */
+const MILESTONE_EXTRA_UNLOCKS: Record<number, string[]> = {
+  2: ["Build_StorageContainerMk1_C"],
+};
+
+/**
+ * What a tier gives the player, assembled from the tables that already
+ * carry the answer rather than typed out a second time.
+ *
+ * `BUILDING_UNLOCK_TIER` is cross-checked against the dump's own
+ * milestone schematics (`checkAuthoredBuildingTier` fails the
+ * conversion on a disagreement), and `beltTiers` / `pipeTiers` carry
+ * their own unlock tiers. A hand-typed list next to all that drifts
+ * silently and reads as authoritative: the old one told a player that
+ * Coal Power unlocks the Miner Mk.2 while the table two hundred lines
+ * up said Tier 4, put the Manufacturer and the Converter a tier out
+ * each, and never mentioned the Water Extractor at all — which is the
+ * building the whole Water chain now hangs its tier on.
+ *
+ * MAM research is deliberately not folded in. A Geothermal Generator
+ * comes off the Caterium tree, not off a milestone, so listing it
+ * under one would misdescribe how the player gets it.
+ */
+function milestoneUnlocks(tier: number): string[] {
+  const buildings = Object.entries(BUILDING_UNLOCK_TIER)
+    .filter(([, t]) => t === tier)
+    .map(([id]) => id);
+  const gens = generators
+    .filter((g) => g.unlockTier === tier && !g.id.includes("GeoThermal"))
+    .map((g) => g.id);
+  const belts = beltTiers
+    .filter((b) => b.unlockTier === tier)
+    .map((b) => `Build_ConveyorBeltMk${b.mark}_C`);
+  const pipes = pipeTiers
+    .filter((p) => p.unlockTier === tier)
+    .map((p) => requireEntry(PIPE_BUILDING_BY_MARK, String(p.mark), "PIPE_BUILDING_BY_MARK"));
+  // The Nuclear Power Plant is both a production building and a
+  // generator, so it appears in two of these sources.
+  return [
+    ...new Set([...buildings, ...gens, ...belts, ...pipes, ...(MILESTONE_EXTRA_UNLOCKS[tier] ?? [])]),
+  ];
+}
 
 // Space Elevator / Project Assembly phases. The dump carries the part items
 // and their recipes but not the per-phase delivery requirements, so these are
@@ -910,6 +1030,13 @@ const pipeTiers = [
   { mark: 1, cubicMetersPerMinute: 300, unlockTier: 3 },
   { mark: 2, cubicMetersPerMinute: 600, unlockTier: 6 },
 ];
+
+const milestones = Object.entries(MILESTONE_NAMES).map(([tier, name]) => ({
+  id: `tier-${tier}`,
+  tier: Number(tier),
+  name,
+  unlocks: milestoneUnlocks(Number(tier)),
+}));
 
 // Miners: base items-per-minute at 100% clock on normal-purity nodes.
 // Impure = base/2, Pure = base*2. Matches the wiki Mk1=60 / Mk2=120 /

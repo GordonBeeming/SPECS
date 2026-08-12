@@ -235,6 +235,17 @@ export interface ItemTier {
   tier: number | null;
   /** Standard recipes only; `null` when the item is alt-only. */
   standardTier: number | null;
+  /**
+   * Earliest tier the item can be *had* once hand-gathered pickups
+   * count — Wood off a tree, and the Biomass and Solid Biofuel it
+   * feeds. Absent when it matches `tier`, so read it through
+   * `obtainableTier` rather than on its own.
+   *
+   * A hand-gathered item is deliberately not a `tier`: no belt carries
+   * Wood, so a factory can't be planned around it even though a
+   * Biomass Burner is meant to be fed it by hand.
+   */
+  handGatheredTier?: number | null;
 }
 
 /** An input still waiting on a source factory, playthrough-wide. */

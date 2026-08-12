@@ -33,6 +33,10 @@ fn warn(category: Category, kind: FindingKind) -> Finding {
     Finding { severity: Severity::Warning, category, kind }
 }
 
+fn note(category: Category, kind: FindingKind) -> Finding {
+    Finding { severity: Severity::Info, category, kind }
+}
+
 /// Machines whose recipe or building unlocks above the current tier.
 /// Deduped per (factory, recipe/building) — twenty banks of the same
 /// over-tier recipe is one problem, not twenty.
@@ -449,16 +453,53 @@ pub fn incoming_link_supply(links: &[LogisticsLink], factory_id: &str) -> HashMa
 /// the skip fired even though nothing had reported the manual portion
 /// anywhere. Pass an empty map (no reported-elsewhere demand) for a
 /// factory with no saved plan.
+///
+/// A fuel is exempt from the claims comparison when **both** halves
+/// hold: this factory reports no supply for it at all, *and* no
+/// arrangement of extractors and machines could ever give it any
+/// (`no_automated_supply`, from `tier::items_with_no_automated_supply`).
+/// Then "claims cover 0.0" is not a shortfall — there is no number the
+/// app could ever print there — so it comes back as an `Info` note
+/// carrying the burn rate and no claimed figure.
+///
+/// **Neither half works alone, and both have been tried.** Gating on
+/// the item's chain by itself exempts a Fuel Generator drinking
+/// 270/min of Liquid Biofuel against 60/min piped in, which is a real
+/// shortfall the player built and can close. Gating on "the player
+/// picks it up off the ground" by itself leaves a Tier 0 Biomass
+/// Burner warned about Biomass — machine-made, and permanently
+/// unsuppliable, because every recipe for it starts at Wood. The
+/// closable ones are the ones with a supply figure to compare against.
+///
+/// Zero-supply-and-never-suppliable is also why the note doesn't tell
+/// the player to go build something: the Constructor that would
+/// "close" a Biomass gap has to be hand-fed Wood itself, so the advice
+/// would just move the hand-feeding one link along.
 pub fn check_generator_supply(
     factory: &FactoryRef,
     machine_raw_demand: &HashMap<String, f32>,
     machine_demand_reported_elsewhere: &HashMap<String, f32>,
     fuel_flows: &[PowerFuelFlow],
     supply: &HashMap<String, f32>,
+    no_automated_supply: &HashSet<String>,
     out: &mut Vec<Finding>,
 ) {
     for flow in fuel_flows {
         if flow.per_minute <= 0.0 {
+            continue;
+        }
+        let available = supply.get(&flow.item_id).copied().unwrap_or(0.0);
+        if available <= EPS && no_automated_supply.contains(&flow.item_id) {
+            out.push(note(
+                Category::SupplyPower,
+                FindingKind::GeneratorFuelHandFed {
+                    factory_id: factory.factory_id.clone(),
+                    factory_name: factory.factory_name.clone(),
+                    item_id: flow.item_id.clone(),
+                    item_name: flow.item_name.clone(),
+                    demand_ipm: flow.per_minute,
+                },
+            ));
             continue;
         }
         let machine_demand = machine_raw_demand.get(&flow.item_id).copied().unwrap_or(0.0);
@@ -642,6 +683,12 @@ mod tests {
         PowerFuelFlow { item_id: item_id.into(), item_name: item_name.into(), is_fluid: false, per_minute }
     }
 
+    /// The real set, so these tests exercise the same membership the
+    /// sweep does rather than a hand-picked stand-in.
+    fn stranded() -> HashSet<String> {
+        crate::features::planner::tier::items_with_no_automated_supply(&GameData::from_bundled().expect("bundled"))
+    }
+
     #[test]
     fn fourteen_coal_generators_against_zero_claims_flags_both_fuel_and_water() {
         // Pins the exact numbers from the reported bug: 14 Coal
@@ -651,7 +698,8 @@ mod tests {
         let fuel_flows = vec![fuel_flow("Desc_Coal_C", "Coal", 210.0), fuel_flow("Desc_Water_C", "Water", 630.0)];
         let mut findings = Vec::new();
         check_generator_supply(
-            &fref(), &HashMap::new(), &HashMap::new(), &fuel_flows, &HashMap::new(), &mut findings,
+            &fref(), &HashMap::new(), &HashMap::new(), &fuel_flows, &HashMap::new(), &stranded(),
+            &mut findings,
         );
 
         assert_eq!(findings.len(), 2, "got {findings:?}");
@@ -673,6 +721,185 @@ mod tests {
     }
 
     #[test]
+    fn a_hand_fed_burner_reports_its_burn_rate_instead_of_a_shortfall() {
+        // A Tier 0 Biomass Burner on Wood. No node on the map produces
+        // Wood, so measuring it against claims can only ever print
+        // "claims cover 0.0" — a warning the player has no move to
+        // clear, on the only generator the tier gives them.
+        let fuel_flows = vec![fuel_flow("Desc_Wood_C", "Wood", 18.0)];
+        let mut findings = Vec::new();
+        check_generator_supply(
+            &fref(), &HashMap::new(), &HashMap::new(), &fuel_flows, &HashMap::new(), &stranded(),
+            &mut findings,
+        );
+
+        assert_eq!(findings.len(), 1, "got {findings:?}");
+        assert_eq!(findings[0].severity, Severity::Info, "not a warning — nothing is wrong");
+        assert_eq!(findings[0].category, Category::SupplyPower);
+        match &findings[0].kind {
+            FindingKind::GeneratorFuelHandFed { item_name, demand_ipm, .. } => {
+                assert_eq!(item_name, "Wood");
+                // The burn rate survives: it's the part a player acts on.
+                assert_eq!(*demand_ipm, 18.0);
+            }
+            other => panic!("expected GeneratorFuelHandFed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_note_reports_the_burn_rate_and_ignores_machine_draw() {
+        // Machine draw on the same item doesn't turn the note into a
+        // shortfall, and the figure stays the generator's own burn
+        // rate rather than a combined total — there's nothing to total
+        // it against.
+        let fuel_flows = vec![fuel_flow("Desc_Wood_C", "Wood", 18.0)];
+        let machine_demand: HashMap<String, f32> = [("Desc_Wood_C".to_string(), 40.0)].into();
+        let mut findings = Vec::new();
+        check_generator_supply(
+            &fref(), &machine_demand, &HashMap::new(), &fuel_flows, &HashMap::new(), &stranded(),
+            &mut findings,
+        );
+
+        assert_eq!(findings.len(), 1, "got {findings:?}");
+        assert_eq!(findings[0].severity, Severity::Info);
+        assert!(
+            matches!(&findings[0].kind, FindingKind::GeneratorFuelHandFed { demand_ipm, .. } if *demand_ipm == 18.0),
+            "the generator's own burn rate: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_link_carrying_a_pickup_makes_the_comparison_mean_something_again() {
+        // Nothing produces Wood, but a player can still tell the app
+        // that 5/min arrives on a logistics link. That's a supply
+        // figure they chose, so an 18/min burn against it is a gap
+        // worth reporting rather than a fact of life.
+        let fuel_flows = vec![fuel_flow("Desc_Wood_C", "Wood", 18.0)];
+        let supply: HashMap<String, f32> = [("Desc_Wood_C".to_string(), 5.0)].into();
+        let mut findings = Vec::new();
+        check_generator_supply(
+            &fref(), &HashMap::new(), &HashMap::new(), &fuel_flows, &supply, &stranded(),
+            &mut findings,
+        );
+
+        assert_eq!(findings.len(), 1, "got {findings:?}");
+        assert_eq!(findings[0].severity, Severity::Warning);
+        assert!(
+            matches!(
+                &findings[0].kind,
+                FindingKind::GeneratorFuelShort { demand_ipm, claimed_ipm, .. }
+                    if *demand_ipm == 18.0 && *claimed_ipm == 5.0
+            ),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_piped_biofuel_generator_keeps_its_shortfall_warning() {
+        // Liquid Biofuel's chain grounds out in Wood, which makes it
+        // hand-*derived* but not hand-*gathered*: it comes out of a
+        // Refinery and reaches the generator through a pipe. Exempting
+        // it would hand every biofuel plant in the game a permanent
+        // blind spot — 30 Fuel Generators drinking 270/min against 60
+        // supplied would report as a note saying nothing is wrong.
+        let fuel_flows = vec![fuel_flow("Desc_LiquidBiofuel_C", "Liquid Biofuel", 270.0)];
+        let supply: HashMap<String, f32> = [("Desc_LiquidBiofuel_C".to_string(), 60.0)].into();
+        let mut findings = Vec::new();
+        check_generator_supply(
+            &fref(), &HashMap::new(), &HashMap::new(), &fuel_flows, &supply, &stranded(),
+            &mut findings,
+        );
+
+        assert_eq!(findings.len(), 1, "got {findings:?}");
+        assert_eq!(findings[0].severity, Severity::Warning, "a real, closable shortfall");
+        match &findings[0].kind {
+            FindingKind::GeneratorFuelShort { demand_ipm, claimed_ipm, .. } => {
+                assert_eq!(*demand_ipm, 270.0);
+                assert_eq!(*claimed_ipm, 60.0);
+            }
+            other => panic!("expected GeneratorFuelShort, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_machine_made_fuel_with_no_possible_supply_is_a_note_too() {
+        // Biomass comes out of a Constructor, so "is it machine-made"
+        // reads as closable — and it isn't. Every recipe for it starts
+        // at Wood, Leaves, Mycelia or Alien Protein, none of which a
+        // belt can deliver, so a Tier 0 burner running it had a
+        // warning with no move behind it. Same for Solid Biofuel from
+        // Tier 2.
+        for (item_id, item_name) in
+            [("Desc_GenericBiomass_C", "Biomass"), ("Desc_Biofuel_C", "Solid Biofuel")]
+        {
+            let fuel_flows = vec![fuel_flow(item_id, item_name, 10.0)];
+            let mut findings = Vec::new();
+            check_generator_supply(
+                &fref(), &HashMap::new(), &HashMap::new(), &fuel_flows, &HashMap::new(),
+                &stranded(), &mut findings,
+            );
+            assert_eq!(findings.len(), 1, "{item_name}: got {findings:?}");
+            assert_eq!(findings[0].severity, Severity::Info, "{item_name} can never be supplied");
+        }
+    }
+
+    #[test]
+    fn a_fuel_the_factory_does_supply_is_measured_however_its_chain_grounds_out() {
+        // The other half of the rule. Once a factory reports *any*
+        // supply, the comparison means something and the note is the
+        // wrong answer — a Constructor bank making 5/min of Biomass
+        // against a 10/min burn is a gap the player closes by adding
+        // Constructors.
+        let fuel_flows = vec![fuel_flow("Desc_GenericBiomass_C", "Biomass", 10.0)];
+        let supply: HashMap<String, f32> = [("Desc_GenericBiomass_C".to_string(), 5.0)].into();
+        let mut findings = Vec::new();
+        check_generator_supply(
+            &fref(), &HashMap::new(), &HashMap::new(), &fuel_flows, &supply, &stranded(),
+            &mut findings,
+        );
+
+        assert_eq!(findings.len(), 1, "got {findings:?}");
+        assert_eq!(findings[0].severity, Severity::Warning);
+        match &findings[0].kind {
+            FindingKind::GeneratorFuelShort { demand_ipm, claimed_ipm, .. } => {
+                assert_eq!(*demand_ipm, 10.0);
+                assert_eq!(*claimed_ipm, 5.0);
+            }
+            other => panic!("expected GeneratorFuelShort, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_coal_generator_still_reports_a_real_shortfall_alongside_a_hand_fed_burner() {
+        // The hand-fed branch must not become a blanket exemption for
+        // the whole factory: coal has nodes, so its shortfall is still
+        // a warning the player can act on.
+        let fuel_flows = vec![
+            fuel_flow("Desc_Wood_C", "Wood", 18.0),
+            fuel_flow("Desc_Coal_C", "Coal", 15.0),
+        ];
+        let mut findings = Vec::new();
+        check_generator_supply(
+            &fref(), &HashMap::new(), &HashMap::new(), &fuel_flows, &HashMap::new(), &stranded(),
+            &mut findings,
+        );
+
+        assert_eq!(findings.len(), 2, "got {findings:?}");
+        assert_eq!(
+            findings.iter().filter(|f| f.severity == Severity::Warning).count(),
+            1,
+            "coal is still a warning: {findings:?}"
+        );
+        assert!(
+            findings.iter().any(|f| matches!(
+                &f.kind,
+                FindingKind::GeneratorFuelShort { item_id, .. } if item_id == "Desc_Coal_C"
+            )),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
     fn generator_draw_is_added_to_machine_draw_on_the_same_claimed_pool() {
         // A Foundry burning 45 coal/min for Steel Ingot plus one Coal
         // Generator (15 coal/min) is 60 total against 50 claimed — the
@@ -685,7 +912,10 @@ mod tests {
         let fuel_flows = vec![fuel_flow("Desc_Coal_C", "Coal", 15.0)];
 
         let mut findings = Vec::new();
-        check_generator_supply(&fref(), &machine_demand, &machine_demand, &fuel_flows, &supply, &mut findings);
+        check_generator_supply(
+            &fref(), &machine_demand, &machine_demand, &fuel_flows, &supply, &stranded(),
+            &mut findings,
+        );
 
         assert_eq!(findings.len(), 1, "got {findings:?}");
         match &findings[0].kind {
@@ -712,7 +942,10 @@ mod tests {
         let fuel_flows = vec![fuel_flow("Desc_Coal_C", "Coal", 15.0)];
 
         let mut findings = Vec::new();
-        check_generator_supply(&fref(), &machine_demand, &machine_demand, &fuel_flows, &supply, &mut findings);
+        check_generator_supply(
+            &fref(), &machine_demand, &machine_demand, &fuel_flows, &supply, &stranded(),
+            &mut findings,
+        );
         assert!(findings.is_empty(), "got {findings:?}");
     }
 
@@ -732,7 +965,8 @@ mod tests {
 
         let mut findings = Vec::new();
         check_generator_supply(
-            &fref(), &machine_demand, &HashMap::new(), &fuel_flows, &supply, &mut findings,
+            &fref(), &machine_demand, &HashMap::new(), &fuel_flows, &supply, &stranded(),
+            &mut findings,
         );
         assert_eq!(findings.len(), 1, "got {findings:?}");
         match &findings[0].kind {
@@ -764,7 +998,8 @@ mod tests {
 
         let mut findings = Vec::new();
         check_generator_supply(
-            &fref(), &machine_demand, &reported_elsewhere, &fuel_flows, &supply, &mut findings,
+            &fref(), &machine_demand, &reported_elsewhere, &fuel_flows, &supply, &stranded(),
+            &mut findings,
         );
         assert_eq!(findings.len(), 1, "got {findings:?}");
         match &findings[0].kind {
@@ -783,7 +1018,8 @@ mod tests {
         supply.insert("Desc_Coal_C".to_string(), 300.0);
         let mut findings = Vec::new();
         check_generator_supply(
-            &fref(), &HashMap::new(), &HashMap::new(), &fuel_flows, &supply, &mut findings,
+            &fref(), &HashMap::new(), &HashMap::new(), &fuel_flows, &supply, &stranded(),
+            &mut findings,
         );
         assert!(findings.is_empty(), "got {findings:?}");
     }

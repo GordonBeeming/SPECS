@@ -454,6 +454,139 @@ describe("<PowerView />", () => {
     });
   });
 
+  it("keeps the duplicate rows when the merge's update fails, instead of deleting them anyway", async () => {
+    // The update and the deletes used to fire together. If the update
+    // failed and the deletes landed, the survivors were gone and the
+    // primary never took on their count — the bank silently shrank with
+    // nothing on screen saying so.
+    vi.spyOn(playthroughApi, "current").mockResolvedValue({
+      id: "p",
+      displayName: "Run",
+      gameVersion: "1.1",
+      createdAt: "2026-05-10T00:00:00Z",
+      currentTier: 0,
+      currentMilestoneProgress: 0,
+    });
+    vi.spyOn(factoryApi, "list").mockResolvedValue([
+      {
+        id: "iron",
+        name: "Iron Works",
+        worldX: 0,
+        worldY: 0,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+        machineCount: 6,
+      },
+    ]);
+    const row = (id: string) => ({
+      id,
+      factoryId: "iron",
+      generatorId: "Build_GeneratorBiomass_C",
+      fuelItemId: "Desc_Leaves_C",
+      count: 4,
+      clockPct: 100,
+      createdAt: "2026-05-10T00:00:00Z",
+      updatedAt: "2026-05-10T00:00:00Z",
+    });
+    vi.spyOn(powerApi, "list").mockResolvedValue([row("g1"), row("g2")]);
+    vi.spyOn(powerApi, "listAll").mockResolvedValue([]);
+    vi.spyOn(powerApi, "balance").mockResolvedValue({
+      factoryId: "iron",
+      generatedMw: 40,
+      consumedMw: 24,
+      netMw: 16,
+      fuelFlows: [],
+    });
+    vi.spyOn(powerApi, "listBalances").mockResolvedValue([
+      { factoryId: "iron", generatedMw: 40, consumedMw: 24, netMw: 16, fuelFlows: [] },
+    ]);
+    vi.spyOn(powerApi, "update").mockRejectedValue(new Error("db is locked"));
+    const remove = vi.spyOn(powerApi, "remove").mockResolvedValue(undefined);
+    // The failure is logged as well as shown; keep it out of the run's output.
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const user = userEvent.setup();
+    renderWithProviders(<PowerView />);
+    await screen.findByText("8");
+    await user.click(screen.getByRole("button", { name: /merge/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Merge failed: db is locked/);
+    // The whole point: nothing was deleted, so both rows survive and the
+    // player can try again.
+    expect(remove).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it("says the counts merged when a delete fails afterwards, not that the merge failed", async () => {
+    // The other half of the failure space. Once the update lands the
+    // primary already counts the rows still sitting there, so the group
+    // is double-counted — reporting "Merge failed" would be a lie, and
+    // the player needs to know there are leftovers to clear.
+    vi.spyOn(playthroughApi, "current").mockResolvedValue({
+      id: "p",
+      displayName: "Run",
+      gameVersion: "1.1",
+      createdAt: "2026-05-10T00:00:00Z",
+      currentTier: 0,
+      currentMilestoneProgress: 0,
+    });
+    vi.spyOn(factoryApi, "list").mockResolvedValue([
+      {
+        id: "iron",
+        name: "Iron Works",
+        worldX: 0,
+        worldY: 0,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+        machineCount: 6,
+      },
+    ]);
+    const row = (id: string) => ({
+      id,
+      factoryId: "iron",
+      generatorId: "Build_GeneratorBiomass_C",
+      fuelItemId: "Desc_Leaves_C",
+      count: 4,
+      clockPct: 100,
+      createdAt: "2026-05-10T00:00:00Z",
+      updatedAt: "2026-05-10T00:00:00Z",
+    });
+    vi.spyOn(powerApi, "list").mockResolvedValue([row("g1"), row("g2"), row("g3")]);
+    vi.spyOn(powerApi, "listAll").mockResolvedValue([]);
+    vi.spyOn(powerApi, "balance").mockResolvedValue({
+      factoryId: "iron",
+      generatedMw: 60,
+      consumedMw: 24,
+      netMw: 36,
+      fuelFlows: [],
+    });
+    vi.spyOn(powerApi, "listBalances").mockResolvedValue([
+      { factoryId: "iron", generatedMw: 60, consumedMw: 24, netMw: 36, fuelFlows: [] },
+    ]);
+    vi.spyOn(powerApi, "update").mockResolvedValue(undefined);
+    // First delete lands, second doesn't — one leftover.
+    const remove = vi
+      .spyOn(powerApi, "remove")
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("row is locked"));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const user = userEvent.setup();
+    renderWithProviders(<PowerView />);
+    await screen.findByText("12");
+    await user.click(screen.getByRole("button", { name: /merge/i }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/Counts merged/);
+    expect(alert).toHaveTextContent(/1 duplicate row couldn't be removed/);
+    expect(alert).toHaveTextContent(/counted twice/);
+    expect(alert).not.toHaveTextContent(/Merge failed/);
+    // Sequential, so the failure stops the run rather than firing the
+    // rest of the deletes into the dark.
+    expect(remove).toHaveBeenCalledTimes(2);
+    consoleError.mockRestore();
+  });
+
   it("gates the fuel picker by each fuel item's own tier, not the generator's", async () => {
     // Regresses: the Fuel Generator unlocks well before Rocket Fuel and
     // Ionized Fuel do, so gating the fuel list on the generator's own
@@ -532,6 +665,84 @@ describe("<PowerView />", () => {
     // matched loosely so it isn't confused with "Rocket Fuel".
     expect(await screen.findByRole("option", { name: /^fuel\b/i })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /rocket fuel/i })).not.toBeInTheDocument();
+  });
+
+  it("offers the Biomass Burner its hand-fed fuels at Tier 0", async () => {
+    // Regresses: every burner fuel is hand-gathered or made from
+    // something hand-gathered, so none of them has an automated tier.
+    // Gating on that tier alone read as "nothing available" at every
+    // tier, which left a Tier 0 playthrough with no way to generate a
+    // single MW.
+    const user = userEvent.setup();
+    vi.spyOn(playthroughApi, "current").mockResolvedValue({
+      id: "p",
+      displayName: "Run",
+      gameVersion: "1.2",
+      createdAt: "2026-05-10T00:00:00Z",
+      currentTier: 0,
+      currentMilestoneProgress: 0,
+    });
+    vi.spyOn(factoryApi, "list").mockResolvedValue([
+      {
+        id: "f1",
+        name: "Starter Base",
+        worldX: 0,
+        worldY: 0,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+        machineCount: 0,
+      },
+    ]);
+    vi.spyOn(libraryApi, "generators").mockResolvedValue([
+      {
+        id: "Build_GeneratorBiomass_C",
+        name: "Biomass Burner",
+        category: "burner",
+        powerMw: 30,
+        unlockTier: 0,
+        fuels: [
+          { fuelItemId: "Desc_Wood_C", fuelPerMinute: 18 },
+          { fuelItemId: "Desc_Biofuel_C", fuelPerMinute: 4 },
+        ],
+      },
+    ]);
+    vi.spyOn(libraryApi, "items").mockResolvedValue([
+      { id: "Desc_Wood_C", name: "Wood", category: "raw", stackSize: 200, isFluid: false },
+      { id: "Desc_Biofuel_C", name: "Solid Biofuel", category: "part", stackSize: 200, isFluid: false },
+    ]);
+    // No automated route to either — Solid Biofuel's Tier 2 recipe runs
+    // on Biomass, which runs on Wood a player carries in.
+    vi.spyOn(plannerApi, "listItemTiers").mockResolvedValue([
+      { itemId: "Desc_Wood_C", tier: null, standardTier: null, handGatheredTier: 0 },
+      { itemId: "Desc_Biofuel_C", tier: null, standardTier: null, handGatheredTier: 2 },
+    ]);
+    vi.spyOn(powerApi, "list").mockResolvedValue([]);
+    vi.spyOn(powerApi, "listAll").mockResolvedValue([]);
+    vi.spyOn(powerApi, "balance").mockResolvedValue({
+      factoryId: "f1",
+      generatedMw: 0,
+      consumedMw: 0,
+      netMw: 0,
+      fuelFlows: [],
+    });
+    vi.spyOn(powerApi, "listBalances").mockResolvedValue([
+      { factoryId: "f1", generatedMw: 0, consumedMw: 0, netMw: 0, fuelFlows: [] },
+    ]);
+
+    renderWithProviders(<PowerView />);
+    await user.click(await screen.findByRole("button", { name: /add generator/i }));
+
+    const generatorCombobox = screen.getByRole("combobox", { name: /^generator$/i });
+    await user.click(generatorCombobox);
+    await user.click(await screen.findByRole("option", { name: /biomass burner/i }));
+
+    const fuelCombobox = screen.getByRole("combobox", { name: /^fuel$/i });
+    await user.click(fuelCombobox);
+    await user.keyboard("{ArrowDown}");
+    expect(await screen.findByRole("option", { name: /^wood\b/i })).toBeInTheDocument();
+    // Solid Biofuel is two tiers out even by hand — the burner takes it,
+    // the playthrough can't make it yet.
+    expect(screen.queryByRole("option", { name: /solid biofuel/i })).not.toBeInTheDocument();
   });
 
   it("labels fuel demand with the unit the rows actually use instead of a hardcoded one", async () => {
@@ -720,5 +931,60 @@ describe("<PowerView />", () => {
     await waitFor(() => {
       expect(screen.queryByText(/edit generator/i, { selector: "h2" })).not.toBeInTheDocument();
     });
+  });
+
+  it("holds the add-generator pickers shut while the tier table is still loading", async () => {
+    // This screen and the production plan's power panel render the same
+    // `AddPowerGenForm`, so neither can drift on what a half-loaded
+    // picker says. An empty fuel list is what a player sees when a fuel
+    // is out of reach at their tier; a still-loading form must not
+    // impersonate that.
+    const user = userEvent.setup();
+    vi.spyOn(playthroughApi, "current").mockResolvedValue({
+      id: "p",
+      displayName: "Run",
+      gameVersion: "1.1",
+      createdAt: "2026-05-10T00:00:00Z",
+      currentTier: 5,
+      currentMilestoneProgress: 0,
+    });
+    vi.spyOn(factoryApi, "list").mockResolvedValue([
+      {
+        id: "f1",
+        name: "Coal Power Plant",
+        worldX: 0,
+        worldY: 0,
+        createdAt: "2026-05-10T00:00:00Z",
+        updatedAt: "2026-05-10T00:00:00Z",
+        machineCount: 0,
+      },
+    ]);
+    vi.spyOn(powerApi, "list").mockResolvedValue([]);
+    vi.spyOn(powerApi, "listAll").mockResolvedValue([]);
+    vi.spyOn(powerApi, "balance").mockResolvedValue({
+      factoryId: "f1",
+      generatedMw: 0,
+      consumedMw: 0,
+      netMw: 0,
+      fuelFlows: [],
+    });
+    vi.spyOn(powerApi, "listBalances").mockResolvedValue([
+      { factoryId: "f1", generatedMw: 0, consumedMw: 0, netMw: 0, fuelFlows: [] },
+    ]);
+
+    // Hold the tier table open so the form mounts mid-load — the state
+    // the guard exists for. Everything else resolves, so the only reason
+    // the pickers can be shut is the read that hasn't landed.
+    vi.spyOn(plannerApi, "listItemTiers").mockReturnValue(new Promise(() => {}));
+
+    renderWithProviders(<PowerView />);
+    await user.click(await screen.findByRole("button", { name: /add generator/i }));
+
+    expect(await screen.findByPlaceholderText("Loading generators…")).toBeDisabled();
+    expect(screen.getByPlaceholderText("Loading fuels…")).toBeDisabled();
+    // A regression that left optionsLoading permanently false would show
+    // the ordinary placeholders here and pass a test that only asserted
+    // the enabled state.
+    expect(screen.queryByPlaceholderText("Pick a generator…")).toBeNull();
   });
 });

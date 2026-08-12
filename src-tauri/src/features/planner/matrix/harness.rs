@@ -13,7 +13,7 @@ use std::sync::OnceLock;
 use crate::features::planner::commands::tier_reachable_alts;
 use crate::features::planner::domain::compute_plan_graph;
 use crate::features::planner::dto::{PlanComputeOptions, PlanGraph, PlanTargetSpec, PlannerError};
-use crate::features::planner::tier::{self, TierTable};
+use crate::features::planner::tier::{self, Sourcing, TierTable};
 use crate::features::resource_nodes::domain::{best_belt_tier, best_pipe_tier};
 use crate::shared::gamedata::GameData;
 
@@ -89,8 +89,8 @@ fn tier_table(gd: &GameData, alts: AltMode) -> &'static TierTable {
     static OFF: OnceLock<TierTable> = OnceLock::new();
     static ON: OnceLock<TierTable> = OnceLock::new();
     match alts {
-        AltMode::Off => OFF.get_or_init(|| tier::item_tier_table(gd, AltMode::Off)),
-        AltMode::On => ON.get_or_init(|| tier::item_tier_table(gd, AltMode::On)),
+        AltMode::Off => OFF.get_or_init(|| tier::item_tier_table(gd, AltMode::Off, Sourcing::Automated)),
+        AltMode::On => ON.get_or_init(|| tier::item_tier_table(gd, AltMode::On, Sourcing::Automated)),
     }
 }
 

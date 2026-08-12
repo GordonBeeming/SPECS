@@ -1222,26 +1222,37 @@ pub fn factory_plan_assign_import_source(
 /// the session. The picker can't derive this itself: a recipe's own
 /// `unlock_tier` says nothing about whether its ingredients exist yet,
 /// which is how a Tier 7 chain ended up offered under a Tier 5 heading.
-/// Items no chain ever reaches are left out — offering a product that
-/// can never be planned is worse than not listing it.
+/// Items nothing reaches by either route are left out — offering a
+/// product that can never be planned is worse than not listing it.
 #[tauri::command]
 pub fn list_item_tiers(game_data: State<GameData>) -> Vec<super::dto::ItemTier> {
     list_item_tiers_impl(&game_data)
 }
 
 fn list_item_tiers_impl(game_data: &GameData) -> Vec<super::dto::ItemTier> {
-    let with_alts = tier::item_tier_table(game_data, tier::AltMode::On);
-    let standard_only = tier::item_tier_table(game_data, tier::AltMode::Off);
+    let with_alts =
+        tier::item_tier_table(game_data, tier::AltMode::On, tier::Sourcing::Automated);
+    let standard_only =
+        tier::item_tier_table(game_data, tier::AltMode::Off, tier::Sourcing::Automated);
+    let hand_gathered =
+        tier::item_tier_table(game_data, tier::AltMode::On, tier::Sourcing::HandGathered);
     let mut out: Vec<super::dto::ItemTier> = game_data
         .items()
         .iter()
         .filter_map(|item| {
             let tier = with_alts.get(&item.id).copied().flatten();
             let standard_tier = standard_only.get(&item.id).copied().flatten();
-            tier.map(|_| super::dto::ItemTier {
+            let hand = hand_gathered.get(&item.id).copied().flatten();
+            // A row exists as long as *some* route reaches the item.
+            // The burner fuels have only the hand-gathered one.
+            if tier.is_none() && hand.is_none() {
+                return None;
+            }
+            Some(super::dto::ItemTier {
                 item_id: item.id.clone(),
                 tier,
                 standard_tier,
+                hand_gathered_tier: if hand == tier { None } else { hand },
             })
         })
         .collect();
@@ -1470,11 +1481,91 @@ mod tests {
         assert_eq!(iron_plate.tier, Some(0));
         assert_eq!(iron_plate.standard_tier, Some(0));
 
-        // Items nothing can ever produce are left out rather than
-        // offered and then rejected by the planner.
+        // An automated item says nothing about hand gathering — the
+        // field is there to be read, not to repeat `tier`.
+        assert_eq!(iron_plate.hand_gathered_tier, None);
+
+        // The Biomass Burner's fuels: no belt reaches them, so they
+        // carry a hand-gathered tier and no automated one.
+        let wood = by_id["Desc_Wood_C"];
+        assert_eq!(wood.tier, None);
+        assert_eq!(wood.hand_gathered_tier, Some(0));
+        let biofuel = by_id["Desc_Biofuel_C"];
+        assert_eq!(biofuel.tier, None);
+        assert_eq!(biofuel.hand_gathered_tier, Some(2));
+
+        // Items nothing reaches by either route are left out rather
+        // than offered and then rejected by the planner.
         assert!(
-            !tiers.iter().any(|t| t.tier.is_none()),
+            !tiers.iter().any(|t| t.tier.is_none() && t.hand_gathered_tier.is_none()),
             "an item with no reachable chain must not be listed"
+        );
+
+        // The row count is pinned, not just the four items above. This
+        // list decides what a picker offers, it moved 135 → 152 when
+        // hand-gathered rows started being emitted, and a
+        // spot-check-only test would have said nothing at 200. If this
+        // moves, read the diff and decide whether the new rows belong.
+        assert_eq!(
+            tiers.len(),
+            152,
+            "every item with an automated or hand-gathered route, and nothing else"
+        );
+        assert_eq!(gd.items().len(), 168, "16 items reach the player by no route at all");
+        assert!(
+            !by_id.contains_key("Desc_Gift_C"),
+            "a FICSMAS drop is reachable by no route a playthrough can count on"
+        );
+    }
+
+    #[test]
+    fn item_tiers_put_a_raw_resource_on_its_extractors_tier() {
+        // Three of the nine products a Tier 0 picker offered were raw
+        // fluids seeded at Tier 0 because *something* extracts them,
+        // never mind that the extractor is five tiers out.
+        let gd = GameData::from_bundled().unwrap();
+        let tiers = list_item_tiers_impl(&gd);
+        let tier_of = |item_id: &str| {
+            tiers.iter().find(|t| t.item_id == item_id).and_then(|t| t.tier)
+        };
+        assert_eq!(tier_of("Desc_Water_C"), Some(3));
+        assert_eq!(tier_of("Desc_LiquidOil_C"), Some(5));
+        assert_eq!(tier_of("Desc_NitrogenGas_C"), Some(8));
+        assert_eq!(tier_of("Desc_OreIron_C"), Some(0), "a Miner Mk1 is Tier 0");
+    }
+
+    #[test]
+    fn tier_0_offers_exactly_the_eight_products_tier_0_can_build() {
+        // #115's subject, pinned as a set. The picker reads this
+        // command's `tier` and drops `category: "raw"`
+        // (`UNPRODUCIBLE_CATEGORIES` in `planner/options.ts`), so this
+        // mirrors that filter against the real dataset — the tier
+        // table and the JSON category in one assertion, which is where
+        // both of this batch's regressions lived.
+        let gd = GameData::from_bundled().unwrap();
+        let tiers = list_item_tiers_impl(&gd);
+        let mut offered: Vec<&str> = tiers
+            .iter()
+            .filter(|t| t.tier == Some(0))
+            .filter_map(|t| gd.item(&t.item_id))
+            .filter(|item| item.category != crate::shared::gamedata::types::ItemCategory::Raw)
+            .map(|item| item.name.as_str())
+            .collect();
+        offered.sort_unstable();
+        assert_eq!(
+            offered,
+            [
+                "Cable",
+                "Concrete",
+                "Copper Ingot",
+                "Iron Ingot",
+                "Iron Plate",
+                "Iron Rod",
+                "Screws",
+                "Wire",
+            ],
+            "Crude Oil, Water and Nitrogen Gas are raw and five tiers out; \
+             nothing hand-gathered has an automated tier"
         );
     }
 

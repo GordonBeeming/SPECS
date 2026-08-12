@@ -743,10 +743,10 @@ mod tests {
         // standard route Tier 7) — fine here, since the whole chain
         // does ground out at Tier 6. Gated at Tier 5, that route has to
         // disappear rather than plan a chain the player can't build.
-        use crate::features::planner::tier::{item_tier_table, recipes_reachable_at, AltMode};
+        use crate::features::planner::tier::{item_tier_table, recipes_reachable_at, AltMode, Sourcing};
 
         let gd = gd();
-        let table = item_tier_table(&gd, AltMode::On);
+        let table = item_tier_table(&gd, AltMode::On, Sourcing::Automated);
         let mut demands = HashMap::new();
         demands.insert("Desc_Computer_C".to_string(), 10.0);
         let external = HashMap::new();

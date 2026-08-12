@@ -533,6 +533,17 @@ pub struct ItemTier {
     /// Standard recipes only. Higher than `tier` for an item whose
     /// early route is an alt, `None` when the item is alt-only.
     pub standard_tier: Option<u8>,
+    /// Earliest tier the player can *have* the item once hand-gathered
+    /// pickups count — Wood off a tree, and the Biomass and Solid
+    /// Biofuel it feeds. Only sent when it beats `tier`, so an absent
+    /// value means "`tier` is already the whole answer" and a consumer
+    /// reads `hand_gathered_tier.or(tier)`.
+    ///
+    /// It is not interchangeable with `tier`: a factory can't be
+    /// planned around something no belt carries, which is why the two
+    /// travel separately instead of one `min`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hand_gathered_tier: Option<u8>,
 }
 
 /// One input across the playthrough still waiting on a source factory

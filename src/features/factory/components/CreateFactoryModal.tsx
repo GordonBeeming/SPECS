@@ -5,6 +5,12 @@ import { Button } from "@/shared/ui/Button";
 import { Icon } from "@/shared/ui/Icon";
 import { IconPicker } from "@/shared/ui/IconPicker";
 import { useBuildings, useIconDisplayNames } from "@/features/library/hooks/useLibrary";
+import {
+  compassToWorld,
+  coordChip,
+  type EastWest,
+  type NorthSouth,
+} from "@/shared/format/coords";
 import { queryKeys } from "@/shared/query/keys";
 import { factoryApi } from "../api";
 import { useCreateFactory } from "../hooks/useFactories";
@@ -20,14 +26,26 @@ interface CreateFactoryModalProps {
  * to two finite numbers is a validation error, not a silent 0. */
 type PositionInput = { x: number; y: number } | "unset" | "invalid";
 
-function parsePosition(xRaw: string, yRaw: string): PositionInput {
-  const x = xRaw.trim();
-  const y = yRaw.trim();
-  if (x === "" && y === "") return "unset";
-  const nx = Number(x);
-  const ny = Number(y);
-  if (x === "" || y === "" || !Number.isFinite(nx) || !Number.isFinite(ny)) return "invalid";
-  return { x: nx, y: ny };
+/**
+ * Reads the two distance boxes against their compass selects. The
+ * fields are kilometres because that's the only coordinate language
+ * the app speaks on screen — the map pin, the resource rows and
+ * Validate all print `1.9km W · 1.2km N`, so a raw Unreal-cm pair here
+ * had nothing to compare itself against.
+ */
+function parsePosition(
+  ewRaw: string,
+  ew: EastWest,
+  nsRaw: string,
+  ns: NorthSouth,
+): PositionInput {
+  const e = ewRaw.trim();
+  const n = nsRaw.trim();
+  if (e === "" && n === "") return "unset";
+  const ewKm = Number(e);
+  const nsKm = Number(n);
+  if (e === "" || n === "" || !Number.isFinite(ewKm) || !Number.isFinite(nsKm)) return "invalid";
+  return compassToWorld({ ewKm, ew, nsKm, ns });
 }
 
 export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalProps) {
@@ -35,8 +53,10 @@ export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalPro
   const [notes, setNotes] = useState("");
   const [iconId, setIconId] = useState<string | null>(null);
   const [showIconPicker, setShowIconPicker] = useState(false);
-  const [worldX, setWorldX] = useState("");
-  const [worldY, setWorldY] = useState("");
+  const [ewKm, setEwKm] = useState("");
+  const [ew, setEw] = useState<EastWest>("W");
+  const [nsKm, setNsKm] = useState("");
+  const [ns, setNs] = useState<NorthSouth>("N");
   const [validationError, setValidationError] = useState<string | null>(null);
   const create = useCreateFactory();
   const buildings = useBuildings();
@@ -52,6 +72,11 @@ export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalPro
     [buildings.data],
   );
 
+  // Parsed on every keystroke, not only on submit, so the preview under
+  // the fields can echo the reading back in the app's own coordinate
+  // language before the factory exists.
+  const position = parsePosition(ewKm, ew, nsKm, ns);
+
   const validate = (n: string): string | null => {
     const t = n.trim();
     if (t.length === 0) return "Name is required.";
@@ -66,9 +91,10 @@ export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalPro
       setValidationError(err);
       return;
     }
-    const position = parsePosition(worldX, worldY);
     if (position === "invalid") {
-      setValidationError("Position needs both World X and World Y, or leave both blank.");
+      setValidationError(
+        "Position needs a distance in both directions, or leave both boxes blank.",
+      );
       return;
     }
     setValidationError(null);
@@ -205,30 +231,65 @@ export function CreateFactoryModal({ onClose, onCreated }: CreateFactoryModalPro
             <div>
               <span className="text-sm font-medium text-fg">Position on the map (optional)</span>
               <p className="mt-0.5 text-xs text-fg-muted">
-                Leave both blank to place it later by dragging it on the map — otherwise every
-                factory created from this list lands on the same spot and stacks under the last
-                one.
+                Distance from the map's centre, in kilometres — the same reading the map pin and
+                the resource rows show. Leave both blank to place it later by dragging it on the
+                map, otherwise every factory created from this list lands on the same spot and
+                stacks under the last one.
               </p>
               <div className="mt-1.5 flex items-center gap-2">
-                <input
-                  type="number"
-                  step="any"
-                  value={worldX}
-                  onChange={(e) => setWorldX(e.target.value)}
-                  placeholder="World X"
-                  aria-label="Factory world X coordinate"
-                  className="h-9 w-full rounded-md border border-border bg-bg px-2 text-sm text-fg outline-none focus:border-primary"
-                />
-                <input
-                  type="number"
-                  step="any"
-                  value={worldY}
-                  onChange={(e) => setWorldY(e.target.value)}
-                  placeholder="World Y"
-                  aria-label="Factory world Y coordinate"
-                  className="h-9 w-full rounded-md border border-border bg-bg px-2 text-sm text-fg outline-none focus:border-primary"
-                />
+                <div className="flex flex-1 items-center gap-1">
+                  <input
+                    type="number"
+                    step="any"
+                    value={ewKm}
+                    onChange={(e) => setEwKm(e.target.value)}
+                    placeholder="1.9"
+                    aria-label="Distance east or west, in kilometres"
+                    className="h-9 w-full min-w-0 rounded-md border border-border bg-bg px-2 text-sm text-fg outline-none focus:border-primary tabular-nums"
+                  />
+                  <span className="shrink-0 text-xs text-fg-muted">km</span>
+                  <select
+                    value={ew}
+                    onChange={(e) => setEw(e.target.value === "E" ? "E" : "W")}
+                    aria-label="East or west"
+                    className="h-9 shrink-0 rounded-md border border-border bg-bg px-1 text-sm text-fg outline-none focus:border-primary"
+                  >
+                    <option value="W">W</option>
+                    <option value="E">E</option>
+                  </select>
+                </div>
+                <div className="flex flex-1 items-center gap-1">
+                  <input
+                    type="number"
+                    step="any"
+                    value={nsKm}
+                    onChange={(e) => setNsKm(e.target.value)}
+                    placeholder="1.2"
+                    aria-label="Distance north or south, in kilometres"
+                    className="h-9 w-full min-w-0 rounded-md border border-border bg-bg px-2 text-sm text-fg outline-none focus:border-primary tabular-nums"
+                  />
+                  <span className="shrink-0 text-xs text-fg-muted">km</span>
+                  <select
+                    value={ns}
+                    onChange={(e) => setNs(e.target.value === "S" ? "S" : "N")}
+                    aria-label="North or south"
+                    className="h-9 shrink-0 rounded-md border border-border bg-bg px-1 text-sm text-fg outline-none focus:border-primary"
+                  >
+                    <option value="N">N</option>
+                    <option value="S">S</option>
+                  </select>
+                </div>
               </div>
+              {/* Echoing the typed pair back through the same formatter
+                  the map uses is the whole point: it's the proof the two
+                  screens are talking about the same place. */}
+              <p className="mt-1 text-xs tabular-nums text-fg-muted">
+                {position === "unset"
+                  ? "Unplaced — example: 1.9 km W, 1.2 km N"
+                  : position === "invalid"
+                    ? "Fill in both boxes, or clear both to leave it unplaced."
+                    : `Lands at ${coordChip(position.x, position.y)}`}
+              </p>
             </div>
 
             <label className="block">

@@ -18,7 +18,53 @@ pub const BUNDLED_NODES_JSON: &str = include_str!("../../../game-data/nodes.json
 
 /// Parse and validate the bundled dataset.
 pub fn load_bundled() -> Result<GameDataFile> {
-    parse_str(BUNDLED_JSON).context("loading bundled game data")
+    let data = parse_str(BUNDLED_JSON).context("loading bundled game data")?;
+    validate_id_tables(&data).context("loading bundled game data")?;
+    Ok(data)
+}
+
+/// Cross-check the hand-written id tables in [`super::store`] against
+/// the dataset they describe. Split from [`validate`] because that runs
+/// on partial fixtures too, and a fixture with three items is not
+/// missing Water — the full dataset is the only input where these
+/// tables have to hold.
+///
+/// A typo in either table fails silently and expensively otherwise: a
+/// mistyped raw resource loses its extraction tier (so its whole chain
+/// reads as unreachable), and a mistyped pickup makes a Biomass
+/// Burner's fuel unavailable at every tier — the exact bug the tables
+/// exist to prevent.
+fn validate_id_tables(data: &GameDataFile) -> Result<()> {
+    let item_ids: HashSet<&str> = data.items.iter().map(|i| i.id.as_str()).collect();
+    let building_ids: HashSet<&str> = data.buildings.iter().map(|b| b.id.as_str()).collect();
+
+    for (item_id, extractor) in super::store::EXTRACTED_RESOURCES {
+        // A resource with no extractor never lands in a player's
+        // inventory — a geyser is burnt where it sits — so the dataset
+        // carries it as a map node and not as an item.
+        let Some(building_id) = extractor else { continue };
+        if !item_ids.contains(item_id) {
+            return Err(anyhow!("raw resource {} is not an item in the dataset", item_id));
+        }
+        if !building_ids.contains(building_id) {
+            return Err(anyhow!(
+                "raw resource {} names extractor {}, which the dataset has no building for",
+                item_id,
+                building_id
+            ));
+        }
+    }
+
+    for item_id in super::store::HAND_GATHERED_ITEM_IDS {
+        if !item_ids.contains(item_id) {
+            return Err(anyhow!(
+                "hand-gathered item {} is not an item in the dataset",
+                item_id
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 /// Parse the bundled resource-node catalog.
@@ -590,6 +636,78 @@ mod tests {
         }"#;
         let err = parse_str(bad).unwrap_err();
         assert!(format!("{:#}", err).contains("unknown fuel item"));
+    }
+
+    #[test]
+    fn id_tables_reject_a_raw_resource_whose_extractor_is_missing() {
+        // Every raw resource present as an item, no buildings at all —
+        // so the only thing left to fail on is the extractor lookup.
+        let items: String = super::super::store::EXTRACTED_RESOURCES
+            .iter()
+            .filter(|(_, extractor)| extractor.is_some())
+            .map(|(id, _)| {
+                format!(r#"{{"id":"{id}","name":"x","category":"raw","stackSize":1,"isFluid":false}},"#)
+            })
+            .collect();
+        let bad = format!(
+            r#"{{
+              "version":"x","gameVersion":"1.2",
+              "items":[{items}{{"id":"Desc_Wood_C","name":"Wood","category":"raw","stackSize":1,"isFluid":false}}],
+              "buildings":[],"recipes":[],"milestones":[],"beltTiers":[],"pipeTiers":[]
+            }}"#
+        );
+        let data = parse_str(&bad).expect("the dataset itself is well-formed");
+        let err = validate_id_tables(&data).unwrap_err();
+        assert!(format!("{:#}", err).contains("Build_MinerMk1_C"), "got {err:#}");
+    }
+
+    #[test]
+    fn id_tables_reject_a_raw_resource_that_isnt_an_item() {
+        // The typo case: a raw resource id that resolves to nothing
+        // loses its extraction tier, and its whole chain reads as
+        // unreachable — silently, everywhere.
+        let bad = r#"{
+          "version":"x","gameVersion":"1.2",
+          "items":[],
+          "buildings":[{"id":"Build_WaterPump_C","name":"Water Extractor","category":"extraction","powerMw":20,"unlockTier":3}],
+          "recipes":[],"milestones":[],"beltTiers":[],"pipeTiers":[]
+        }"#;
+        let data = parse_str(bad).expect("the dataset itself is well-formed");
+        let err = validate_id_tables(&data).unwrap_err();
+        assert!(format!("{:#}", err).contains("Desc_OreIron_C"), "got {err:#}");
+    }
+
+    #[test]
+    fn id_tables_reject_a_hand_gathered_item_that_isnt_an_item() {
+        // The mirror-image typo: a mistyped pickup makes a Biomass
+        // Burner's fuel unreachable at every tier.
+        let items: String = super::super::store::EXTRACTED_RESOURCES
+            .iter()
+            .filter(|(_, extractor)| extractor.is_some())
+            .map(|(id, _)| format!(r#"{{"id":"{id}","name":"x","category":"raw","stackSize":1,"isFluid":false}},"#))
+            .collect();
+        let bad = format!(
+            r#"{{
+              "version":"x","gameVersion":"1.2",
+              "items":[{items}{{"id":"Desc_Wood_C","name":"Wood","category":"raw","stackSize":1,"isFluid":false}}],
+              "buildings":[
+                {{"id":"Build_MinerMk1_C","name":"Miner Mk.1","category":"extraction","powerMw":5,"unlockTier":0}},
+                {{"id":"Build_OilPump_C","name":"Oil Extractor","category":"extraction","powerMw":40,"unlockTier":5}},
+                {{"id":"Build_WaterPump_C","name":"Water Extractor","category":"extraction","powerMw":20,"unlockTier":3}},
+                {{"id":"Build_FrackingExtractor_C","name":"Resource Well Extractor","category":"extraction","powerMw":0,"unlockTier":8}}
+              ],
+              "recipes":[],"milestones":[],"beltTiers":[],"pipeTiers":[]
+            }}"#
+        );
+        let data = parse_str(&bad).expect("the dataset itself is well-formed");
+        let err = validate_id_tables(&data).unwrap_err();
+        // Wood is present; Leaves is the first one that isn't.
+        assert!(format!("{:#}", err).contains("Desc_Leaves_C"), "got {err:#}");
+    }
+
+    #[test]
+    fn the_bundled_dataset_satisfies_both_id_tables() {
+        validate_id_tables(&load_bundled().unwrap()).expect("bundled dataset agrees with the tables");
     }
 
     #[test]

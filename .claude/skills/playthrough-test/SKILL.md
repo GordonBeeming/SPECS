@@ -1,6 +1,6 @@
 ---
 name: playthrough-test
-description: Run one tier group of the full-playthrough end-to-end game test against the live SPECS app — drive the real UI over the Tauri MCP bridge, plan factories under the game's real constraints, critique the UX hard along the way, and file every finding as a GitHub issue with screenshots. Use when the user says "run the playthrough test", "run the game test", "end-to-end game test", "/playthrough-test", or names a tier group to run. Not for fixing the problems it finds, and not for the Playwright doc screenshots in tests/e2e/.
+description: Run one tier group of the full-playthrough end-to-end game test against the live SPECS app — drive the real UI over the Tauri MCP bridge, plan factories under the game's real constraints, critique the UX hard along the way, file every finding as a GitHub issue with screenshots, then fix the whole batch with delegated teammates and review it past the 95% bar before the next group starts. Use when the user says "run the playthrough test", "run the game test", "end-to-end game test", "/playthrough-test", or names a tier group to run. Not for the Playwright doc screenshots in tests/e2e/.
 ---
 
 # Playthrough test
@@ -21,7 +21,7 @@ A named group past `tier-0` requires every earlier group to already be `done` in
 
 - The dev app is up: `./run.sh` (Vite + Tauri with the MCP bridge).
 - Connected over Tauri MCP — `driver_session` start, then the `webview_*` tools.
-- The `assets` release exists on `GordonBeeming/SPECS`. See [`do-some-testing/references/filing.md`](../do-some-testing/references/filing.md) for creating it, including the release-workflow guard that has to be on `main` first.
+- Screenshots reach GitHub through the `git-workflow:github-upload-file` skill, which owns the `assets` release on `GordonBeeming/SPECS` and hands back the URL to embed. Invoke it rather than uploading by hand; [`do-some-testing/references/filing.md`](../do-some-testing/references/filing.md) covers the naming the run needs and the release-workflow guard behind it.
 
 **How to test is the `do-some-testing` skill's job, not this one's.** It owns driving the UI, the UX lens, capture and ranking, and the filing mechanics. This page owns what to build and what "done" means for each tier group.
 
@@ -49,19 +49,48 @@ Each run owns `docs/test-scenarios/full-playthrough/runs/<YYYY-MM-DD>-<label>/RU
 4. **Critique while you build.** Every hesitation gets logged to the run folder's `hesitations.md` and screenshotted the moment it happens, not reconstructed afterwards. [`do-some-testing/references/ux-critique.md`](../do-some-testing/references/ux-critique.md) carries the lens and the capture format.
 5. **Checkpoint.** Work the tier page's checklist, and run the header's **Validate** button until it comes back clean — warnings included, since supply gaps and per-factory power deficits report as warnings. A finding you genuinely can't clear becomes an issue with an explanation, not a shrug.
 6. **Rank, then file.** Now sort the captured hesitations by severity and file them, then clear the filed entries from `hesitations.md` — a checkpoint always ends with that file empty, so the next tier group starts from a blank log. [`do-some-testing/references/filing.md`](../do-some-testing/references/filing.md) has the mechanics.
-7. **Write the artifacts.** Factory layout pages for anything built or changed this group, checkpoint screenshots, the run index, and the ledger row.
-8. **Report back.** What you built, what worked, the issues filed with their numbers, and the verdict for the group.
+7. **Fix the batch before moving on.** Everything filed this group gets fixed now, so the next group tests an app that no longer has these problems. Plan the batch through `global:plan-delegated` and hand the work to right-sized teammates, review what comes back, and land it. Re-run the group's checkpoint against the fixed build: a finding that survives its own fix is worth more than the original report.
+
+   Nothing leaves the machine until `git-workflow:review-branch` has run over the batch as a whole — the fixes, the scenario doc edits and the run artifacts together, not one commit at a time. A batch of a dozen small fixes lands as one change and deserves one review of that change.
+
+   **The bar is 95% and the loop runs until it's met.** Review, fix what came back, review again, and keep going round; one pass that finds twelve things and fixes ten is not a finished batch. At least 95% of the panel's findings resolved, no unresolved blocker at any severity, and the tier's own checkpoint still green on the fixed build. Only then push and start the next group. If a round keeps surfacing the same class of problem, that's the signal to fix the cause rather than the instances.
+8. **Write the artifacts.** Factory layout pages for anything built or changed this group, checkpoint screenshots, the run index, and the ledger row with the issue numbers and where they landed.
+9. **Report back.** What you built, what worked, the issues filed and fixed with their numbers, and the verdict for the group.
 
 ## Rules that shape the run
 
 **Capture everything, rank afterwards.** Step 4 has no severity filter — if it made you stop and think, it goes in the log. Judging what's worth filing happens in step 6, once you've seen the whole tier group and know which annoyances were one-offs and which are patterns. Filtering at capture time loses the finding before anyone can weigh it.
 
-**Test and report; don't fix.** This skill files issues. It doesn't touch app code, doesn't patch data, and doesn't tidy something up on the way past. If a fix looks trivial and tempting, that's still a separate piece of work with its own plan.
+**Call a freeze before you verify.** Teammates fixing a batch in parallel share one working tree, so a suite run while two of them are mid-edit reports a different answer every few minutes and none of those answers are about the thing you're checking. Worse, it wastes everyone's time chasing failures that belong to someone else's half-finished rename. So the endgame is serialised: every teammate reports done and then stops touching files, and only then does the lead run the gates and the second review. A teammate whose own slice is green should say so with an isolated run and wait, rather than re-running the whole suite against moving ground.
 
-**Stop at the checkpoint.** Finish the group, report, and hand back. Rolling on to the next tier group is the user's call.
+**Revert the fix and watch the test go red.** A test written alongside a fix is the least trustworthy kind, because it was authored by someone who already knew the answer — so prove it can fail. Restore the bug, run the test, confirm it goes red, put the fix back. Fixes in this batch shipped with tests that couldn't see them: one asserted a value that was already the default, so the fix and the bug produced the same result, and another asserted a mutation synchronously when it lands in a microtask, so "not called" held either way.
+
+That second kind hides from revert-to-red as well, since it fails to fail in both directions. The catch for it is a **positive control** in the same test: assert the thing does happen in the case where it should. If the control doesn't pass, the test is measuring nothing at all.
+
+**A test over a derived set has to pin the set's boundary.** Asserting that the five things you expect are present, and a few you don't want are absent, passes just as happily over a set three times the size — which is how a fix that quietly exempted twelve extra items shipped through a green suite. Assert the count, or the whole set, or the nearest neighbour that must stay out. The same trap catches any test written against a computed collection: a filter, a reachability closure, a category exclusion.
+
+**A visual fix owes DESIGN.md an edit.** `CLAUDE.md` requires `DESIGN.md` to be updated *before* component standards, icon usage or visual behaviour change, and the batch at the end of a tier group is exactly where that gets forgotten — the teammates are each holding one issue and nobody is holding the design system. So the brief says it, and the review checks it. A doc that still describes the behaviour you just replaced is worse than no doc: it contradicts the test that now pins the new behaviour, and the next reader has no way to tell which one is stale.
+
+**Don't stop to ask — run the group to the end.** Steps 1 through 9 are the whole job, and a group left sitting at "shall I file these?" or "want me to plan the fixes?" has burnt whatever hours passed before anyone read the question. File the findings, plan the batch, fix it, review it past the bar, push, and only then report. Approval for the run was given when the run was asked for. The one thing that justifies stopping early is a showstopper you cannot get past, and even that gets filed and written into the ledger before you hand back.
+
+**Don't fix mid-tier.** While you're building, app code is off limits, however trivial and tempting the fix looks — stopping to patch something loses the thread of the playthrough and biases what you notice next. Findings go in the log and wait for step 7, where the whole batch is planned and fixed together.
+
+**Stop at the checkpoint.** A group is finished once its findings are filed, fixed, reviewed past the 95% bar and pushed. Then report — and if the run was asked for as a full sweep, or as a named span of tiers, carry straight on into the next group rather than asking whether to. Only a single named group ends the session at its checkpoint.
 
 **One driver.** The app is a single live session with real state, so this runs as one agent start to finish. Several subagents driving one UI would fight over it.
 
 **The app's data is the source of truth.** Plan with the app's numbers even when you know the game disagrees, then file the discrepancy. Catching those gaps is half the point of the run.
 
 **Showstoppers halt the run.** If you genuinely can't continue, file it, write where and why into the ledger with status `blocked at <group>`, and hand back.
+
+**Play it from the map.** The map and the factory you're inside are the two screens a pioneer should be able to run a whole tier from. Claim on the node, drop the pin, open the factory, build. Every trip to a list screen to get something done is a finding — `constraints.md` has the rule and what to log.
+
+**Check the code before calling something missing.** "The map can't do X" and "the map can do X and I couldn't find it" are different bugs with different fixes, and only one of them is a missing feature. So when a flow looks absent, read the slice before you write the finding — the handler may already be there behind a gesture, a modifier key, a hover affordance or a second click. A capability nobody can discover is usually the worse bug, and it gets filed as one: say what the code supports, what the screen showed instead, and what you tried.
+
+**Never work around a flow that doesn't work.** This is acceptance testing: the job is to find the bugs and the missing features, and a workaround hides both. When the map or the factory view can't do something, that *is* the result — file it as a missing feature, write it into the tier artifact, and carry on with the next thing. Don't reach for another screen, the console, or an IPC call to get the same outcome by other means. A run that quietly routed around three dead ends reports a clean tier and ships three bugs.
+
+If the blocked step gates everything after it, the group is `blocked`, not done. Say so in the ledger and hand back.
+
+**Writing to the repo reloads the app.** The dev server watches the whole project root, so saving anything — a hesitation, an artifact, a skill edit — full-reloads the webview and drops you back on Home. Saved work survives; an open dialog or a half-finished form does not. Keep the running log somewhere outside the repo while you build and copy it into the run folder at the checkpoint, and save doc edits when you're between flows rather than mid-form.
+
+**The skill learns from the run.** A playthrough is the only place some of these lessons show up, and the next run starts from whatever this page says. So when the run teaches you something — a flow that only works in one order, a number the app derives differently than you assumed, a rule an earlier run got wrong — write it into this skill, `constraints.md`, or the tier page it belongs to, then and there. Encode the standing rule, not the run that found it: "claim the node before the factory needs it" rather than "on the 12 Aug run the sources panel was empty". Small corrections need no permission; changing what a tier group is *for* is Gordon's call.

@@ -145,7 +145,20 @@ function Grid({
   nameById: Map<string, string>;
 }) {
   return (
-    <div className="grid grid-cols-8 gap-1">
+    /* Tiles are sized by their caption rather than by a fixed column
+       count: two 32px thumbnails of near-identical plates are a coin
+       flip without the name under them, and a `title` tooltip only
+       helps someone who already suspects they're about to pick the
+       wrong one. 84px fits "Reinforced Iron Plate" on two lines, and
+       auto-fill keeps the grid dense in both the narrow new-factory
+       dialog and the full-width strip in the plan designer. */
+    /* Plain buttons, not `radiogroup`/`radio`: that ARIA pattern commits
+       to roving-tabindex arrow-key navigation, which this grid doesn't
+       implement — every tile stays its own tab stop, operated by Tab and
+       Enter/Space like the rest of the app. `aria-pressed` is what
+       carries the selection — the primary border and tint are a second
+       signal, not the only one, per DESIGN.md's no-colour-only rule. */
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-1">
       {ids.map((id) => {
         const picked = id === value;
         const name = nameById.get(id) ?? id;
@@ -153,15 +166,24 @@ function Grid({
           <button
             key={id}
             type="button"
-            title={name}
+            aria-pressed={picked}
             onClick={() => onChange(id)}
-            className={`flex h-10 w-10 items-center justify-center rounded-md border transition-colors ${
+            className={`flex flex-col items-center gap-1 rounded-md border px-1 py-1.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
               picked
                 ? "border-primary bg-primary/10"
                 : "border-border bg-bg hover:border-primary/50 hover:bg-border/40"
             }`}
           >
-            <Icon itemId={id} alt={name} className="h-7 w-7" />
+            {/* The caption is the accessible name; a `title` here would
+                repeat it into a tooltip and double-announce. */}
+            <Icon itemId={id} alt="" className="h-7 w-7 shrink-0" />
+            <span
+              className={`line-clamp-2 w-full break-words text-center text-[10px] leading-tight ${
+                picked ? "text-primary" : "text-fg-muted"
+              }`}
+            >
+              {name}
+            </span>
           </button>
         );
       })}

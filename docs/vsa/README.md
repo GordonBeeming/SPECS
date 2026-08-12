@@ -60,7 +60,12 @@ Things that genuinely cross slices:
   reporting threshold and flow tolerance that go with it. Shared because
   factory, map and resources all print rates on screens read side by
   side, and an inline `toFixed(1)` renders `12.0/min` next to this
-  helper's `12/min` for the same flow.
+  helper's `12/min` for the same flow. `coords.ts`: world coords are
+  stored in Unreal cm and read as `1.9km W · 1.2km N`, so both
+  directions of that conversion live here — map, resources and
+  validation print it, and the new-factory dialog parses it back.
+  `features/resources/display.ts` re-exports `coordChip` for the
+  callers that already imported it from there.
 - `theme/` — brand tokens, dark-mode store.
 - `ui/` — branded primitives (`Button`, `Card`, `Badge`).
 - `testing/` — Vitest setup.

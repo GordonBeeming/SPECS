@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  Factory layout template — copy into runs/<run>/factories/<slug>.html and
+  fill in. Conventions:
+  - The grid is 8×8 m foundations. One .cell = one foundation.
+  - Machines span cells with grid-column/grid-row spans matching their real
+    footprint (Constructor ~1×2, Assembler ~2×2, Manufacturer ~3×3,
+    Refinery ~2×3, Smelter ~1×2, Miner sits on its node off-grid edge).
+  - Every belt segment gets a .belt label: mark + actual items/min.
+    Colour by mark via the mk1..mk6 classes (DESIGN.md belt palette).
+  - Upgrade pages (<slug>-t<N>.html): keep only the changed area plus the
+    "Delta" list — don't re-describe the whole factory.
+-->
+<title>Iron Works — Tier 0 layout</title>
+<style>
+  :root {
+    --bg: #1a1a1a; --bg-raised: #232323; --fg: #e0e0e0; --fg-muted: #d1d5db;
+    --primary: #46cbff; --border: #2c2c2c;
+    --success: #4ade80; --warning: #fbbf24; --danger: #f87171;
+    --mk1: #9ca3af; --mk2: #46cbff; --mk3: #4ade80;
+    --mk4: #fcd34d; --mk5: #fb923c; --mk6: #d8b4fe;
+    --pipe1: #5eead4; --pipe2: #67e8f9;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--fg);
+         font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 24px 0 8px; color: var(--primary); }
+  .meta { color: var(--fg-muted); font-size: 12px; margin-bottom: 16px; }
+  .meta a { color: var(--primary); }
+  table { border-collapse: collapse; width: 100%; max-width: 720px; }
+  th, td { border: 1px solid var(--border); padding: 5px 9px; text-align: left;
+           font-size: 13px; overflow-wrap: anywhere; }
+  th { background: var(--bg-raised); }
+  /* ---- the foundation grid ---- */
+  .grid { display: grid; gap: 2px; margin: 8px 0;
+          grid-template-columns: repeat(var(--cols, 12), minmax(44px, 1fr)); }
+  .cell { background: var(--bg-raised); border: 1px solid var(--border);
+          min-height: 44px; border-radius: 3px; position: relative;
+          font-size: 10px; color: var(--fg-muted); padding: 2px 4px;
+          overflow-wrap: anywhere; min-width: 0; }
+  .machine { background: #1e3a4c; border-color: var(--primary); color: var(--fg);
+             display: flex; align-items: center; justify-content: center;
+             text-align: center; font-size: 11px; }
+  .extractor { background: #2d2433; border-color: var(--mk6); }
+  .gen { background: #213326; border-color: var(--success); }
+  .belt { display: flex; align-items: center; justify-content: center;
+          font-size: 10px; font-weight: 600; }
+  .belt.mk1 { color: var(--mk1); border-color: var(--mk1); }
+  .belt.mk2 { color: var(--mk2); border-color: var(--mk2); }
+  .belt.mk3 { color: var(--mk3); border-color: var(--mk3); }
+  .belt.mk4 { color: var(--mk4); border-color: var(--mk4); }
+  .belt.mk5 { color: var(--mk5); border-color: var(--mk5); }
+  .belt.mk6 { color: var(--mk6); border-color: var(--mk6); }
+  .pipe { font-style: italic; }
+  .pipe.mk1 { color: var(--pipe1); border-color: var(--pipe1); }
+  .pipe.mk2 { color: var(--pipe2); border-color: var(--pipe2); }
+  .split { background: #3a2f1e; border-color: var(--warning); }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px;
+            color: var(--fg-muted); margin: 6px 0 18px; }
+  .legend span::before { content: "■ "; }
+  .ok { color: var(--success); } .warn { color: var(--warning); } .bad { color: var(--danger); }
+  footer { margin-top: 28px; font-size: 11px; color: var(--fg-muted); }
+</style>
+</head>
+<body>
+<h1>Iron Works — Tier 0</h1>
+<p class="meta">
+  Run: <a href="../index.html">2026-08-12-full-sweep</a> ·
+  Map position: 1.7 km W · 1.3 km N ·
+  Claims: iron #N6 and #N13, both Miner Mk.1 at 50% ·
+  Power: 30 MW gen / 28 MW draw (+2 MW)
+</p>
+
+<h2>Purpose</h2>
+<p>The starter iron line. Makes Iron Plate 20/min, Iron Rod 20/min and Screws
+40/min — everything the Tier 0 and Tier 1 milestones ask for in iron, and the
+plates and rods the Space Elevator's first phase needs. Nothing leaves the
+factory yet; Tiers 1&ndash;2 pick the outputs up over logistics links once
+there's somewhere to send them.</p>
+
+<h2>Why two miners at 50% rather than one at 100%</h2>
+<p>A miner feeds a single belt, and a splitter after the port can only divide
+what already came through it. One Normal node at 100% is 60/min, which
+saturates a Mk1 belt exactly and leaves the second smelter to be fed by a
+splitter off that same 60. Two nodes at 50% give 30/min each instead: every
+segment runs at half capacity, each smelter has its own miner, and there is no
+splitter in the ore path at all. The spare headroom on both nodes is what Tier
+1 upgrades into when Mk2 belts arrive.</p>
+
+<h2>Foundation layout (8&times;8 m per cell)</h2>
+<div class="legend">
+  <span style="color: var(--primary)">machine</span>
+  <span style="color: var(--mk6)">extractor</span>
+  <span style="color: var(--success)">generator</span>
+  <span style="color: var(--mk1)">belt Mk1 60</span>
+</div>
+<div class="grid" style="--cols: 6">
+  <div class="cell extractor">Miner Mk.1<br/>#N6 · Normal · 50%</div>
+  <div class="cell belt mk1">Mk1 &rarr; 30/min ore</div>
+  <div class="cell machine">Smelter A<br/>Iron Ingot 30/min</div>
+  <div class="cell belt mk1">Mk1 &rarr; 30/min ingot</div>
+  <div class="cell machine">Constructor<br/>Iron Plate 20/min</div>
+  <div class="cell gen">Biomass Burner<br/>30 MW · Wood 18/min</div>
+
+  <div class="cell extractor">Miner Mk.1<br/>#N13 · Normal · 50%</div>
+  <div class="cell belt mk1">Mk1 &rarr; 30/min ore</div>
+  <div class="cell machine">Smelter B<br/>Iron Ingot 30/min</div>
+  <div class="cell belt mk1">Mk1 &rarr; 30/min ingot</div>
+  <div class="cell machine" style="grid-row: span 2">Constructor &times;2<br/>Iron Rod 30/min</div>
+  <div class="cell"></div>
+
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell belt mk1">Mk1 &rarr; 10/min rod</div>
+  <div class="cell machine">Constructor<br/>Screws 40/min</div>
+</div>
+<p class="meta">Rod output splits 20/min to storage and 10/min into the screw
+constructor. Plate and screw lines each sit on one constructor; the rod line
+needs two because 30/min is more than one constructor makes.</p>
+
+<h2>Belt audit</h2>
+<table>
+  <tr><th>Segment</th><th>Mark</th><th>Carrying</th><th>Cap</th><th>Status</th></tr>
+  <tr><td>Miner #N6 &rarr; Smelter A</td><td>Mk1</td><td>30/min</td><td>60/min</td><td class="ok">50% of cap</td></tr>
+  <tr><td>Miner #N13 &rarr; Smelter B</td><td>Mk1</td><td>30/min</td><td>60/min</td><td class="ok">50% of cap</td></tr>
+  <tr><td>Smelter A &rarr; plate constructor</td><td>Mk1</td><td>30/min</td><td>60/min</td><td class="ok">50% of cap</td></tr>
+  <tr><td>Smelter B &rarr; rod constructors</td><td>Mk1</td><td>30/min</td><td>60/min</td><td class="ok">50% of cap</td></tr>
+  <tr><td>Rod constructors &rarr; screw constructor</td><td>Mk1</td><td>10/min</td><td>60/min</td><td class="ok">17% of cap</td></tr>
+</table>
+
+<h2>Machines and power</h2>
+<table>
+  <tr><th>Building</th><th>Count</th><th>Clock</th><th>Draw</th></tr>
+  <tr><td>Smelter</td><td>2</td><td>100%</td><td>8.0 MW</td></tr>
+  <tr><td>Constructor (plate)</td><td>1</td><td>100%</td><td>4.0 MW</td></tr>
+  <tr><td>Constructor (rod)</td><td>2</td><td>100%</td><td>8.0 MW</td></tr>
+  <tr><td>Constructor (screws)</td><td>1</td><td>100%</td><td>4.0 MW</td></tr>
+  <tr><td>Miner Mk.1</td><td>2</td><td>50%</td><td>4.0 MW</td></tr>
+  <tr><td>Biomass Burner</td><td>1</td><td>100%</td><td class="ok">+30.0 MW</td></tr>
+  <tr><td colspan="3"><strong>Net</strong></td><td class="ok"><strong>+2.0 MW</strong></td></tr>
+</table>
+<p class="meta">The burner is hand-fed with Wood at 18/min. There's no node to
+claim for it and no recipe that makes it, which is what a Tier 0 generator is
+for.</p>
+
+<h2>Imports / exports</h2>
+<table>
+  <tr><th>Direction</th><th>Item</th><th>Rate</th><th>Partner factory</th><th>Transport</th></tr>
+  <tr><td colspan="5">None at Tier 0 &mdash; both starter factories are self-contained.</td></tr>
+</table>
+
+<footer>SPECS full-playthrough run artifact &middot; template v1</footer>
+</body>
+</html>

@@ -44,6 +44,20 @@ const claimedMk2: ResourceNodeRow = {
   itemsPerMinute: 240,
 };
 
+const claimedWithNote: ResourceNodeRow = {
+  ...claimedMk2,
+  id: "BP_Iron3",
+  claim: {
+    ...claimedMk2.claim,
+    minerId: "Build_MinerMk2_C",
+    clockPct: 100,
+    factoryId: null,
+    notes: "Underclocked — saving the rest for the aluminium line.",
+    createdAt: "2026-05-11T00:00:00Z",
+    updatedAt: "2026-05-11T00:00:00Z",
+  },
+};
+
 function renderWithProviders(node: ReactNode) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
@@ -175,12 +189,12 @@ describe("<NodeRow />", () => {
     );
   });
 
-  it("the clock editor's rate preview tracks the unsaved input, not the saved claim (#49)", () => {
+  it("the clock editor's rate preview tracks the unsaved input, not the saved claim", () => {
     // claimedMk2 is a Pure node on Miner Mk.2 (base 120) saved at
     // 100% — 240 ipm, matching its `itemsPerMinute` fixture. Dragging
     // to 50% without saving used to leave the row reading the stale
     // "240 ipm" the whole time; the preview here has to move with the
-    // still-unsaved 50%, and the saved chip must NOT move with it.
+    // still-unsaved 50%.
     renderWithProviders(<NodeRow row={claimedMk2} factories={[]} index={0} preferredMinerId={null} />);
     fireEvent.click(screen.getByLabelText("Edit"));
     expect(screen.getByText("240 ipm at this clock")).toBeInTheDocument();
@@ -191,11 +205,74 @@ describe("<NodeRow />", () => {
     // follows the drag.
     expect(screen.getByText("120 ipm at this clock")).toBeInTheDocument();
     expect(screen.queryByText("240 ipm at this clock")).toBeNull();
-    // The saved chip is a separate number and must not have moved —
-    // this is the exact split the issue is about: a live preview that
-    // silently became the "saved" readout would be just as confusing
-    // as no preview at all.
+  });
+
+  it("the row header follows the open editor rather than holding the saved numbers", () => {
+    // This replaces two answers for one node: the row reading
+    // `Mk2 · 100% · 240 ipm` while the editor under it read `120 ipm at
+    // this clock`. The chip now reports the draft and says that it is
+    // one, so nothing on screen contradicts anything else.
+    renderWithProviders(<NodeRow row={claimedMk2} factories={[]} index={0} preferredMinerId={null} />);
+    fireEvent.click(screen.getByLabelText("Edit"));
+    // Opening alone changes nothing, so the row still reads as saved.
     expect(screen.getByText("240 ipm")).toBeInTheDocument();
+    expect(screen.queryByText("unsaved")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Claim clock percent"), { target: { value: "50" } });
+
+    expect(screen.getByText("120 ipm")).toBeInTheDocument();
+    expect(screen.queryByText("240 ipm")).toBeNull();
+    expect(screen.getByText("50%")).toBeInTheDocument();
+    expect(screen.getByText("unsaved")).toBeInTheDocument();
+  });
+
+  it("keeps the claim's note through an edit that never touched it", async () => {
+    // The editor has no notes field, so every clock nudge and factory
+    // rebind used to send `notes: null` and delete it. The note is the
+    // only record of why a node was underclocked — nothing else can
+    // bring it back.
+    renderWithProviders(
+      <NodeRow row={claimedWithNote} factories={[]} index={0} preferredMinerId={null} />,
+    );
+    fireEvent.click(screen.getByLabelText("Edit"));
+    fireEvent.change(screen.getByLabelText("Claim clock percent"), { target: { value: "50" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() =>
+      expect(resourcesApi.setClaim).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nodeId: "BP_Iron3",
+          clockPct: 50,
+          notes: "Underclocked — saving the rest for the aluminium line.",
+        }),
+      ),
+    );
+  });
+
+  it("leaves a note-free claim's note null rather than inventing one", async () => {
+    renderWithProviders(
+      <NodeRow row={claimedMk2} factories={[]} index={0} preferredMinerId={null} />,
+    );
+    fireEvent.click(screen.getByLabelText("Edit"));
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() =>
+      expect(resourcesApi.setClaim).toHaveBeenCalledWith(
+        expect.objectContaining({ nodeId: "BP_Iron2", notes: null }),
+      ),
+    );
+  });
+
+  it("puts the row back on the saved numbers when the edit is cancelled", () => {
+    renderWithProviders(<NodeRow row={claimedMk2} factories={[]} index={0} preferredMinerId={null} />);
+    fireEvent.click(screen.getByLabelText("Edit"));
+    fireEvent.change(screen.getByLabelText("Claim clock percent"), { target: { value: "50" } });
+    expect(screen.getByText("120 ipm")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Cancel"));
+
+    expect(screen.getByText("240 ipm")).toBeInTheDocument();
+    expect(screen.queryByText("unsaved")).toBeNull();
   });
 
   it("keeps a fractional preview rate instead of rounding it to a target the belt can't actually hit", () => {

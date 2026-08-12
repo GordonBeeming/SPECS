@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { LibraryView } from "./LibraryView";
 import { libraryApi } from "../api";
+import { plannerApi } from "@/features/planner/api";
 import type {
   BeltTier,
   Building,
@@ -70,6 +71,13 @@ beforeEach(() => {
   vi.spyOn(libraryApi, "milestones").mockResolvedValue(milestones);
   vi.spyOn(libraryApi, "beltTiers").mockResolvedValue(beltTiers);
   vi.spyOn(libraryApi, "pipeTiers").mockResolvedValue(pipeTiers);
+  // ItemsTable now gates its own render on this query too (see its
+  // isPending fix), so leaving it unmocked stalls "shows the items
+  // table by default" on the real, un-bridged Tauri invoke forever.
+  vi.spyOn(plannerApi, "listItemTiers").mockResolvedValue([
+    { itemId: "Desc_IronOre_C", tier: 0, standardTier: 0 },
+    { itemId: "Desc_IronIngot_C", tier: 0, standardTier: 0 },
+  ]);
 });
 
 afterEach(() => {

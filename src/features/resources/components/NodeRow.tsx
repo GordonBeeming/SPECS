@@ -19,6 +19,19 @@ import type { ResourceNodeRow } from "../types";
  * everything else in `Finding` belongs to other screens. */
 export type PortCapacityFinding = Extract<Finding, { kind: "claimOverPortCapacity" }>;
 
+/**
+ * The claim as it stands in the open editor, before Save. Held by the
+ * row rather than the editor so the chip above can read the same
+ * numbers: with the state inside the editor, dragging the clock to 50
+ * left the row still reading the saved `100% · 60 ipm` next to the
+ * editor's `30 ipm at this clock` — two answers for one node.
+ */
+interface ClaimDraft {
+  minerId: string;
+  clockPct: number;
+  factoryId: string | null;
+}
+
 interface NodeRowProps {
   row: ResourceNodeRow;
   factories: FactoryPickerCandidate[];
@@ -42,9 +55,21 @@ interface NodeRowProps {
  * without a popover.
  */
 export function NodeRow({ row, factories, index, preferredMinerId, portWarning }: NodeRowProps) {
-  const [editing, setEditing] = useState(false);
+  // Null when the editor is closed — one piece of state answers both
+  // "is it open" and "what does it currently say".
+  const [draft, setDraft] = useState<ClaimDraft | null>(null);
   const label = nodeDisplayLabel(row, index);
   const kindLabel = nodeKindLabel(row);
+
+  const openEditor = () =>
+    setDraft({
+      // A stale claim (e.g. Mk2 saved on an oil node before oil got its
+      // own extractor family) preselects the valid building so a plain
+      // Save repairs it.
+      minerId: claimDefaultExtractor(row, row.claim?.minerId) ?? "",
+      clockPct: row.claim?.clockPct ?? 100,
+      factoryId: row.claim?.factoryId ?? null,
+    });
 
   return (
     <li className="flex flex-col gap-2 px-5 py-2 text-sm">
@@ -61,24 +86,27 @@ export function NodeRow({ row, factories, index, preferredMinerId, portWarning }
               {kindLabel}
             </span>
           )}
-          {row.claim ? (
-            <ClaimChip row={row} factories={factories} portWarning={portWarning} />
+          {row.claim || draft ? (
+            <ClaimChip row={row} factories={factories} portWarning={portWarning} draft={draft} />
           ) : (
             <span className="text-xs text-fg-muted">unclaimed</span>
           )}
         </div>
         <ClaimButton
           row={row}
-          editing={editing}
-          setEditing={setEditing}
+          editing={draft !== null}
+          onOpenEditor={openEditor}
+          onCloseEditor={() => setDraft(null)}
           preferredMinerId={preferredMinerId}
         />
       </div>
-      {editing && (
+      {draft && (
         <ClaimEditor
           row={row}
           factories={factories}
-          onDone={() => setEditing(false)}
+          draft={draft}
+          onChange={setDraft}
+          onDone={() => setDraft(null)}
         />
       )}
     </li>
@@ -89,24 +117,59 @@ function ClaimChip({
   row,
   factories,
   portWarning,
+  draft,
 }: {
   row: ResourceNodeRow;
   factories: FactoryPickerCandidate[];
   portWarning?: PortCapacityFinding;
+  /** When the editor is open, the chip reports what it says rather than
+   * what's saved. */
+  draft: ClaimDraft | null;
 }) {
-  const factory = row.claim?.factoryId
-    ? factories.find((f) => f.id === row.claim?.factoryId)
-    : null;
-  const ipmLabel =
-    row.itemsPerMinute > 0 ? `${Math.round(row.itemsPerMinute)} ipm` : null;
+  const minerId = draft ? draft.minerId : (row.claim?.minerId ?? null);
+  const clockPct = draft ? draft.clockPct : (row.claim?.clockPct ?? 100);
+  const factoryId = draft ? draft.factoryId : (row.claim?.factoryId ?? null);
+  const factory = factoryId ? factories.find((f) => f.id === factoryId) : null;
+  // An unsaved claim has no server-computed rate to read, so the draft
+  // reuses the same preview formula the editor prints below it — the
+  // two lines can't disagree because they're one calculation.
+  const draftExtractor = draft
+    ? row.allowedExtractors.find((e) => e.id === draft.minerId)
+    : undefined;
+  const ipm = draft
+    ? draftExtractor
+      ? previewExtractorIpm(draftExtractor.baseIpm, row.purity, draft.clockPct)
+      : 0
+    : row.itemsPerMinute;
+  const ipmLabel = ipm > 0 ? `${Math.round(ipm)} ipm` : null;
+  // Both badges are verdicts the backend passed on the *saved* claim, so
+  // neither can speak for a draft. The invalid-extractor one is moot the
+  // moment the editor opens (it seeds a valid building). The port cap
+  // can still be judged live, but only while the draft keeps the same
+  // extractor — swap it and the finding's capacity figure is for a
+  // different machine.
+  const showInvalidExtractor = !draft && row.claimInvalidExtractor;
+  // The row can only report the draft while it also says the number
+  // isn't committed yet, since a live figure styled exactly like a saved
+  // one just moves the confusion rather than fixing it. Shown once the
+  // draft actually diverges, so opening the editor doesn't mark an
+  // untouched claim dirty.
+  const unsaved =
+    !!draft &&
+    (draft.minerId !== (row.claim?.minerId ?? "") ||
+      draft.clockPct !== (row.claim?.clockPct ?? 100) ||
+      draft.factoryId !== (row.claim?.factoryId ?? null));
+  const showPortWarning =
+    !!portWarning &&
+    (!draft
+      ? true
+      : draftExtractor?.name === portWarning.extractorName && ipm > portWarning.capacityIpm);
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs">
       <span className="rounded-full border border-border bg-bg px-2 py-0.5 text-fg-muted">
-        {row.claim?.minerId
-          ? extractorChipLabel(row.claim.minerId, row)
-          : "no extractor"}
+        {minerId ? extractorChipLabel(minerId, row) : "no extractor"}
       </span>
-      {row.claimInvalidExtractor && (
+      {showInvalidExtractor && (
         <span
           className="rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-warning"
           title={`This node uses ${row.allowedExtractors[0]?.name ?? "a different extractor"} — edit and save to fix the claim. Rates already use the correct extractor.`}
@@ -114,7 +177,7 @@ function ClaimChip({
           wrong extractor
         </span>
       )}
-      {portWarning && (
+      {showPortWarning && portWarning && (
         <span
           className="rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-warning"
           title={`Outputs ${portWarning.outputIpm.toFixed(1)}${portWarning.isFluid ? " m³/min" : "/min"} — its port caps at ${portWarning.capacityIpm.toFixed(1)}${portWarning.isFluid ? " m³/min" : "/min"} (Mk.${portWarning.capacityMark} ${portWarning.isFluid ? "pipe" : "belt"}), clock to ${floorClockPct(portWarning.maxFittingClockPct)}% to fit`}
@@ -123,7 +186,7 @@ function ClaimChip({
         </span>
       )}
       <span className="rounded-full border border-border bg-bg px-2 py-0.5 text-fg-muted">
-        {formatClockPct(row.claim?.clockPct ?? 100)}%
+        {formatClockPct(clockPct)}%
       </span>
       {ipmLabel && (
         <span className="font-medium text-fg">{ipmLabel}</span>
@@ -133,6 +196,14 @@ function ClaimChip({
           → {factory.name}
         </span>
       )}
+      {unsaved && (
+        <span
+          className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-primary"
+          title="These are the numbers in the editor below — Save to keep them"
+        >
+          unsaved
+        </span>
+      )}
     </div>
   );
 }
@@ -140,16 +211,19 @@ function ClaimChip({
 function ClaimButton({
   row,
   editing,
-  setEditing,
+  onOpenEditor,
+  onCloseEditor,
   preferredMinerId,
 }: {
   row: ResourceNodeRow;
   editing: boolean;
-  setEditing: (b: boolean) => void;
+  onOpenEditor: () => void;
+  onCloseEditor: () => void;
   preferredMinerId: string | null;
 }) {
   const setClaim = useSetNodeClaim();
   const clearClaim = useClearNodeClaim();
+  const toggleEditor = () => (editing ? onCloseEditor() : onOpenEditor());
   if (row.kind === "geyser") {
     // Geysers don't yield items; we still surface them in the list so
     // the user can mark them "owned" via the editor (notes), but the
@@ -157,7 +231,7 @@ function ClaimButton({
     return (
       <Button
         variant="ghost"
-        onClick={() => setEditing(!editing)}
+        onClick={toggleEditor}
         aria-label={editing ? "Cancel" : "Edit"}
         className="px-2 py-1"
       >
@@ -181,7 +255,12 @@ function ClaimButton({
             minerId: claimDefaultExtractor(row, preferredMinerId),
             clockPct: 100,
             factoryId: null,
-            notes: null,
+            // `set_node_claim` writes every field it's given, so a
+            // literal null here is a delete. Unreachable with a note
+            // today (this button only renders on an unclaimed node),
+            // but reading the note through keeps that a property of
+            // the write rather than of the guard above it.
+            notes: row.claim?.notes ?? null,
           });
         }}
         className="px-2 py-1"
@@ -195,7 +274,7 @@ function ClaimButton({
     <div className="flex items-center gap-1">
       <Button
         variant="ghost"
-        onClick={() => setEditing(!editing)}
+        onClick={toggleEditor}
         aria-label={editing ? "Cancel" : "Edit"}
         className="px-2 py-1"
       >
@@ -219,21 +298,18 @@ function ClaimButton({
 function ClaimEditor({
   row,
   factories,
+  draft,
+  onChange,
   onDone,
 }: {
   row: ResourceNodeRow;
   factories: FactoryPickerCandidate[];
+  draft: ClaimDraft;
+  onChange: (next: ClaimDraft) => void;
   onDone: () => void;
 }) {
   const setClaim = useSetNodeClaim();
-  // A stale claim (e.g. Mk2 saved on an oil node before oil got its own
-  // extractor family) preselects the valid building so a plain Save
-  // repairs it.
-  const [minerId, setMinerId] = useState<string>(
-    claimDefaultExtractor(row, row.claim?.minerId) ?? "",
-  );
-  const [clockPct, setClockPct] = useState<number>(row.claim?.clockPct ?? 100);
-  const [factoryId, setFactoryId] = useState<string | null>(row.claim?.factoryId ?? null);
+  const { minerId, clockPct, factoryId } = draft;
 
   // The server says which buildings this node accepts — the same list
   // `set_node_claim` validates against. Geysers come back empty (they
@@ -264,13 +340,17 @@ function ClaimEditor({
               badge: <TierBadge unlockTier={m.unlockTier} />,
             }))}
             value={minerId === "" ? null : minerId}
-            onChange={(next) => setMinerId(next ?? "")}
+            onChange={(next) => onChange({ ...draft, minerId: next ?? "" })}
           />
         </label>
       )}
       <label className="flex flex-col gap-1 text-xs">
         <span className="text-fg-muted">Clock</span>
-        <ClockInput value={clockPct} onChange={setClockPct} ariaLabel="Claim clock percent" />
+        <ClockInput
+          value={clockPct}
+          onChange={(next) => onChange({ ...draft, clockPct: next })}
+          ariaLabel="Claim clock percent"
+        />
         {row.kind !== "geyser" && (
           <span className="text-[11px] font-medium text-fg">
             {num(previewIpm)} ipm at this clock
@@ -285,7 +365,7 @@ function ClaimEditor({
           placeholder="— none —"
           options={factoryPickerOptions(row, factories)}
           value={factoryId}
-          onChange={setFactoryId}
+          onChange={(next) => onChange({ ...draft, factoryId: next })}
         />
       </label>
       <div className="flex items-end gap-2">
@@ -297,7 +377,12 @@ function ClaimEditor({
                 minerId: minerId === "" ? null : minerId,
                 clockPct,
                 factoryId,
-                notes: null,
+                // This editor has no notes field, so the note is
+                // pass-through, not something being saved. Sending null
+                // deleted it on every clock nudge and factory rebind —
+                // and the note is the only record of why a node was
+                // underclocked, so nothing else could bring it back.
+                notes: row.claim?.notes ?? null,
               },
               { onSuccess: onDone },
             );
