@@ -270,20 +270,23 @@ segment now reads "needs 2 belts at Mk.3 (270/min each)", down from 3 at Mk.2.
 | Tiers 3–4 | Steel Mill part-built, checkpoint not attempted |
 
 #133 sat draft on two blockers, both of them regressions its own fixes had
-introduced, and both invisible to a green suite. #134 was a plan save
-dropping the backfill; #135 demoted a single machine clocked past its output
-port to a note, when that's the one belt case a player genuinely can't build
-around. They went out as PRs #138 (`7226f122`) and #140 (`46bc83d3`), and #133
-merged behind them.
+introduced, and both invisible to a green suite. #134 was a plan save dropping
+the backfill; #135 demoted a single machine clocked past its output port to a
+note, when that's the one belt case a player genuinely can't build around. Both
+were fixed on the same branch before it merged (`MachineOverPortCapacity` first
+appears in `d33c37c0`), so #133 carries its own repairs rather than handing them
+to a follow-up.
 
-Two more shipped after that. #141 (`022080a1`) stopped a re-save wiping the
-transport on every import route, and stopped Home guessing which factory a
-claim belongs to. #144 (`c3ca7a74`) closed an ordering hole in #141's own fix,
-where two import rows drawing the same item from the same producer could end up
-swapping each other's belts.
+Four PRs shipped after it. #138 (`7226f122`) queued export raises instead of
+racing them, for #137. #140 (`46bc83d3`) narrowed that queue's comment to what
+it actually covers, leaving #139 open. #141 (`022080a1`) stopped a re-save
+wiping the transport on every import route and stopped Home guessing which
+factory a claim belongs to, and #144 (`c3ca7a74`) closed an ordering hole in
+#141's own fix, where two import rows drawing the same item from the same
+producer could swap each other's belts.
 
-Five PRs merged, 32 issues filed and 21 closed. The suite went from 470 to 523
-vitest and 379 to 406 cargo.
+Six PRs merged, 32 issues filed and 21 closed. Vitest went from 470 tests to
+523, cargo from 379 to 406.
 
 ### The pattern this run keeps producing
 
@@ -299,9 +302,10 @@ undo, and a queue that only covered one React root while the graph, the Sources
 panel and the popped-out window each had their own.
 
 What caught these was reverting each fix and watching a named test go red, then
-driving the built app. Neither happens on its own, and the second one is where
-the findings actually came from: every issue in this run came out of playing the
-app rather than reading a diff.
+driving the built app. Neither happens on its own, and playing is where most of
+the run's findings came from, though not all: #120 and #121 surfaced while
+fixing something else, and a review bot caught the wrong PR attribution in this
+very section. No single method covers it.
 
 ### Still open
 
