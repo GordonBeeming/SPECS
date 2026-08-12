@@ -1159,4 +1159,71 @@ mod tests {
             report.findings
         );
     }
+
+    #[test]
+    fn playthrough_validate_warns_when_one_machine_outruns_its_own_output_port() {
+        // The reported repro, end-to-end through the real planner and
+        // the recipe pin a player sets from the plan designer's picker:
+        // Tier 3, 225/min of Screws on Steel Screws, which sizes to one
+        // Constructor at 86.5% because a single machine covers 260. The
+        // 225/min leaving it used to read as a note offering a second
+        // belt — and you cannot attach two belts to one output port, so
+        // an unbuildable plan passed a clean sweep. It has to be a
+        // warning, and the only fixes are the clock or more machines.
+        let db = open_test_db(3);
+        let gd = GameData::from_bundled().unwrap();
+        insert_factory(&db, "f1", "Iron Works");
+        db.with(|c| alts_repo::alt_unlock(c, "Recipe_Alternate_Screw_2_C", NOW)).unwrap();
+        db.with(|c| {
+            plan_repo::plan_recipes_replace(
+                c,
+                "f1",
+                &[("Desc_IronScrew_C".into(), "Recipe_Alternate_Screw_2_C".into())],
+                NOW,
+            )
+        })
+        .unwrap();
+        db.with(|c| {
+            plan_repo::plan_targets_replace(
+                c,
+                "f1",
+                &[plan_repo::PlanTargetRow {
+                    item_id: "Desc_IronScrew_C".into(),
+                    ipm: 225.0,
+                    export_ipm: None,
+                    sort_order: 0,
+                }],
+                NOW,
+            )
+        })
+        .unwrap();
+
+        let report = validate_impl(&db, &gd).unwrap();
+        let capacity: Vec<&Finding> =
+            report.findings.iter().filter(|f| f.category == Category::Capacity).collect();
+        assert_eq!(capacity.len(), 1, "got {capacity:?}");
+        assert_eq!(capacity[0].severity, Severity::Warning);
+        assert!(
+            matches!(&capacity[0].kind,
+                FindingKind::MachineOverPortCapacity {
+                    item_id,
+                    recipe_name,
+                    machine_count,
+                    per_machine_ipm,
+                    capacity_ipm,
+                    max_fitting_clock_pct,
+                    machines_needed,
+                    ..
+                }
+                    if item_id == "Desc_IronScrew_C"
+                        && recipe_name == "Alternate: Steel Screws"
+                        && *machine_count == 1
+                        && (*per_machine_ipm - 225.0).abs() < 0.01
+                        && (*capacity_ipm - 120.0).abs() < 0.01
+                        && (*max_fitting_clock_pct - 46.153_846).abs() < 0.01
+                        && *machines_needed == 2),
+            "missing port-capacity warning: {:?}",
+            report.findings
+        );
+    }
 }

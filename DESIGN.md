@@ -585,6 +585,20 @@ the whole-playthrough sweep on mount. Presentation rules:
   output port is unbuildable, and the warning clears the moment the
   claim's clock comes down. Softening a warning to a note to reach a
   clean sweep is the failure this level exists to prevent.
+- **One port is one belt, wherever the port is.** The aggregate/single
+  split is about how many ports the flow leaves through, not about
+  extractors versus machines. A machine has one output port per item
+  it makes, exactly as a miner does, and a splitter after either only
+  divides what already came through. So a bank's rate divided by its
+  machine count, above the best carrier unlocked, warns and names the
+  two moves that exist — clock it down, or spread the same output over
+  more machines — instead of a belt count. Several recipes reach that
+  from one machine at stock clock: Biomass (Wood) is 300/min against
+  Tier 0's 60/min belt. What's left for the note is flow that
+  genuinely does leave through several ports and merge. The warning's
+  unit is the producing node, never the segment, because one machine
+  feeding two consumers splits into two under-cap segments while its
+  single port still carries the sum.
 - The hard-drive shopping list is its own warning-tinted card above
   the categories — it's the actionable output, not just another
   finding row.

@@ -230,6 +230,7 @@ function findingTarget(f: Finding): (() => void) | null {
     case "generatorFuelShort":
     case "generatorFuelHandGathered":
       return () => nav.goTo("power");
+    case "machineOverPortCapacity":
     case "segmentOverBeltCapacity":
     case "segmentOverPipeCapacity":
     case "fluidSegmentNoPipeAtTier": {
@@ -292,6 +293,15 @@ function findingText(f: Finding): string {
     // it described something they cannot physically do.
     case "generatorFuelHandGathered":
       return `${f.factoryName}: generators burn ${f.demandIpm.toFixed(1)}/min of ${f.itemName} — every route to it starts with hand-gathered pickups, so no build removes the gathering`;
+    // A machine has one output port per item, exactly as a miner does,
+    // so this names the two moves that actually exist — the clock and
+    // the machine count. "Needs N belts" is the answer to a different
+    // question and there's nowhere to attach the second one.
+    case "machineOverPortCapacity": {
+      const unit = f.isFluid ? " m³/min" : "/min";
+      const carrier = f.isFluid ? "pipe" : "belt";
+      return `${f.factoryName}: each ${f.buildingName} on ${f.recipeName} pushes ${f.perMachineIpm.toFixed(1)}${unit} of ${f.itemName} through one output port, over the Mk.${f.capacityMark} ${carrier}'s ${f.capacityIpm.toFixed(1)}${unit} — clock to ${floorClockPct(f.maxFittingClockPct)}% or spread the bank over ${f.machinesNeeded} machines`;
+    }
     // A layout fact, not a problem to fix: the player lays the belts and
     // the segment still reads the same rate, so wording it as a demand
     // ("or an underclock") asked for something that never lands.

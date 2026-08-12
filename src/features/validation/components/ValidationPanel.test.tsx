@@ -312,6 +312,53 @@ describe("<ValidationPanel />", () => {
     expect(screen.getByText("1 note")).toBeInTheDocument();
   });
 
+  it("counts a machine over its own output port as a warning and offers the clock, not belts", async () => {
+    // The reported repro: one Constructor on Steel Screws at 225/min
+    // against a 120/min Mk.2 belt. There is one output port, so the
+    // "needs 2 belts" phrasing describes a build nobody can lay, and a
+    // note would let a plan that cannot be built pass a clean sweep.
+    const report: ValidationReport = {
+      ...cleanReport,
+      findings: [
+        {
+          severity: "warning",
+          category: "capacity",
+          kind: "machineOverPortCapacity",
+          factoryId: "f1",
+          factoryName: "Iron Works",
+          nodeKey: "recipe:Desc_IronScrew_C",
+          recipeName: "Alternate: Steel Screws",
+          buildingName: "Constructor",
+          itemId: "Desc_IronScrew_C",
+          itemName: "Screws",
+          machineCount: 1,
+          perMachineIpm: 225,
+          capacityIpm: 120,
+          capacityMark: 2,
+          isFluid: false,
+          maxFittingClockPct: 46.153846,
+          machinesNeeded: 2,
+        },
+      ],
+    };
+    vi.spyOn(validationApi, "validate").mockResolvedValue(report);
+    const onClose = vi.fn();
+    renderWithProviders(<ValidationPanel onClose={onClose} />);
+    const row = await screen.findByText(
+      /Iron Works: each Constructor on Alternate: Steel Screws pushes 225\.0\/min of Screws through one output port, over the Mk\.2 belt's 120\.0\/min — clock to 46% or spread the bank over 2 machines$/,
+    );
+    // Floored, never rounded: 47% still overshoots the port.
+    expect(row.textContent).not.toMatch(/clock to 47%/);
+    expect(screen.getByText("1 warning")).toBeInTheDocument();
+    expect(screen.queryByText(/\d+ notes?$/)).not.toBeInTheDocument();
+
+    fireEvent.click(row.closest("button")!);
+    await waitFor(() => {
+      expect(useNavStore.getState().pendingRoute).toBe("plan");
+      expect(onClose).toHaveBeenCalled();
+    });
+  });
+
   it("counts an over-capacity pipe segment as a note too", async () => {
     const report: ValidationReport = {
       ...cleanReport,

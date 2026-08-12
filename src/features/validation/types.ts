@@ -128,6 +128,28 @@ export type FindingKind =
       demandIpm: number;
     }
   | {
+      /** One machine of a bank pushes more through its single output
+       * port than a belt/pipe carries. The same wall as
+       * `claimOverPortCapacity` one layer in, so it warns rather than
+       * notes: parallel belts don't help, but a lower clock or more
+       * machines do, and the app reads both as fixed. */
+      kind: "machineOverPortCapacity";
+      factoryId: string;
+      factoryName: string;
+      nodeKey: string;
+      recipeName: string;
+      buildingName: string;
+      itemId: string;
+      itemName: string;
+      machineCount: number;
+      perMachineIpm: number;
+      capacityIpm: number;
+      capacityMark: number;
+      isFluid: boolean;
+      maxFittingClockPct: number;
+      machinesNeeded: number;
+    }
+  | {
       kind: "segmentOverBeltCapacity";
       factoryId: string;
       factoryName: string;
