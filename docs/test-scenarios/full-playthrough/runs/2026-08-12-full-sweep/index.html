@@ -44,13 +44,21 @@
 Played from the map and the factory view only, per
 <a href="../../constraints.md">constraints.md</a></p>
 
-<p><span class="verdict with-bugs">Tier 0 complete — 9 issues found, filed and fixed</span></p>
+<p><span class="verdict with-bugs">in progress — Tiers 0–4 complete, Tiers 5–9 remaining</span></p>
 
 <p>Tier 0 could not be powered at all when the run started: the Biomass Burner
 is the only generator the tier unlocks, and its fuel picker offered nothing at
 any tier. Everything else in the group built and supplied cleanly first time.
 After the batch landed, Validate reads <strong>"Nothing to fix at T0"</strong>
 — 0 errors, 0 warnings, 2 notes for the hand-fed burners.</p>
+
+<p>Tiers 3–4 brought coal power online — 12 generators, 900.0 MW, on a
+540 m³/min water feed split across two Mk.1 pipe headers to stay under the
+300 m³/min cap — and closed the loop on steel, motors and Phase 2. It
+reached its checkpoint clean (0 errors, 0 warnings, 5 notes), but couldn't
+retire the 11 biomass burners coal power made redundant: <code>ConfirmDeleteButton</code>
+never arms on either of its two call sites in the Power panel (#147), so three
+"burns Wood" notes on Validate are permanent until that ships a fix.</p>
 
 <h2>Tier index</h2>
 <table>
@@ -61,8 +69,18 @@ After the batch landed, Validate reads <strong>"Nothing to fix at T0"</strong>
     <td>Nothing to fix — 60 MW gen / 49 MW draw (+11 MW)</td>
     <td>#113–#121</td>
   </tr>
-  <tr><td>Tier 1–2</td><td class="muted">Not started</td><td class="muted">—</td><td class="muted">—</td></tr>
-  <tr><td>Tier 3–4</td><td class="muted">Not started</td><td class="muted">—</td><td class="muted">—</td></tr>
+  <tr>
+    <td>Tier 1–2</td>
+    <td>Complete</td>
+    <td>Nothing to fix — 330 MW gen / 274 MW draw (+56 MW)</td>
+    <td>#127–#132</td>
+  </tr>
+  <tr>
+    <td>Tier 3–4</td>
+    <td>Complete</td>
+    <td>0 errors, 0 warnings, 5 notes — 1230.0 MW gen / 683.3 MW draw (+546.7 MW)</td>
+    <td>#147–#160</td>
+  </tr>
   <tr><td>Tier 5–6</td><td class="muted">Not started</td><td class="muted">—</td><td class="muted">—</td></tr>
   <tr><td>Tier 7–8</td><td class="muted">Not started</td><td class="muted">—</td><td class="muted">—</td></tr>
   <tr><td>Tier 9</td><td class="muted">Not started</td><td class="muted">—</td><td class="muted">—</td></tr>
@@ -80,8 +98,38 @@ After the batch landed, Validate reads <strong>"Nothing to fix at T0"</strong>
   <tr>
     <td><a href="factories/copper-works.html">Copper Works</a></td>
     <td>1.4 km W · 1.0 km N</td>
-    <td>Wire 30/min, Cable 15/min, Concrete 15/min</td>
+    <td>Wire 30/min, Cable 15/min, Concrete 15/min (unchanged since Tier 0; now also exports Concrete and Cable)</td>
     <td>+9 MW</td>
+  </tr>
+  <tr>
+    <td><a href="factories/steel-mill-t4.html">Steel Mill (upgrade)</a></td>
+    <td>2.7 km W · 0.9 km N</td>
+    <td>Steel Beam 40/min (30 export), Steel Pipe 39/min (15 export), Encased Industrial Beam 4/min</td>
+    <td>&minus;148.3 MW</td>
+  </tr>
+  <tr>
+    <td><a href="factories/motor-works.html">Motor Works</a></td>
+    <td>1.5 km W · 1.5 km N</td>
+    <td>Stator 5/min, Motor 2.5/min, Automated Wiring 2.5/min</td>
+    <td>&minus;128.5 MW</td>
+  </tr>
+  <tr>
+    <td><a href="factories/coal-power-station.html">Coal Power Station</a></td>
+    <td>0.7 km W · 0.2 km N</td>
+    <td>12&times; Coal Generator, power only</td>
+    <td>+802.7 MW</td>
+  </tr>
+  <tr>
+    <td><a href="factories/elevator-yard-t4.html">Elevator Yard (upgrade)</a></td>
+    <td>2.1 km W · 1.0 km N</td>
+    <td>Smart Plating 5/min, Versatile Framework 5/min</td>
+    <td>&minus;50.4 MW</td>
+  </tr>
+  <tr>
+    <td><a href="factories/iron-works-t4.html">Iron Works (upgrade)</a></td>
+    <td>1.7 km W · 1.3 km N</td>
+    <td>Unchanged product list; Rotor raised 9 &rarr; 11.67/min</td>
+    <td>&minus;227.3 MW</td>
   </tr>
 </table>
 
@@ -102,6 +150,36 @@ After the batch landed, Validate reads <strong>"Nothing to fix at T0"</strong>
 #120 while checking whether rebinding a node preserved a deliberate underclock,
 #121 by #113 removing the wall that had been hiding it.</p>
 
+<p class="muted">Tiers 3–4 filed #147–#160, in severity order:</p>
+<table>
+  <tr><th>#</th><th>Severity</th><th>Title</th></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/147">147</a></td><td class="sev-blocking-flow">blocking-flow</td><td>ConfirmDeleteButton never arms, so nothing that uses it can be deleted</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/148">148</a></td><td class="sev-blocking-flow">blocking-flow</td><td>"import instead" adds supply on top of local production, then counts the sink as demand</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/149">149</a></td><td class="sev-blocking-flow">blocking-flow</td><td>Export rate and local-build fields accept a number and change nothing</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/150">150</a></td><td class="sev-blocking-flow">blocking-flow</td><td>Raising a source cap creates an underfed link; "Raise target" is only offered on the Add-source path</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/151">151</a></td><td class="sev-blocking-flow">blocking-flow</td><td>"What should &lt;factory&gt; make?" can't be dismissed without deleting the factory, and doesn't block the page</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/152">152</a></td><td class="sev-blocking-flow">blocking-flow</td><td>Window geometry restores onto an unavailable monitor and the splash never clears</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/153">153</a></td><td>friction</td><td>A restored map view can leave bare canvas down one side</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/154">154</a></td><td>friction</td><td>The supply banner says "(claim more nodes)" five times and none of them are clickable</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/155">155</a></td><td>friction</td><td>Add product defaults every item to 60/min</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/156">156</a></td><td>friction</td><td>The "import instead" link is a 9px-tall hit target at fit-view zoom</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/157">157</a></td><td>friction</td><td>Water extractor placement defaults to "— none —" and the group disappears once saved</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/158">158</a></td><td>friction</td><td>The optimizer picks alts that introduce a new raw resource for small ore savings</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/159">159</a></td><td>polish</td><td>Small number and label nits on the map card and power panel</td></tr>
+  <tr><td><a href="https://github.com/GordonBeeming/SPECS/issues/160">160</a></td><td>polish</td><td>The playthrough switcher menu ignores Escape and never takes focus</td></tr>
+</table>
+<p class="muted">No showstoppers — the group reached its checkpoint. #147 is
+the headline: it's the direct cause of the three permanent "burns Wood"
+notes on Validate.</p>
+
+<h2>Grid statement</h2>
+<table>
+  <tr><th>After group</th><th>Generation</th><th>Draw</th><th>Headroom</th></tr>
+  <tr><td>Tier 0</td><td>60 MW</td><td>49 MW</td><td>+11 MW</td></tr>
+  <tr><td>Tiers 1–2</td><td>330 MW</td><td>274 MW</td><td>+56 MW</td></tr>
+  <tr><td>Tiers 3–4</td><td>1230.0 MW</td><td>683.3 MW</td><td>+546.7 MW</td></tr>
+</table>
+
 <h2>What the run got wrong</h2>
 <p>Four of the nine issues asserted something about the code that turned out to
 be false. Kept here because a run that only records its hits isn't much of a
@@ -119,6 +197,13 @@ record.</p>
   <li><a href="screenshots/2026-08-12-full-sweep-t0-biomass-burner-no-fuel.png">#113 — fuel picker empty</a></li>
   <li><a href="screenshots/2026-08-12-full-sweep-t0-product-list-tiers.png">#115 — product picker tiers</a></li>
   <li><a href="screenshots/2026-08-12-full-sweep-t0-hand-fed-fuel-warning.png">#121 — hand-fed fuel warning</a></li>
+  <li><a href="screenshots/2026-08-12-full-sweep-t3-4-validate-clean.png">Tiers 3–4 checkpoint — Validate clean</a></li>
+  <li><a href="screenshots/2026-08-12-full-sweep-t3-4-steel-mill-plan.png">Steel Mill plan</a></li>
+  <li><a href="screenshots/2026-08-12-full-sweep-t3-4-power-view-grid.png">Power view — the coal + biomass grid</a></li>
+  <li><a href="screenshots/2026-08-12-full-sweep-t3-4-remove-generator-never-arms.png">Remove-generator bug — the confirm never arms</a></li>
+  <li><a href="screenshots/2026-08-12-full-sweep-t3-4-import-instead-stacks-and-sinks-rotor.png">"Import instead" stacks and sinks Rotor</a></li>
+  <li><a href="screenshots/2026-08-12-full-sweep-t3-4-rotor-short-and-sinking-at-once.png">Rotor short and sinking at once</a></li>
+  <li><a href="screenshots/2026-08-12-full-sweep-t3-4-power-factory-product-modal-trap.png">Power-only factory's product modal trap</a></li>
 </ul>
 
 <footer>SPECS full-playthrough run artifact &middot; template v1</footer>
