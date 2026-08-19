@@ -336,7 +336,7 @@ Filed as #147–#160, in severity order.
 | - | -------- | ----- |
 | #147 | blocking-flow | ConfirmDeleteButton never arms, so nothing that uses it can be deleted |
 | #148 | blocking-flow | "import instead" adds supply on top of local production, then counts the sink as demand |
-| #149 | blocking-flow | Raising a product's Export rate saves, but production isn't recomputed to cover it |
+| #149 | blocking-flow | Export rate and local-build fields accept a number and change nothing |
 | #150 | blocking-flow | Raising a source cap creates an underfed link; "Raise target" is only offered on the Add-source path |
 | #151 | blocking-flow | "What should &lt;factory&gt; make?" can't be dismissed without deleting the factory, and doesn't block the page |
 | #152 | blocking-flow | Window geometry restores onto an unavailable monitor and the splash never clears |
@@ -347,7 +347,7 @@ Filed as #147–#160, in severity order.
 | #157 | friction | Water extractor placement defaults to "— none —" and the group disappears once saved |
 | #158 | friction | The optimizer picks alts that introduce a new raw resource for small ore savings |
 | #159 | polish | Small number and label nits on the map card and power panel |
-| #160 | polish | The playthrough switcher menu ignores Escape and outside clicks, and never takes focus |
+| #160 | polish | The playthrough switcher menu ignores Escape and never takes focus |
 
 No showstoppers — the group reached its checkpoint. #147 is the headline:
 it's the direct cause of the three Wood-burning notes that can't be cleared,
