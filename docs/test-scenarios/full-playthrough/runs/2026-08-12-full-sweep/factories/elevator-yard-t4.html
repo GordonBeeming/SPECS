@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Elevator Yard — Tier 4 upgrade delta</title>
+<style>
+  :root {
+    --bg: #1a1a1a; --bg-raised: #232323; --fg: #e0e0e0; --fg-muted: #d1d5db;
+    --primary: #46cbff; --border: #2c2c2c;
+    --success: #4ade80; --warning: #fbbf24; --danger: #f87171;
+    --mk1: #9ca3af; --mk2: #46cbff; --mk3: #4ade80;
+    --mk4: #fcd34d; --mk5: #fb923c; --mk6: #d8b4fe;
+    --pipe1: #5eead4; --pipe2: #67e8f9;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--fg);
+         font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 24px 0 8px; color: var(--primary); }
+  .meta { color: var(--fg-muted); font-size: 12px; margin-bottom: 16px; }
+  .meta a { color: var(--primary); }
+  table { border-collapse: collapse; width: 100%; max-width: 760px; }
+  th, td { border: 1px solid var(--border); padding: 5px 9px; text-align: left;
+           font-size: 13px; overflow-wrap: anywhere; }
+  th { background: var(--bg-raised); }
+  .grid { display: grid; gap: 2px; margin: 8px 0;
+          grid-template-columns: repeat(var(--cols, 12), minmax(44px, 1fr)); }
+  .cell { background: var(--bg-raised); border: 1px solid var(--border);
+          min-height: 44px; border-radius: 3px; position: relative;
+          font-size: 10px; color: var(--fg-muted); padding: 2px 4px;
+          overflow-wrap: anywhere; min-width: 0; }
+  .machine { background: #1e3a4c; border-color: var(--primary); color: var(--fg);
+             display: flex; align-items: center; justify-content: center;
+             text-align: center; font-size: 11px; }
+  .belt { display: flex; align-items: center; justify-content: center;
+          font-size: 10px; font-weight: 600; }
+  .belt.mk3 { color: var(--mk3); border-color: var(--mk3); }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px;
+            color: var(--fg-muted); margin: 6px 0 18px; }
+  .legend span::before { content: "■ "; }
+  .ok { color: var(--success); } .warn { color: var(--warning); }
+  footer { margin-top: 28px; font-size: 11px; color: var(--fg-muted); }
+</style>
+</head>
+<body>
+<h1>Elevator Yard — Tier 4 (upgrade delta)</h1>
+<p class="meta">
+  Run: <a href="../index.html">2026-08-12-full-sweep</a> ·
+  Map position: 2.1 km W · 1.0 km N ·
+  Power: 50.4 MW draw, up from 35.4 MW ·
+  Claims: none, unchanged
+</p>
+
+<h2>What changed</h2>
+<p>Was 3 machines at 35.4 MW, making Smart Plating 5/min for Phase 1. Now 4
+machines at 50.4 MW: Smart Plating is unchanged, and Versatile Framework
+5/min was added for Phase 2 — one Assembler at 100%, 15.0 MW, which accounts
+for the whole power increase.</p>
+
+<table>
+  <tr><th></th><th>Start of group</th><th>End of group</th></tr>
+  <tr><td>Machines</td><td>3</td><td>4</td></tr>
+  <tr><td>Power</td><td>35.4 MW</td><td>50.4 MW</td></tr>
+  <tr><td>Products</td><td>Smart Plating 5/min</td><td>Smart Plating 5/min, Versatile Framework 5/min</td></tr>
+</table>
+
+<h2>Added: Versatile Framework line</h2>
+<div class="grid" style="--cols: 6">
+  <div class="cell machine">Assembler @83%<br/>Smart Plating<br/>5/min (unchanged)</div>
+  <div class="cell machine">Assembler @83%<br/>Smart Plating<br/>5/min (unchanged)</div>
+  <div class="cell machine">Assembler @83%<br/>Smart Plating<br/>5/min (unchanged)</div>
+  <div class="cell belt mk3">Mk3 &rarr; 5.0/min versatile framework</div>
+  <div class="cell machine">Assembler @100%<br/>Versatile Framework<br/>5/min (new)</div>
+  <div class="cell"></div>
+</div>
+
+<h2>A local steel line was built, then replaced by an import</h2>
+<p>Between the two snapshots above, Elevator Yard briefly smelted its own
+steel to cover Steel Beam demand: an Iron Ingot line, a Steel Ingot line and
+a Steel Beam line, plus coal, iron and copper claims of its own, taking it to
+a peak of 9 machines and 104.3 MW. Once the Steel Mill's export cap was
+raised to cover the full 30/min the Yard needed, all three local lines and
+their claims came out, dropping the factory to 3 machines and 35.4 MW before
+the Versatile Framework assembler went back in. Net effect: 6 machines and
+53.9 MW built and then removed within the group, none of it visible in the
+before/after numbers above. It's the clearest example in this run of why
+pulling an intermediate over a logistics link beats smelting it locally —
+the Yard never needed its own ore claims at all.</p>
+
+<h2>Imports / exports</h2>
+<table>
+  <tr><th>Direction</th><th>Item</th><th>Rate</th><th>Partner factory</th><th>Transport</th></tr>
+  <tr><td>Import</td><td>Reinforced Iron Plate</td><td>5/min</td><td><a href="iron-works-t4.html">Iron Works</a></td><td>Belt, 761 m</td></tr>
+  <tr><td>Import</td><td>Modular Frame</td><td>2.5/min</td><td><a href="iron-works-t4.html">Iron Works</a></td><td>Belt, 761 m</td></tr>
+  <tr><td>Import</td><td>Rotor</td><td>5/min</td><td><a href="iron-works-t4.html">Iron Works</a></td><td>Belt, 761 m</td></tr>
+  <tr><td>Import</td><td>Steel Beam</td><td>30/min</td><td><a href="steel-mill-t4.html">Steel Mill</a></td><td>Belt</td></tr>
+</table>
+
+<footer>SPECS full-playthrough run artifact &middot; template v1</footer>
+</body>
+</html>

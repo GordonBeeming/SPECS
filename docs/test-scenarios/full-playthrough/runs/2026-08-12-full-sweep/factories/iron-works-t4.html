@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Iron Works — Tier 4 upgrade delta</title>
+<style>
+  :root {
+    --bg: #1a1a1a; --bg-raised: #232323; --fg: #e0e0e0; --fg-muted: #d1d5db;
+    --primary: #46cbff; --border: #2c2c2c;
+    --success: #4ade80; --warning: #fbbf24; --danger: #f87171;
+    --mk1: #9ca3af; --mk2: #46cbff; --mk3: #4ade80;
+    --mk4: #fcd34d; --mk5: #fb923c; --mk6: #d8b4fe;
+    --pipe1: #5eead4; --pipe2: #67e8f9;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--fg);
+         font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 24px 0 8px; color: var(--primary); }
+  .meta { color: var(--fg-muted); font-size: 12px; margin-bottom: 16px; }
+  .meta a { color: var(--primary); }
+  table { border-collapse: collapse; width: 100%; max-width: 760px; }
+  th, td { border: 1px solid var(--border); padding: 5px 9px; text-align: left;
+           font-size: 13px; overflow-wrap: anywhere; }
+  th { background: var(--bg-raised); }
+  .grid { display: grid; gap: 2px; margin: 8px 0;
+          grid-template-columns: repeat(var(--cols, 12), minmax(44px, 1fr)); }
+  .cell { background: var(--bg-raised); border: 1px solid var(--border);
+          min-height: 44px; border-radius: 3px; position: relative;
+          font-size: 10px; color: var(--fg-muted); padding: 2px 4px;
+          overflow-wrap: anywhere; min-width: 0; }
+  .machine { background: #1e3a4c; border-color: var(--primary); color: var(--fg);
+             display: flex; align-items: center; justify-content: center;
+             text-align: center; font-size: 11px; }
+  .belt { display: flex; align-items: center; justify-content: center;
+          font-size: 10px; font-weight: 600; }
+  .belt.mk3 { color: var(--mk3); border-color: var(--mk3); }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px;
+            color: var(--fg-muted); margin: 6px 0 18px; }
+  .legend span::before { content: "■ "; }
+  .ok { color: var(--success); } .warn { color: var(--warning); }
+  footer { margin-top: 28px; font-size: 11px; color: var(--fg-muted); }
+</style>
+</head>
+<body>
+<h1>Iron Works — Tier 4 (upgrade delta)</h1>
+<p class="meta">
+  Run: <a href="../index.html">2026-08-12-full-sweep</a> ·
+  Map position: 1.7 km W · 1.3 km N ·
+  Power: 227.3 MW draw, up from 207.8 MW ·
+  Claims: unchanged, 4 nodes at 300/min iron ore total
+</p>
+
+<h2>What changed</h2>
+<p>One change this group: Rotor raised from 9/min to 11.67/min, via the
+Add-source panel's "Raise target" on Motor Works' Rotor import — the same
+mechanism that made Iron Works the run's first exporter back in Tiers
+1&ndash;2. Machine count stayed at 36 plus 4 extractors; the extra output
+came from reclocking the existing Rotor bank rather than adding machines.</p>
+
+<table>
+  <tr><th></th><th>Start of group</th><th>End of group</th></tr>
+  <tr><td>Machines</td><td>36 + 4 extractors</td><td>36 + 4 extractors</td></tr>
+  <tr><td>Power</td><td>207.8 MW</td><td>227.3 MW</td></tr>
+  <tr><td>Rotor</td><td>9/min</td><td>11.67/min</td></tr>
+</table>
+
+<h2>Rotor line, before and after</h2>
+<div class="grid" style="--cols: 6">
+  <div class="cell machine">Assembler &times;3 @97%<br/>Rotor<br/>11.67/min</div>
+  <div class="cell belt mk3">Mk3 &rarr; 5/min</div>
+  <div class="cell machine">Export: <a href="elevator-yard-t4.html">Elevator Yard</a></div>
+  <div class="cell belt mk3">Mk3 &rarr; 5/min</div>
+  <div class="cell machine">Export: <a href="motor-works.html">Motor Works</a> (new this group)</div>
+  <div class="cell">1.67/min headroom kept local</div>
+</div>
+<p class="meta">3&times; Assembler @97%, 43.4 MW. All 11.67/min is spoken for
+between the two exports plus a small local margin.</p>
+
+<h2>Knock-on: two segments now need two belts</h2>
+<p>Raising Rotor pulled more Iron Rod and Screws through the factory, which
+pulled more Iron Ore through the claims. Both segments were already close to
+the Mk.3 cap at Tiers 1&ndash;2's Mk.2 rate; at the new draw they cross it and
+split into two parallel belts, which is normal play under
+<a href="../../../constraints.md">constraints.md</a> rather than a defect:</p>
+<table>
+  <tr><th>Segment</th><th>Carrying</th><th>Cap (Mk.3)</th><th>Resolution</th></tr>
+  <tr><td>Iron Ore, miners &rarr; smelters</td><td>294.3/min</td><td>270/min</td><td>Two Mk.3 belts, against 300/min claimed</td></tr>
+  <tr><td>Screws segment</td><td>291.8/min</td><td>270/min</td><td>Two Mk.3 belts</td></tr>
+</table>
+<p class="meta">Validate reports both as notes, not warnings — layout facts
+about needing a second belt, not supply shortfalls.</p>
+
+<h2>Everything else — unchanged this group</h2>
+<table>
+  <tr><th>Line</th><th>Machines</th><th>Output</th></tr>
+  <tr><td>Iron Ingot</td><td>10&times; Smelter @98%</td><td>294.3/min</td></tr>
+  <tr><td>Wire</td><td>2&times; Constructor @96%</td><td>43.3/min</td></tr>
+  <tr><td>Screws</td><td>7&times; Constructor @95%</td><td>331.8/min</td></tr>
+  <tr><td>Iron Plate</td><td>3&times; Constructor @94%</td><td>56.6/min</td></tr>
+  <tr><td>Reinforced Iron Plate</td><td>2&times; Assembler @98%</td><td>11/min</td></tr>
+  <tr><td>Iron Rod</td><td>7&times; Constructor @97%</td><td>102.3/min</td></tr>
+  <tr><td>Modular Frame</td><td>2&times; Assembler @100%</td><td>4/min</td></tr>
+</table>
+
+<h2>Imports / exports</h2>
+<table>
+  <tr><th>Direction</th><th>Item</th><th>Rate</th><th>Partner factory</th><th>Transport</th></tr>
+  <tr><td>Import</td><td>Wire</td><td>30/min</td><td><a href="copper-works.html">Copper Works</a></td><td>Belt (unchanged)</td></tr>
+  <tr><td>Export</td><td>Reinforced Iron Plate</td><td>5/min</td><td><a href="elevator-yard-t4.html">Elevator Yard</a></td><td>Belt (unchanged)</td></tr>
+  <tr><td>Export</td><td>Modular Frame</td><td>2.5/min</td><td><a href="elevator-yard-t4.html">Elevator Yard</a></td><td>Belt (unchanged)</td></tr>
+  <tr><td>Export</td><td>Rotor</td><td>5/min</td><td><a href="elevator-yard-t4.html">Elevator Yard</a></td><td>Belt (unchanged)</td></tr>
+  <tr><td>Export</td><td>Rotor</td><td>5/min</td><td><a href="motor-works.html">Motor Works</a></td><td>Belt (new this group)</td></tr>
+</table>
+
+<footer>SPECS full-playthrough run artifact &middot; template v1</footer>
+</body>
+</html>

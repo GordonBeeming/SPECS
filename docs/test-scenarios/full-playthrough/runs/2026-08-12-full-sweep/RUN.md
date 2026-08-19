@@ -10,7 +10,7 @@ to a list screen is recorded as a finding rather than treated as the way through
 | ---------- | ----- | ------ |
 | tier-0     | done — shipped as PR #126, merged `fbf6b410` | #113–#121, #124, #125 fixed |
 | tiers-1-2  | done — shipped as PR #133, merged `d33c37c0` | #127–#131 fixed, #132 open |
-| tiers-3-4  | started — Steel Mill part-built, checkpoint not attempted | — |
+| tiers-3-4  | done — checkpoint passed, artifacts written | #147–#160 filed |
 | tiers-5-6  | not started | — |
 | tiers-7-8  | not started | — |
 | tier-9     | not started | — |
@@ -239,18 +239,13 @@ issue in this batch would have quietly widened the other.
 That pairing is the argument for fixing a tier group as one batch rather than
 issue by issue. Neither interaction is visible from a single issue.
 
-## Tiers 3–4 — started, not finished
+## Tiers 3–4
 
 Tier set to 4 and all 32 reachable alts unlocked. **Steel Mill** placed at
 2.7 km W · 0.9 km N, between the western coal field and the iron nodes below
-it, planning Steel Beam 10/min and Steel Pipe 15/min. The optimizer chose
-Solid Steel Ingot and Iron Alloy Ingot, so the mill wants copper as well as
-coal and iron — 41.7 coal, 22.2 iron, 5.6 copper per minute. Coal and iron
-are claimed at 42/min and 22.5/min; copper is not.
-
-Not reached: Encased Industrial Beam, the coal power station and its water
-extractors, Motor Assembly, Versatile Framework for Phase 2, and the Miner
-Mk.2 upgrades. The tier page's checkpoint is untouched.
+it — first laid down partial (5 machines · 30.7 MW, Steel Beam 10/min and
+Steel Pipe 15/min with no ingot line of its own), then built out to its
+finished state over the rest of the group.
 
 One thing confirmed on the way: **#129's fix works in the wild.** Claiming a
 coal node with three factories on the map defaulted to Steel Mill — the one
@@ -258,8 +253,138 @@ short of coal — rather than the nearest. Same for the iron and copper claims,
 three for three. That's the fix I couldn't trigger during the Tiers 1–2
 checkpoint because no factory was short of anything at the time.
 
-The Mk3 unlock also shows the belt note tracking the tier: the Iron Works ore
-segment now reads "needs 2 belts at Mk.3 (270/min each)", down from 3 at Mk.2.
+### What was built
+
+**Steel Mill** (finished this group) — 2.7 km W · 0.9 km N. Steel Beam
+40/min (30 export), Steel Pipe 39/min (15 export, 15/min free), Encased
+Industrial Beam 4/min. 13 machines + 5 extractors · 148.3 MW, up from 5
+machines · 30.7 MW at the group's start. Raw demand — Coal 145.7, Iron Ore
+77.7, Copper Ore 19.4, Limestone 15/min — is fully claimed across five
+nodes, two of them Mk.2 upgrades onto already-claimed Mk.1 nodes. Imports
+Concrete 15/min from Copper Works; exports Steel Beam 30/min to Elevator
+Yard and Steel Pipe 15/min to Motor Works.
+Layout: [`factories/steel-mill-t4.html`](factories/steel-mill-t4.html).
+
+**Motor Works** (new) — 1.5 km W · 1.5 km N. Stator 5/min, Motor 2.5/min,
+Automated Wiring 2.5/min. 20 machines + 3 extractors · 128.5 MW, no local
+generation — it runs entirely off the grid the coal plant now carries.
+Imports Cable from Copper Works, Rotor from Iron Works, and Steel Pipe from
+Steel Mill. Layout: [`factories/motor-works.html`](factories/motor-works.html).
+
+**Coal Power Station** (new) — 0.7 km W · 0.2 km N. 12 Coal Generators at
+100%, 900.0 MW, station draw 97.3 MW (net +802.7 MW). Water for the
+generator bank sits on the Grass Fields lakes, one of `constraints.md`'s
+approved water bodies, 385 m from the plant.
+Layout: [`factories/coal-power-station.html`](factories/coal-power-station.html).
+
+**Elevator Yard** (delta) — gained Versatile Framework 5/min for Phase 2. 4
+machines · 50.4 MW, up from 3 · 35.4 MW. That before/after hides a real
+mid-group swing, not a tidy build: it briefly smelted its own steel to cover
+Steel Beam demand — an Iron Ingot line, a Steel Ingot line and a Steel Beam
+line, plus coal, iron and copper claims of its own — peaking at 9 machines
+and 104.3 MW. Raising the Steel Mill's export cap to cover the full 30/min
+the Yard needed dropped all three local lines and their claims back out,
+before Versatile Framework went in. It's the clearest result in this run for
+pulling an intermediate over a link instead of smelting it on-site — the
+Yard never needed those ore claims at all.
+Layout: [`factories/elevator-yard-t4.html`](factories/elevator-yard-t4.html).
+
+**Iron Works** (delta) — one change: Rotor raised from 9/min to 11.67/min to
+cover Motor Works' import, via the Add-source panel's "Raise target". 36
+machines + 4 extractors · 227.3 MW, up from 207.8 MW at Tier 2 with no
+machine count change — the extra output came from reclocking, not adding
+machines. The knock-on: Iron Ore (294.3/min) and Screws (291.8/min) both now
+run as two Mk.3 belts each, which `constraints.md` treats as normal play,
+not a defect. Layout: [`factories/iron-works-t4.html`](factories/iron-works-t4.html).
+
+**Copper Works** — unchanged this group. Now exports Concrete to Steel Mill
+and Cable to Motor Works on top of its existing Tier 1–2 output.
+
+### Power
+
+Coal Power Station adds 900.0 MW against its own 97.3 MW draw. Grid total
+after this group: **1230.0 MW generated against 683.3 MW consumed
+(+546.7 MW)**, with coal power online.
+
+The three "generators burn Wood" notes on Validate could not be cleared, and
+this is the one checkpoint item the group couldn't clear outright. Coal power
+was built to carry the whole grid — 900 MW against a 683 MW draw — and the 11
+biomass burners across Copper Works, Elevator Yard and Iron Works should have
+been retired, but the Power panel's `ConfirmDeleteButton` never arms, on
+either of its two call sites, so nothing that uses it can be deleted (#147).
+All 11 remain on the grid, burning Wood at 36 / 36 / 126 per minute.
+
+### Checkpoint — green
+
+| Check | Result |
+| ----- | ------ |
+| Phase 2 parts planned at stated rates with working imports | pass — Smart Plating 5/min (500 need, 5/min free), Versatile Framework 5/min (500 need, 5/min free), Automated Wiring 2.5/min (100 need, 2.5/min free); Phase 1 shows Delivered |
+| Validate → 0 errors, 0 supply warnings | pass — 0 errors, 0 warnings, 5 notes |
+| Grid generation ≥ draw with coal power online | pass — 1230.0 MW generated / 683.3 MW consumed (+546.7 MW) |
+| Water groups on approved water bodies only | pass — Grass Fields lakes, 385 m from the Coal Power Station |
+| No belt segment over 270/min, no pipe segment over 300 m³/min | pass — Iron Works' 291.8/min and 294.3/min segments each run as two Mk.3 belts (`constraints.md` allows this); the 540 m³/min water feed runs as two Mk.1 headers of 270 m³/min each |
+| Layouts written, screenshots captured | pass — five factory pages, screenshots below |
+
+The 5 remaining notes are the two Iron Works belt-count notes and the three
+Wood-burning generator notes above — all benign, none clearable this group.
+
+### Findings
+
+Filed as #147–#160, in severity order.
+
+| # | Severity | Title |
+| - | -------- | ----- |
+| #147 | blocking-flow | ConfirmDeleteButton never arms, so nothing that uses it can be deleted |
+| #148 | blocking-flow | "import instead" adds supply on top of local production, then counts the sink as demand |
+| #149 | blocking-flow | Raising a product's Export rate saves, but production isn't recomputed to cover it |
+| #150 | blocking-flow | Raising a source cap creates an underfed link; "Raise target" is only offered on the Add-source path |
+| #151 | blocking-flow | "What should &lt;factory&gt; make?" can't be dismissed without deleting the factory, and doesn't block the page |
+| #152 | blocking-flow | Window geometry restores onto an unavailable monitor and the splash never clears |
+| #153 | friction | A restored map view can leave bare canvas down one side |
+| #154 | friction | The supply banner says "(claim more nodes)" five times and none of them are clickable |
+| #155 | friction | Add product defaults every item to 60/min |
+| #156 | friction | The "import instead" link is a 9px-tall hit target at fit-view zoom |
+| #157 | friction | Water extractor placement defaults to "— none —" and the group disappears once saved |
+| #158 | friction | The optimizer picks alts that introduce a new raw resource for small ore savings |
+| #159 | polish | Small number and label nits on the map card and power panel |
+| #160 | polish | The playthrough switcher menu ignores Escape and outside clicks, and never takes focus |
+
+No showstoppers — the group reached its checkpoint. #147 is the headline:
+it's the direct cause of the three Wood-burning notes that can't be cleared,
+and of #149's Elevator Yard steel churn being invisible on-screen rather than
+caught before Validate.
+
+### Recovering from a stuck "import instead" offer
+
+Taking the app's "import instead" offer on Motor Works' Rotor line created a
+1.7/min sink that Re-optimize didn't clear (#148). The only way out: Add
+source → "Raise target" on Iron Works, which took its Rotor line from 9 to
+11.67/min and reported "its own plan still balances", followed by "Remove
+local production" on Motor Works — a control that stays disabled until a
+second source exists, so it's only reachable in that order. That's a real
+recovery path, but nothing on screen points at it, and the next run
+shouldn't have to rediscover it by trial and error.
+
+### What worked
+
+The claim-defaulting fix from Tiers 1–2 (#129) held up three for three on
+coal, iron and copper claims this group — the popup picked the short
+factory over the nearest one every time. "Import instead" also worked
+correctly on two of the three factories it was tried on: Steel Mill's
+Concrete import and Elevator Yard's Steel Beam import both displaced local
+production the way the offer implies. It only broke on Motor Works' Rotor
+import, where the producer's spare was smaller than local demand — see
+Findings above.
+
+### Screenshots
+
+- [Validate clean at the checkpoint](screenshots/2026-08-12-full-sweep-t3-4-validate-clean.png)
+- [Steel Mill plan](screenshots/2026-08-12-full-sweep-t3-4-steel-mill-plan.png)
+- [Power view grid](screenshots/2026-08-12-full-sweep-t3-4-power-view-grid.png)
+- [Remove generator never arms](screenshots/2026-08-12-full-sweep-t3-4-remove-generator-never-arms.png)
+- ["Import instead" stacks and sinks Rotor](screenshots/2026-08-12-full-sweep-t3-4-import-instead-stacks-and-sinks-rotor.png)
+- [Rotor short and sinking at once](screenshots/2026-08-12-full-sweep-t3-4-rotor-short-and-sinking-at-once.png)
+- [Power-factory product modal trap](screenshots/2026-08-12-full-sweep-t3-4-power-factory-product-modal-trap.png)
 
 ## Where this run stands
 
@@ -267,7 +392,7 @@ segment now reads "needs 2 belts at Mk.3 (270/min each)", down from 3 at Mk.2.
 | --- | --- |
 | Tier 0 | shipped — PR #126, merged `fbf6b410` |
 | Tiers 1–2 | shipped — PR #133, merged `d33c37c0` |
-| Tiers 3–4 | Steel Mill part-built, checkpoint not attempted |
+| Tiers 3–4 | checkpoint passed, artifacts written — #147–#160 filed, not yet shipped |
 
 #133 sat draft on two blockers, both of them regressions its own fixes had
 introduced, and both invisible to a green suite. #134 was a plan save dropping
@@ -320,12 +445,15 @@ it.
 
 ### Still open
 
-Tiers 5–9 are untouched, and the Tiers 3–4 checkpoint was never attempted: the
-coal power station and its water extractors, Motor Assembly, Versatile Framework
-for Phase 2, and the Miner Mk.2 upgrades all remain.
+Tiers 5–9 are untouched. Tiers 3–4 reached its checkpoint clean, but one gap
+couldn't be closed within the group: generator removal never arms (Findings,
+above), so the 11 biomass burners that coal power made redundant can't be
+retired, and Validate carries three permanent "burns Wood" notes as a result.
 
 Carrying forward: #143 (stale shortfalls during a background refetch), #139 (the
 export-raise race across popped-out windows, which wants a Rust-side lock rather
 than the per-root queue), #136 (eleven remaining review findings), #132 (the
 factory slice README no longer describes the slice), #123 (a hand-fed chain
-validates clean) and #122 (Geothermal listed at T8 against the game's T6).
+validates clean), #122 (Geothermal listed at T8 against the game's T6), and
+#147–#160 from Tiers 3–4, of which #147 (generator delete never arms) is the
+one blocking a checkpoint item outright.

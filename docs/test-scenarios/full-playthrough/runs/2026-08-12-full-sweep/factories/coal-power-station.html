@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Coal Power Station — Tier 4 layout</title>
+<style>
+  :root {
+    --bg: #1a1a1a; --bg-raised: #232323; --fg: #e0e0e0; --fg-muted: #d1d5db;
+    --primary: #46cbff; --border: #2c2c2c;
+    --success: #4ade80; --warning: #fbbf24; --danger: #f87171;
+    --mk1: #9ca3af; --mk2: #46cbff; --mk3: #4ade80;
+    --mk4: #fcd34d; --mk5: #fb923c; --mk6: #d8b4fe;
+    --pipe1: #5eead4; --pipe2: #67e8f9;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--fg);
+         font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 24px 0 8px; color: var(--primary); }
+  .meta { color: var(--fg-muted); font-size: 12px; margin-bottom: 16px; }
+  .meta a { color: var(--primary); }
+  .callout { border: 1px solid var(--warning); background: #2a2412;
+             border-radius: 6px; padding: 10px 14px; margin: 12px 0;
+             font-size: 13px; }
+  .callout strong { color: var(--warning); }
+  table { border-collapse: collapse; width: 100%; max-width: 760px; }
+  th, td { border: 1px solid var(--border); padding: 5px 9px; text-align: left;
+           font-size: 13px; overflow-wrap: anywhere; }
+  th { background: var(--bg-raised); }
+  .grid { display: grid; gap: 2px; margin: 8px 0;
+          grid-template-columns: repeat(var(--cols, 12), minmax(44px, 1fr)); }
+  .cell { background: var(--bg-raised); border: 1px solid var(--border);
+          min-height: 44px; border-radius: 3px; position: relative;
+          font-size: 10px; color: var(--fg-muted); padding: 2px 4px;
+          overflow-wrap: anywhere; min-width: 0; }
+  .machine { background: #1e3a4c; border-color: var(--primary); color: var(--fg);
+             display: flex; align-items: center; justify-content: center;
+             text-align: center; font-size: 11px; }
+  .extractor { background: #2d2433; border-color: var(--mk6); }
+  .gen { background: #213326; border-color: var(--success); display: flex;
+         align-items: center; justify-content: center; text-align: center;
+         font-size: 11px; color: var(--fg); }
+  .belt { display: flex; align-items: center; justify-content: center;
+          font-size: 10px; font-weight: 600; }
+  .belt.mk3 { color: var(--mk3); border-color: var(--mk3); }
+  .pipe { font-style: italic; display: flex; align-items: center;
+          justify-content: center; font-size: 10px; font-weight: 600; }
+  .pipe.mk1 { color: var(--pipe1); border-color: var(--pipe1); }
+  .split { background: #3a2f1e; border-color: var(--warning); }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px;
+            color: var(--fg-muted); margin: 6px 0 18px; }
+  .legend span::before { content: "■ "; }
+  .ok { color: var(--success); } .warn { color: var(--warning); }
+  footer { margin-top: 28px; font-size: 11px; color: var(--fg-muted); }
+</style>
+</head>
+<body>
+<h1>Coal Power Station — Tier 4</h1>
+<p class="meta">
+  Run: <a href="../index.html">2026-08-12-full-sweep</a> ·
+  Map position: 0.7 km W · 0.2 km N ·
+  Claims: coal Pure 75%, 5&times; water extractor 90% ·
+  Power: +900.0 MW gen / &minus;97.3 MW draw (+802.7 MW)
+</p>
+
+<h2>Purpose</h2>
+<p>No production machines — this factory is 12 Coal Generators and the coal
+and water feeding them, sized to carry the whole grid on its own. Coal
+Generator, 100% clock, &times;12 &rarr; 900.0 MW. Station draw is 97.3 MW (5
+water extractors plus the 1 coal miner), for a net of +802.7 MW. Combined
+with the existing biomass burners across the other factories, the grid after
+this group reads 1230.0 MW generated against 683.3 MW consumed.</p>
+
+<div class="callout">
+  <strong>The water feed needs two pipe headers, not one.</strong> 12
+  generators at 45 m&sup3;/min cooling water each is 540 m&sup3;/min total —
+  almost double the Mk.1 pipe cap of 300 m&sup3;/min. The 5 water extractors
+  split into two headers of 270 m&sup3;/min each (6 generators per header),
+  both under cap, rather than one pipe carrying more than the game allows.
+</div>
+
+<h2>Foundation layout (8&times;8 m per cell)</h2>
+<div class="legend">
+  <span style="color: var(--success)">generator</span>
+  <span style="color: var(--mk6)">extractor</span>
+  <span style="color: var(--mk3)">belt Mk3 270</span>
+  <span style="color: var(--pipe1)">pipe Mk1 300</span>
+  <span style="color: var(--warning)">splitter/merger</span>
+</div>
+<div class="grid" style="--cols: 8">
+  <div class="cell extractor">Miner Mk.2<br/>Coal · Pure · 75%<br/>180/min</div>
+  <div class="cell belt mk3" style="grid-column: span 2">Mk3 &rarr; 180/min coal, 0.5 km</div>
+  <div class="cell split">Splitter<br/>15/min &times; 12</div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+
+  <div class="cell gen">Coal Gen &times;6<br/>100% · 450 MW</div>
+  <div class="cell gen">Coal Gen &times;6<br/>100% · 450 MW</div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+
+  <div class="cell pipe mk1">Header A<br/>Mk1 &rarr; 270 m&sup3;/min</div>
+  <div class="cell pipe mk1">Header B<br/>Mk1 &rarr; 270 m&sup3;/min</div>
+  <div class="cell split">Merge<br/>2&times; 270 &rarr; 540</div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+
+  <div class="cell extractor" style="grid-column: span 5">Water Extractor &times;5 @90% &mdash; Grass Fields lakes, 385 m from the plant &mdash; 540 m&sup3;/min total</div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+</div>
+<p class="meta">Water extractors sit on the lakes, not the plant footprint —
+385 m of Mk1 pipe carries each header in. Header A feeds the first 6
+generators, Header B the second 6; neither header crosses the other's run.</p>
+
+<h2>Belt and pipe audit</h2>
+<table>
+  <tr><th>Segment</th><th>Mark</th><th>Carrying</th><th>Cap</th><th>Status</th></tr>
+  <tr><td>Coal miner &rarr; generator bank</td><td>Mk3 belt</td><td>180/min</td><td>270/min</td><td class="ok">67% of cap</td></tr>
+  <tr><td>Water &rarr; Header A (6 generators)</td><td>Mk1 pipe</td><td>270 m&sup3;/min</td><td>300 m&sup3;/min</td><td class="ok">at cap by design</td></tr>
+  <tr><td>Water &rarr; Header B (6 generators)</td><td>Mk1 pipe</td><td>270 m&sup3;/min</td><td>300 m&sup3;/min</td><td class="ok">at cap by design</td></tr>
+</table>
+
+<h2>Machines and power</h2>
+<table>
+  <tr><th>Building</th><th>Count</th><th>Clock</th><th>Output/Draw</th></tr>
+  <tr><td>Coal Generator</td><td>12</td><td>100%</td><td class="ok">+900.0 MW</td></tr>
+  <tr><td>Miner Mk.2 (coal)</td><td>1</td><td>75%</td><td>&minus; (part of 97.3 MW)</td></tr>
+  <tr><td>Water Extractor</td><td>5</td><td>90%</td><td>&minus; (part of 97.3 MW)</td></tr>
+  <tr><td colspan="3"><strong>Net</strong></td><td class="ok"><strong>+802.7 MW</strong></td></tr>
+</table>
+<p class="meta">Fuel demand: Coal 180.00/min, Water 540.00 m&sup3;/min — both
+fully claimed, no supply warnings.</p>
+
+<h2>Imports / exports</h2>
+<table>
+  <tr><th>Direction</th><th>Item</th><th>Rate</th><th>Partner factory</th><th>Transport</th></tr>
+  <tr><td colspan="5">None — power only, exported to the grid rather than to a named factory.</td></tr>
+</table>
+
+<footer>SPECS full-playthrough run artifact &middot; template v1</footer>
+</body>
+</html>
